@@ -59,7 +59,12 @@ typedef enum AstKind {
     AST_PRINT,
     AST_FORMAT,
     AST_NULL,
-    AST_DELETE
+    AST_DELETE,
+    AST_CONSTRUCTOR,
+    AST_DESTRUCTOR,
+    AST_MEM_INIT,
+    AST_USING,
+    AST_SUPER
 } AstKind;
 
 typedef struct AstNode {

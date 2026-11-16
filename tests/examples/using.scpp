@@ -1,0 +1,10 @@
+namespace audio {
+    int volume;
+}
+
+using namespace audio;
+
+int read(void) {
+    using audio::volume;
+    return volume;
+}
