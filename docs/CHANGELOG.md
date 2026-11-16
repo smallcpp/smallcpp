@@ -7,6 +7,7 @@ All notable changes to smallcpp are recorded in this file.
 ### Added
 
 - The parser builds a syntax tree. Node kinds are defined in `src/compiler/ast.h` and constructed in `src/compiler/ast.c`. The grammar actions in `src/compiler/smallcpp.y` cover translation units, namespaces, classes, methods, statements, try/catch/throw, and new. There is no code generation.
+- CTest runs `accept.scpp`. That test must build the syntax tree and pass.
 
 ## 2026-11-16
 
