@@ -50,11 +50,15 @@
 %{
 #include "ast.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 int yylex(void);
 void yyerror(const char *message);
 %}
+
+%locations
+%define parse.error custom
 
 %union {
     char *text;
@@ -135,7 +139,7 @@ external_declaration
     : function_definition { $$ = $1; }
     | declaration { $$ = $1; }
     | namespace_definition { $$ = $1; }
-    | error ';' { yyerrok; }
+    | error ';' { yyerrok; $$ = NULL; }
     ;
 
 /*
@@ -235,7 +239,7 @@ struct_declaration
     : specifier_qualifier_list struct_declarator_list ';' {
         $$ = ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL);
       }
-    | error ';' { yyerrok; }
+    | error ';' { yyerrok; $$ = NULL; }
     ;
 
 specifier_qualifier_list
@@ -331,7 +335,7 @@ class_member
     : access_keyword ':' { $$ = $1; }
     | declaration { $$ = $1; }
     | function_definition { $$ = $1; }
-    | error ';' { yyerrok; }
+    | error ';' { yyerrok; $$ = NULL; }
     ;
 
 type_qualifier
@@ -499,7 +503,7 @@ statement
     | jump_statement { $$ = $1; }
     | try_statement { $$ = $1; }
     | throw_statement { $$ = $1; }
-    | error ';' { yyerrok; }
+    | error ';' { yyerrok; $$ = NULL; }
     ;
 
 labeled_statement

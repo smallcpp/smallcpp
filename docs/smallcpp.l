@@ -3,6 +3,8 @@
  * Keywords are the plain C++ spellings. None of them has an sc_ prefix.
  * The identifier after class is recorded so a later use is TYPEDEF_NAME.
  * Other typedef names are not recorded.
+ * An invalid character is reported with its line and column and then
+ * skipped, so scanning continues.
  */
 %option noyywrap
 %option nounput
@@ -14,8 +16,44 @@
 %{
 #include "smallcpp.tab.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+void yyerror(const char *message);
+
+int yycolumn = 1;
+
+#define YY_USER_ACTION update_location();
+
+static void update_location(void)
+{
+    int i;
+    int newlines = 0;
+    int line;
+
+    for (i = 0; i < yyleng; i++) {
+        if (yytext[i] == '\n')
+            newlines++;
+    }
+    line = yylineno - newlines;
+    if (line < 1)
+        line = 1;
+    yylloc.first_line = line;
+    yylloc.first_column = yycolumn;
+    yylloc.last_line = line;
+    yylloc.last_column = yycolumn > 0 ? yycolumn : 1;
+    for (i = 0; i < yyleng; i++) {
+        if (yytext[i] == '\n') {
+            line++;
+            yycolumn = 1;
+        } else {
+            yylloc.last_line = line;
+            yylloc.last_column = yycolumn;
+            yycolumn++;
+        }
+    }
+}
 
 struct keyword {
     const char *name;
@@ -27,6 +65,8 @@ struct keyword {
 static char *type_names[TYPE_MAX];
 static int type_count;
 static int class_name_pending;
+static int comment_line;
+static int comment_column;
 
 static int keyword_cmp(const void *key, const void *item)
 {
@@ -117,7 +157,18 @@ static int finish(int token, const char *text)
         && (token == IDENTIFIER || token == TYPEDEF_NAME))
         note_class_name(text);
     class_name_pending = (token == CLASS);
+    if (token == IDENTIFIER || token == TYPEDEF_NAME
+        || token == CONSTANT || token == STRING_LITERAL) {
+        const char *spelling = text != NULL ? text : yytext;
+        yylval.text = strdup(spelling);
+    }
     return token;
+}
+
+static void lexical_error(const char *message)
+{
+    class_name_pending = 0;
+    yyerror(message);
 }
 %}
 
@@ -125,10 +176,22 @@ static int finish(int token, const char *text)
 
 [ \t\r\n]+              ;
 "//"[^\n]*              ;
-"/*"                    { BEGIN(BLOCK_COMMENT); }
+"/*"                    {
+                            comment_line = yylloc.first_line;
+                            comment_column = yylloc.first_column;
+                            BEGIN(BLOCK_COMMENT);
+                        }
 <BLOCK_COMMENT>"*/"     { BEGIN(INITIAL); }
 <BLOCK_COMMENT>\n       ;
 <BLOCK_COMMENT>.        ;
+<BLOCK_COMMENT><<EOF>>  {
+                            yylloc.first_line = comment_line;
+                            yylloc.last_line = comment_line;
+                            yylloc.first_column = comment_column;
+                            yylloc.last_column = comment_column;
+                            lexical_error("unterminated comment");
+                            return 0;
+                        }
 
 "..."                   { return finish(ELLIPSIS, NULL); }
 "<<="                   { return finish(SHL_ASSIGN, NULL); }
@@ -155,7 +218,9 @@ static int finish(int token, const char *text)
 "^="                    { return finish(XOR_ASSIGN, NULL); }
 
 L?\"([^\"\\\n]|\\.)*\"  { return finish(STRING_LITERAL, NULL); }
+\"([^\"\\\n]|\\.)*      { lexical_error("unterminated string"); }
 L?\'([^\'\\\n]|\\.)+\'  { return finish(CONSTANT, NULL); }
+\'([^\'\\\n]|\\.)*      { lexical_error("unterminated character constant"); }
 
 0[xX][0-9A-Fa-f]+([uU][lL]?|[lL][uU]?|[lL][lL][uU]?)? { return finish(CONSTANT, NULL); }
 [0-9]+\.[0-9]*([eE][+-]?[0-9]+)?[fFlL]? { return finish(CONSTANT, NULL); }
@@ -169,6 +234,19 @@ L?\'([^\'\\\n]|\\.)+\'  { return finish(CONSTANT, NULL); }
                             return finish(token, yytext);
                         }
 
-.                       { return finish(yytext[0], NULL); }
+[(){}\[\];,:?~!+\-*/%&|^.<>=] { return finish(yytext[0], NULL); }
+
+.                       {
+                            unsigned char c = (unsigned char) yytext[0];
+                            char message[64];
+
+                            if (c >= 32 && c < 127)
+                                snprintf(message, sizeof message,
+                                         "invalid character '%c'", c);
+                            else
+                                snprintf(message, sizeof message,
+                                         "invalid character 0x%02x", c);
+                            lexical_error(message);
+                        }
 
 %%
