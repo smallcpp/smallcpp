@@ -8,7 +8,7 @@ Initial C++ CMake scaffold. The `shell` target is a hello-world program.
 cmake -S . -B build
 cmake --build build
 ./bin/shell
-./bin/parse_test tests/examples/accept.small
+./bin/parse_test tests/examples/accept.scpp
 ```
 
 Binaries are written to `bin/` and libraries to `lib/`.

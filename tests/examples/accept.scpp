@@ -1,0 +1,35 @@
+namespace audio {
+class Point {
+public:
+    int x;
+private:
+    int y;
+    virtual int move(int dx);
+};
+
+class Derived : public Point {
+public:
+    int z;
+};
+
+int Point::move(int dx) {
+    this->x = this->x + dx;
+    try {
+        if (dx < 0)
+            throw dx;
+    } catch (int e) {
+        return e;
+    }
+    return this->x;
+}
+}
+
+int main(void) {
+    Derived *p;
+    const char *message;
+
+    message = "hello";
+    p = new Derived;
+    p->z = 1;
+    return p->move(2);
+}
