@@ -10,5 +10,8 @@ Inputs for `parse_test`. Source files use the `.scpp` extension.
 - `variadic.scpp` parses a parameter list that ends with `...`. The test fails if the ellipsis node is missing.
 - `print-format.scpp` parses. `print` and `format` are native calls. The string literal uses C++23 replacement fields, and the arguments follow it. The test fails if those nodes are missing.
 - `tree-shape.scpp` parses a namespace, a derived class, `try`/`catch`/`throw`, a variadic parameter, and `print`/`format`. The test checks the shape of that tree, not only that parsing exits 0.
+- `null.scpp` uses `nullptr` and `NULL`. The test fails unless both are the same kind of node.
+- `delete.scpp` uses `new` and `delete`. `new` creates a pointer. `delete` is a no-op and its operand is a pointer.
+- `reject-delete.scpp` deletes a non-pointer and must fail.
 - `reject-second-base.scpp`, `reject-designated.scpp`, and `reject-class.scpp` do not.
 - `reject-errors.scpp` has more than one error. `parse_test` prints more than one diagnostic and exits non-zero.

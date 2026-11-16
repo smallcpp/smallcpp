@@ -16,9 +16,10 @@
  * protected, virtual, try, catch, throw, new, this, print, and format are
  * the plain spellings, not macros. namespace uses C++ syntax:
  * namespace name { ... }.
- * A qualified name uses '::'. Allocation is a new-expression. There is no
- * delete spelling; precise collection is a compiler and runtime
- * requirement, and the compiler records the type in each new-expression.
+ * A qualified name uses '::'. A new-expression creates a pointer. delete
+ * is a keyword and a no-op, because collection is precise, but its operand
+ * is still type-checked as a pointer. nullptr and NULL are keywords for
+ * the same null pointer constant.
  * Source files use the .scpp extension. Ordinary preprocessing is already
  * done. Semantic actions build a syntax tree. They do not generate code.
  *
@@ -34,8 +35,8 @@
  *   - designated initializers
  *   - compound literals, which are C99 and not C++11
  *   - C++11 brace initialization, references, rvalue references, auto as a
- *     type, lambdas, constexpr, nullptr, and trailing return types. auto is
- *     only the C storage-class specifier
+ *     type, lambdas, constexpr, and trailing return types. auto is only
+ *     the C storage-class specifier
  *   - _Bool, _Complex, and _Imaginary, which are not C++11. bool, true,
  *     false, and wchar_t are not keywords here; they are not C99 keywords
  *   - K&R definitions and a parameter list written (). Write (void). The
@@ -57,6 +58,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 int yylex(void);
 void yyerror(const char *message);
@@ -78,6 +80,120 @@ static struct AstNode *native_format(AstKind kind, char *literal, struct AstNode
         yyerror(message);
     return ast_make(kind, literal, args, NULL, NULL, NULL);
 }
+
+#define NAME_MAX 256
+
+static char *pointer_names[NAME_MAX];
+static int pointer_count;
+
+static void remember_pointer(const char *name)
+{
+    int i;
+
+    if (name == NULL || pointer_count >= NAME_MAX)
+        return;
+    for (i = 0; i < pointer_count; i++) {
+        if (strcmp(pointer_names[i], name) == 0)
+            return;
+    }
+    pointer_names[pointer_count] = strdup(name);
+    if (pointer_names[pointer_count] != NULL)
+        pointer_count++;
+}
+
+static int name_is_pointer(const char *name)
+{
+    int i;
+
+    if (name == NULL)
+        return 0;
+    for (i = 0; i < pointer_count; i++) {
+        if (strcmp(pointer_names[i], name) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static const char *declarator_name(const struct AstNode *node)
+{
+    const char *name;
+
+    if (node == NULL)
+        return NULL;
+    if (node->kind == AST_IDENT || node->kind == AST_TYPE_NAME)
+        return node->text;
+    name = declarator_name(node->a);
+    if (name != NULL)
+        return name;
+    return declarator_name(node->b);
+}
+
+static int declarator_is_pointer(const struct AstNode *node)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_INIT)
+        return declarator_is_pointer(node->a);
+    if (node->kind == AST_POINTER)
+        return 1;
+    if (node->kind == AST_DECLARATOR)
+        return declarator_is_pointer(node->a) || declarator_is_pointer(node->b);
+    return 0;
+}
+
+static void note_declarator(const struct AstNode *node)
+{
+    if (node == NULL)
+        return;
+    if (node->kind == AST_INIT)
+        node = node->a;
+    if (declarator_is_pointer(node))
+        remember_pointer(declarator_name(node));
+}
+
+static void note_declarators(const struct AstNode *node)
+{
+    for (; node != NULL; node = node->next)
+        note_declarator(node);
+}
+
+static int type_is_pointer(const struct AstNode *type)
+{
+    if (type == NULL)
+        return 0;
+    if (type->kind == AST_POINTER)
+        return 1;
+    if (type->kind == AST_DECLARATOR)
+        return type_is_pointer(type->a) || type_is_pointer(type->b);
+    return 0;
+}
+
+static int operand_is_pointer(const struct AstNode *node)
+{
+    if (node == NULL)
+        return 0;
+    switch (node->kind) {
+    case AST_NULL:
+    case AST_NEW:
+        return 1;
+    case AST_UNARY:
+        return node->text != NULL && strcmp(node->text, "&") == 0;
+    case AST_IDENT:
+    case AST_TYPE_NAME:
+        return name_is_pointer(node->text);
+    case AST_CAST:
+        return type_is_pointer(node->a);
+    case AST_BINARY:
+        if (node->text != NULL
+            && (strcmp(node->text, "+") == 0 || strcmp(node->text, "-") == 0))
+            return operand_is_pointer(node->a) || operand_is_pointer(node->b);
+        return 0;
+    case AST_CONDITIONAL:
+        return operand_is_pointer(node->b) && operand_is_pointer(node->c);
+    default:
+        return 0;
+    }
+}
 %}
 
 %locations
@@ -95,6 +211,7 @@ static struct AstNode *native_format(AstKind kind, char *literal, struct AstNode
 %token VIRTUAL "virtual" THIS "this"
 %token TRY "try" CATCH "catch" THROW "throw" NEW "new"
 %token PRINT "print" FORMAT "format"
+%token NULLPTR "nullptr" NULL_KEYWORD "NULL" DELETE "delete"
 %token AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
 %token EXTERN FLOAT FOR GOTO IF INLINE INT LONG REGISTER RETURN SHORT
 %token SIGNED SIZEOF STATIC STRUCT SWITCH TYPEDEF UNION UNSIGNED VOID
@@ -193,6 +310,7 @@ function_definition
 
 declaration
     : declaration_specifiers init_declarator_list ';' {
+        note_declarators($2);
         $$ = ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL);
       }
     | declaration_specifiers ';' {
@@ -445,6 +563,7 @@ parameter_list
 parameter_declaration
     : parameter_specifiers { $$ = ast_make(AST_PARAMETER, NULL, $1, NULL, NULL, NULL); }
     | parameter_specifiers parameter_declarator {
+        note_declarator($2);
         $$ = ast_make(AST_PARAMETER, NULL, $1, $2, NULL, NULL);
       }
     ;
@@ -626,6 +745,8 @@ primary_expression
     : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
     | nested_name { $$ = $1; }
     | THIS { $$ = ast_named(AST_THIS, "this"); }
+    | NULLPTR { $$ = ast_null("nullptr"); }
+    | NULL_KEYWORD { $$ = ast_null("NULL"); }
     | CONSTANT { $$ = ast_text(AST_LITERAL, $1); }
     | STRING_LITERAL { $$ = ast_text(AST_LITERAL, $1); }
     | '(' expression ')' { $$ = $2; }
@@ -681,10 +802,13 @@ unary_expression
     | unary_operator cast_expression { $$ = ast_unary($1, $2); }
     | SIZEOF unary_expression { $$ = ast_make(AST_SIZEOF, NULL, $2, NULL, NULL, NULL); }
     | SIZEOF '(' type_name ')' { $$ = ast_make(AST_SIZEOF, NULL, $3, NULL, NULL, NULL); }
-    | NEW new_type { $$ = ast_make(AST_NEW, NULL, $2, NULL, NULL, NULL); }
-    | NEW new_type '(' ')' { $$ = ast_make(AST_NEW, NULL, $2, NULL, NULL, NULL); }
-    | NEW new_type '(' argument_expression_list ')' {
-        $$ = ast_make(AST_NEW, NULL, $2, $4, NULL, NULL);
+    | NEW new_type { $$ = ast_new_expr($2, NULL); }
+    | NEW new_type '(' ')' { $$ = ast_new_expr($2, NULL); }
+    | NEW new_type '(' argument_expression_list ')' { $$ = ast_new_expr($2, $4); }
+    | DELETE cast_expression {
+        if (!operand_is_pointer($2))
+            yyerror("delete operand is not a pointer");
+        $$ = ast_delete_noop($2);
       }
     ;
 

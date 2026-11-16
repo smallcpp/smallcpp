@@ -8,6 +8,8 @@
  * "..." is one token. A parameter list uses it as a variadic parameter.
  * catch (...) uses the same token, and the grammar does not make it a
  * parameter.
+ * nullptr and NULL are keywords for the same null pointer constant.
+ * delete is a keyword. It is not an identifier.
  */
 %option noyywrap
 %option nounput
@@ -100,6 +102,7 @@ static void note_class_name(const char *name)
 static int keyword_token(const char *name)
 {
     static const struct keyword keywords[] = {
+        {"NULL", NULL_KEYWORD},
         {"auto", AUTO},
         {"break", BREAK},
         {"case", CASE},
@@ -109,6 +112,7 @@ static int keyword_token(const char *name)
         {"const", CONST},
         {"continue", CONTINUE},
         {"default", DEFAULT},
+        {"delete", DELETE},
         {"do", DO},
         {"double", DOUBLE},
         {"else", ELSE},
@@ -124,6 +128,7 @@ static int keyword_token(const char *name)
         {"long", LONG},
         {"namespace", NAMESPACE},
         {"new", NEW},
+        {"nullptr", NULLPTR},
         {"print", PRINT},
         {"private", PRIVATE},
         {"protected", PROTECTED},

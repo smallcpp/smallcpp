@@ -10,6 +10,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `nullptr` and `NULL` are keywords for the same null pointer constant. They produce the same kind of syntax-tree node. A `new`-expression creates a pointer. `delete` is a keyword and a no-op, because collection is precise, and its operand is type-checked as a pointer. `tests/examples/null.scpp`, `tests/examples/delete.scpp`, and `tests/examples/reject-delete.scpp` are registered with CTest.
 - `catch (...)` catches every exception type. The `...` is not a parameter and is not the variadic-parameter node. A `catch` with a parameter still parses. `tests/examples/catch-all.scpp` is registered with CTest.
 - Parser examples cover a namespace, a class with one base and a method, `try`/`catch`/`throw`, a variadic parameter, and native `print`/`format`. `parse_test` fails when an example's expected syntax-tree nodes are missing. `tests/examples/tree-shape.scpp` checks the shape of the tree. Each example is registered with CTest.
 - `print` and `format` are native. A call takes a string literal in C++23 format-string syntax, then the arguments that fill its replacement fields. `print` writes the formatted text. `format` produces the formatted string. They are not declarations the program supplies, and they are not the C++ standard library. The syntax tree records them as `print` and `format` nodes. `tests/examples/print-format.scpp` is registered with CTest.

@@ -1,0 +1,8 @@
+int main(void) {
+    int *p;
+    int *q;
+
+    p = nullptr;
+    q = NULL;
+    return p == q;
+}
