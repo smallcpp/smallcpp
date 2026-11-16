@@ -17,6 +17,10 @@
  * Source files use the .scpp extension. Ordinary preprocessing is already
  * done. Semantic actions build a syntax tree. They do not generate code.
  *
+ * A syntax error is reported with its line and column, then the error
+ * token resynchronizes at the next semicolon so later errors are still
+ * reported. That recovery is not part of the language.
+ *
  * Deliberate omissions:
  *   - variable-length arrays, including '[*]' and 'static' inside '[]'
  *   - restrict
@@ -131,6 +135,7 @@ external_declaration
     : function_definition { $$ = $1; }
     | declaration { $$ = $1; }
     | namespace_definition { $$ = $1; }
+    | error ';' { yyerrok; }
     ;
 
 /*
@@ -230,6 +235,7 @@ struct_declaration
     : specifier_qualifier_list struct_declarator_list ';' {
         $$ = ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL);
       }
+    | error ';' { yyerrok; }
     ;
 
 specifier_qualifier_list
@@ -325,6 +331,7 @@ class_member
     : access_keyword ':' { $$ = $1; }
     | declaration { $$ = $1; }
     | function_definition { $$ = $1; }
+    | error ';' { yyerrok; }
     ;
 
 type_qualifier
@@ -492,6 +499,7 @@ statement
     | jump_statement { $$ = $1; }
     | try_statement { $$ = $1; }
     | throw_statement { $$ = $1; }
+    | error ';' { yyerrok; }
     ;
 
 labeled_statement
@@ -769,3 +777,22 @@ constant_expression
     ;
 
 %%
+
+static int
+yyreport_syntax_error(const yypcontext_t *ctx)
+{
+    YYLTYPE *loc = yypcontext_location(ctx);
+    yysymbol_kind_t token = yypcontext_token(ctx);
+    char message[160];
+
+    if (loc != NULL)
+        yylloc = *loc;
+    if (token == YYSYMBOL_YYEMPTY)
+        yyerror("syntax error");
+    else {
+        snprintf(message, sizeof message, "syntax error, unexpected %s",
+                 yysymbol_name(token));
+        yyerror(message);
+    }
+    return 0;
+}

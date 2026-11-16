@@ -1,4 +1,5 @@
 #include "ast.h"
+#include "smallcpp.tab.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,12 +8,18 @@
 extern int yyparse(void);
 extern FILE *yyin;
 extern int yylineno;
+extern int yycolumn;
 
 static const char *input_path;
+static int error_count;
 
 void yyerror(const char *message)
 {
-    fprintf(stderr, "%s:%d: %s\n", input_path, yylineno, message);
+    int line = yylloc.first_line > 0 ? yylloc.first_line : 1;
+    int column = yylloc.first_column > 0 ? yylloc.first_column : 1;
+
+    fprintf(stderr, "%s:%d:%d: %s\n", input_path, line, column, message);
+    error_count++;
 }
 
 static int ends_with(const char *path, const char *suffix)
@@ -62,6 +69,12 @@ int main(int argc, char **argv)
     }
     input_path = argv[1];
     smallcpp_ast = NULL;
+    yylineno = 1;
+    yycolumn = 1;
+    yylloc.first_line = 1;
+    yylloc.first_column = 1;
+    yylloc.last_line = 1;
+    yylloc.last_column = 1;
     yyin = fopen(argv[1], "r");
     if (yyin == NULL) {
         perror(argv[1]);
@@ -78,5 +91,7 @@ int main(int argc, char **argv)
     }
     ast_free(smallcpp_ast);
     smallcpp_ast = NULL;
+    if (status != 0 || error_count != 0)
+        return 1;
     return 0;
 }
