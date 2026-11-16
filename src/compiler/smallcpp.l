@@ -157,6 +157,11 @@ static int finish(int token, const char *text)
         && (token == IDENTIFIER || token == TYPEDEF_NAME))
         note_class_name(text);
     class_name_pending = (token == CLASS);
+    if (token == IDENTIFIER || token == TYPEDEF_NAME
+        || token == CONSTANT || token == STRING_LITERAL) {
+        const char *spelling = text != NULL ? text : yytext;
+        yylval.text = strdup(spelling);
+    }
     return token;
 }
 
