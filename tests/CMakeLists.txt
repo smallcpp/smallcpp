@@ -43,3 +43,16 @@ add_parse_example(parse_bit_field bit-field.scpp FALSE)
 add_parse_example(parse_designated designated.scpp FALSE)
 add_parse_example(parse_empty_params empty-params.scpp FALSE)
 add_parse_example(parse_brace_init brace-init.scpp FALSE)
+
+add_executable(verify_module verify_module.cpp)
+target_link_libraries(verify_module PRIVATE ${SMALLCPP_LLVM_LIBS})
+smallcpp_use_llvm(verify_module)
+
+add_test(
+    NAME compile_return
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:shell>
+        -DVERIFY=$<TARGET_FILE:verify_module>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/answer.bc
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/CompileReturn.cmake)
