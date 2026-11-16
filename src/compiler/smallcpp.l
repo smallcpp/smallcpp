@@ -2,7 +2,8 @@
  * Scanner for the smallcpp grammar in smallcpp.y.
  * Keywords are the plain C++ spellings. None of them has an sc_ prefix.
  * The identifier after class is recorded so a later use is TYPEDEF_NAME.
- * Other typedef names are not recorded.
+ * A typedef name is recorded the same way: the identifier outside
+ * parentheses, up to the semicolon.
  * An invalid character is reported with its line and column and then
  * skipped, so scanning continues.
  * "..." is one token. A parameter list uses it as a variadic parameter.
@@ -71,6 +72,8 @@ struct keyword {
 static char *type_names[TYPE_MAX];
 static int type_count;
 static int class_name_pending;
+static int typedef_pending;
+static int paren_depth;
 static int comment_line;
 static int comment_column;
 static int member_start;
@@ -196,9 +199,20 @@ static int keyword_token(const char *name)
 
 static int finish(int token, const char *text)
 {
+    if (token == '(')
+        paren_depth++;
+    else if (token == ')' && paren_depth > 0)
+        paren_depth--;
     if (class_name_pending && text != NULL
         && (token == IDENTIFIER || token == TYPEDEF_NAME))
         note_class_name(text);
+    if (typedef_pending && paren_depth == 0 && text != NULL
+        && (token == IDENTIFIER || token == TYPEDEF_NAME))
+        note_class_name(text);
+    if (token == ';')
+        typedef_pending = 0;
+    if (token == TYPEDEF)
+        typedef_pending = 1;
     class_name_pending = (token == CLASS);
     if (token == IDENTIFIER || token == TYPEDEF_NAME || token == CTOR_NAME
         || token == CONSTANT || token == STRING_LITERAL) {

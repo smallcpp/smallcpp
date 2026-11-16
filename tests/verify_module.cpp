@@ -741,6 +741,175 @@ static int check_shift_kind(const char *mode, llvm::Module &module,
     return ret_bin(mode, module, op, 1, 1);
 }
 
+static llvm::CallInst *direct_call(llvm::Function &fn)
+{
+    llvm::CallInst *found = NULL;
+
+    for (llvm::Instruction &inst : llvm::instructions(fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (call == NULL || call->getCalledFunction() == NULL)
+            continue;
+        if (found != NULL)
+            return NULL;
+        found = call;
+    }
+    return found;
+}
+
+static int check_call(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *inc = module.getFunction("inc");
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+
+    if (call == NULL || inc == NULL || call->getCalledFunction() != inc)
+        return fail("call", "answer does not call inc");
+    if (call->arg_size() != 1 || !const_eq(call->getArgOperand(0), 1))
+        return fail("call", "inc is not called with 1");
+    return 0;
+}
+
+static int check_overload(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+    llvm::Function *chosen = call == NULL ? NULL : call->getCalledFunction();
+    bool one = false;
+
+    if (chosen == NULL || chosen->arg_size() != 2 || chosen->isVarArg())
+        return fail("overload-call", "the call does not select the two-argument function");
+    if (call->arg_size() != 2 || !const_eq(call->getArgOperand(0), 1)
+        || !const_eq(call->getArgOperand(1), 2))
+        return fail("overload-call", "the selected call is not sum(1, 2)");
+    for (llvm::Function &other : module) {
+        if (&other == fn || &other == chosen)
+            continue;
+        if (!other.isDeclaration() && other.arg_size() == 1)
+            one = true;
+    }
+    if (!one)
+        return fail("overload-call", "the one-argument overload is missing");
+    return 0;
+}
+
+static int check_default(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+    llvm::Function *callee = call == NULL ? NULL : call->getCalledFunction();
+
+    if (callee == NULL || callee->arg_size() != 2 || callee->isVarArg())
+        return fail("default-call", "the callee does not take two arguments");
+    if (call->arg_size() != 2 || !const_eq(call->getArgOperand(0), 4)
+        || !const_eq(call->getArgOperand(1), 3))
+        return fail("default-call", "the default 3 was not passed at the call");
+    return 0;
+}
+
+static int check_varargs(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+    llvm::Function *callee = call == NULL ? NULL : call->getCalledFunction();
+
+    if (callee == NULL || !callee->isVarArg())
+        return fail("varargs", "the callee is not varargs");
+    if (call->arg_size() != 2 || !const_eq(call->getArgOperand(0), 1))
+        return fail("varargs", "the varargs call is missing its extra argument");
+    return 0;
+}
+
+static int check_static(llvm::Module &module)
+{
+    llvm::Function *hidden = module.getFunction("hidden");
+    llvm::Function *fn = answer(module);
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+
+    if (hidden == NULL || !hidden->hasInternalLinkage())
+        return fail("static", "hidden does not have internal linkage");
+    if (call == NULL || call->getCalledFunction() != hidden)
+        return fail("static", "answer does not call hidden");
+    return 0;
+}
+
+static int check_extern(llvm::Module &module)
+{
+    llvm::Function *extra = module.getFunction("extra");
+    llvm::Function *fn = answer(module);
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+
+    if (extra == NULL || !extra->isDeclaration() || !extra->hasExternalLinkage())
+        return fail("extern", "extra is not an external declaration");
+    if (call == NULL || call->getCalledFunction() != extra
+        || call->arg_size() != 1 || !const_eq(call->getArgOperand(0), 2))
+        return fail("extern", "answer does not call extra(2)");
+    return 0;
+}
+
+static int check_inline(llvm::Module &module)
+{
+    llvm::Function *twice = module.getFunction("twice");
+    llvm::Function *fn = answer(module);
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+
+    if (twice == NULL || !twice->hasFnAttribute(llvm::Attribute::InlineHint))
+        return fail("inline", "twice is not inline");
+    if (call == NULL || call->getCalledFunction() != twice)
+        return fail("inline", "answer does not call twice");
+    return 0;
+}
+
+static int check_typedef(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig("typedef", module, i32, 0, NULL) != 0)
+        return 1;
+    if (module.getGlobalVariable("number", true) != NULL || module.getFunction("number") != NULL)
+        return fail("typedef", "the alias added a value");
+    llvm::ConstantInt *value = ret_int(*answer(module));
+    if (value == NULL || !value->equalsInt(6))
+        return fail("typedef", "number did not lower to int");
+    return 0;
+}
+
+static int check_string(llvm::Module &module)
+{
+    for (llvm::GlobalVariable &global : module.globals()) {
+        if (!global.isConstant() || !global.hasInitializer())
+            continue;
+        auto *data = llvm::dyn_cast<llvm::ConstantDataArray>(global.getInitializer());
+        if (data != NULL && data->isCString() && data->getAsCString() == "hi")
+            return 0;
+    }
+    return fail("string", "no constant string hi");
+}
+
+static int check_register(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::Function *fn = answer(module);
+    unsigned count = 0;
+    bool stored = false;
+    bool slot = false;
+
+    if (expect_sig("register", module, i32, 0, NULL) != 0)
+        return 1;
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        count++;
+        if (llvm::isa<llvm::CallInst>(inst))
+            return fail("register", "register added a call");
+        if (llvm::isa<llvm::AllocaInst>(inst))
+            slot = true;
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 4))
+            stored = true;
+    }
+    if (!slot || !stored || count != 4)
+        return fail("register", "register did not lower like a local");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 3) {
@@ -875,6 +1044,26 @@ int main(int argc, char **argv)
         return check_post(*module);
     if (strcmp(mode, "pre-inc") == 0)
         return check_pre(*module);
+    if (strcmp(mode, "call") == 0)
+        return check_call(*module);
+    if (strcmp(mode, "overload-call") == 0)
+        return check_overload(*module);
+    if (strcmp(mode, "default-call") == 0)
+        return check_default(*module);
+    if (strcmp(mode, "varargs") == 0)
+        return check_varargs(*module);
+    if (strcmp(mode, "static") == 0)
+        return check_static(*module);
+    if (strcmp(mode, "extern") == 0)
+        return check_extern(*module);
+    if (strcmp(mode, "inline") == 0)
+        return check_inline(*module);
+    if (strcmp(mode, "typedef") == 0)
+        return check_typedef(*module);
+    if (strcmp(mode, "string") == 0)
+        return check_string(*module);
+    if (strcmp(mode, "register") == 0)
+        return check_register(*module);
 
     fprintf(stderr, "unknown mode %s\n", mode);
     return 2;

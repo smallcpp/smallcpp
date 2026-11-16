@@ -1,0 +1,11 @@
+int sum(int a) {
+    return a;
+}
+
+int sum(int a, int b) {
+    return a + b;
+}
+
+int answer(void) {
+    return sum(1, 2);
+}

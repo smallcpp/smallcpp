@@ -1,0 +1,7 @@
+int add(int n, int k = 3) {
+    return n + k;
+}
+
+int answer(void) {
+    return add(4);
+}
