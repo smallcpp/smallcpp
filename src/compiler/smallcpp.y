@@ -1,48 +1,23 @@
 /*
  * smallcpp grammar. Start symbol: translation_unit.
  *
- * The base language is the syntax shared by ISO C99 and ISO C++11. smallcpp
- * adds classes, single inheritance, exceptions, namespaces, and precise
- * garbage collection. It does not add templates, multiple inheritance,
- * operator overloading, or the C++ standard library.
+ * The base language is the syntax shared by ISO C99 and ISO C++11, so a
+ * program that stays in that subset is acceptable to a modern C compiler
+ * and a modern C++ compiler. smallcpp adds classes, single inheritance,
+ * exceptions, namespaces, and precise garbage collection. It does not add
+ * templates, multiple inheritance, operator overloading, or the C++
+ * standard library.
  *
- * Source text is acceptable to any ISO C compiler from C99 on and any C++
- * compiler from C++11 on. C++ keywords and the '::' token are not used.
- * Those tokens are not shared: class, namespace, try, catch, throw, new,
- * public, private, protected, virtual, and '::' are illegal in C99, and
- * this, new, and class are not identifiers in C++. The spellings below are
- * ordinary identifiers in both languages. A C99 or C++11 compiler is given
- * the compatibility macros before the program and therefore expands them.
- * A smallcpp parser does not expand them; it recognizes the tokens below.
- * Ordinary preprocessing (# directives) is already done. This file is the
- * grammar only. It is not a compiler.
+ * No keyword has an sc_ prefix. class, namespace, public, private,
+ * protected, virtual, try, catch, throw, new, and this are the plain C++
+ * keywords, not macros. namespace uses C++ syntax: namespace name { ... }.
+ * A qualified name uses '::'. Allocation is a new-expression. There is no
+ * delete spelling; precise collection is a compiler and runtime
+ * requirement, and the compiler records the type in each new-expression.
+ * Source files use the .scpp extension. Ordinary preprocessing is already
+ * done. This file is the grammar only. It is not a compiler.
  *
- *   void *sc_alloc(unsigned long size);
- *   int sc_ex_push(void);
- *   int sc_ex_catch(void);
- *   int sc_ex_once(void);
- *   void sc_ex_throw(void);
- *
- *   #define sc_class struct
- *   #define sc_public
- *   #define sc_private
- *   #define sc_protected
- *   #define sc_base(base) struct base sc_base_member
- *   #define sc_method
- *   #define sc_virtual
- *   #define sc_namespace(name)
- *   #define sc_end_namespace
- *   #define sc_qual(ns, name) ns##_##name
- *   #define sc_try if (sc_ex_push())
- *   #define sc_catch(declaration) else if (sc_ex_catch()) for (declaration; sc_ex_once();)
- *   #define sc_throw(value) do { (void)(value); sc_ex_throw(); } while (0)
- *   #define sc_new(type) ((type*)sc_alloc(sizeof(type)))
- *
- * Precise collection is a compiler and runtime requirement. sc_new is the
- * only added allocation spelling. The compiler records the type argument
- * and treats pointer variables as roots. There is no delete spelling.
- *
- * Deliberate omissions, beyond the absent C++ features above:
+ * Deliberate omissions:
  *   - variable-length arrays, including '[*]' and 'static' inside '[]'
  *   - restrict
  *   - flexible array members. Empty '[]' is recognized only on parameters,
@@ -58,27 +33,14 @@
  *     two languages disagree about what () means
  *   - empty structs, anonymous struct members, and anonymous union members
  *   - u, U, and u8 string prefixes, which are not C99
- *   - member functions defined or declared inside a class. A function
- *     declaration inside a struct is not C99. Methods are file-scope or
- *     namespace-scope functions marked sc_method. The receiver is an
- *     ordinary parameter; this is not a keyword
- *   - a second sc_base. Inheritance is one base subobject, written before
- *     the data members. The macro expands to the member sc_base_member,
- *     not to a C++ base. The member name is an ordinary identifier
- *   - '::'. sc_namespace groups declarations and expands to nothing under
- *     C and C++. sc_qual(ns, name) is the qualified name both accept; the
- *     macro pastes ns_name
- *   - access markers expand to nothing. smallcpp enforces them; a C or C++
- *     compiler does not
- *   - the try/catch macros expand to if / else if, and the catch declaration
- *     is the init of a for statement, which is what puts the name in scope
- *     for a C or C++ compiler. That expansion is not the exception
- *     semantics. The declaration must be legal as a for-init and must be
- *     one macro argument, so a comma has to sit inside parentheses. A const
- *     object needs an initializer; this grammar does not give the catch
- *     parameter one. The catch declarator always has a name
+ *   - a second base. The base-clause is a single name, so a comma does not
+ *     parse. Access on that base is optional: class D : public B
+ *   - templates and operator overloading
+ *   - bit-fields. A ':' after a class name introduces the base-clause
  *   - an array bound is syntactically an expression. A bound that is not an
  *     integer constant expression is a VLA and is excluded
+ *   - a new-expression names a class, typedef, or plain type specifier.
+ *     It does not include a pointer or array declarator
  */
 
 %{
@@ -87,24 +49,15 @@ void yyerror(const char *message);
 %}
 
 %token IDENTIFIER TYPEDEF_NAME CONSTANT STRING_LITERAL
-%token SC_CLASS "sc_class"
-%token SC_BASE "sc_base"
-%token SC_PUBLIC "sc_public"
-%token SC_PRIVATE "sc_private"
-%token SC_PROTECTED "sc_protected"
-%token SC_METHOD "sc_method"
-%token SC_VIRTUAL "sc_virtual"
-%token SC_NAMESPACE "sc_namespace"
-%token SC_END_NAMESPACE "sc_end_namespace"
-%token SC_QUAL "sc_qual"
-%token SC_TRY "sc_try"
-%token SC_CATCH "sc_catch"
-%token SC_THROW "sc_throw"
-%token SC_NEW "sc_new"
+%token CLASS "class" NAMESPACE "namespace"
+%token PUBLIC "public" PRIVATE "private" PROTECTED "protected"
+%token VIRTUAL "virtual" THIS "this"
+%token TRY "try" CATCH "catch" THROW "throw" NEW "new"
 %token AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
 %token EXTERN FLOAT FOR GOTO IF INLINE INT LONG REGISTER RETURN SHORT
 %token SIGNED SIZEOF STATIC STRUCT SWITCH TYPEDEF UNION UNSIGNED VOID
 %token VOLATILE WHILE
+%token SCOPE "::"
 %token ARROW "->" INC "++" DEC "--"
 %token EQEQ "==" NOTEQ "!=" LE "<=" GE ">="
 %token ANDAND "&&" OROR "||" SHL "<<" SHR ">>"
@@ -136,13 +89,13 @@ external_declaration
     ;
 
 /*
- * sc_namespace ( name ) ... sc_end_namespace
- * expands to the declarations alone. Nested namespaces are allowed.
+ * namespace name { ... }
+ * The same syntax as C++. Nested namespaces are allowed.
  * A namespace is not a statement and cannot appear inside a function.
  */
 namespace_definition
-    : SC_NAMESPACE '(' IDENTIFIER ')' SC_END_NAMESPACE
-    | SC_NAMESPACE '(' IDENTIFIER ')' external_declaration_list SC_END_NAMESPACE
+    : NAMESPACE IDENTIFIER '{' '}'
+    | NAMESPACE IDENTIFIER '{' external_declaration_list '}'
     ;
 
 external_declaration_list
@@ -169,8 +122,6 @@ declaration_specifier
     | type_specifier
     | type_qualifier
     | function_specifier
-    | SC_METHOD
-    | SC_VIRTUAL
     ;
 
 storage_class_specifier
@@ -233,10 +184,9 @@ struct_declarator_list
     | struct_declarator_list ',' struct_declarator
     ;
 
+/* No bit-fields. A ':' after a class name is the base-clause. */
 struct_declarator
     : declarator
-    | declarator ':' constant_expression
-    | ':' constant_expression
     ;
 
 enum_specifier
@@ -258,42 +208,48 @@ enumerator
     ;
 
 /*
- * sc_class Name { access-markers, at most one leading sc_base, members }
- * A class with neither a base nor a data member is rejected: the macro
- * expands to a struct, and an empty struct is not C99.
- * sc_base, when present, is the first member after any leading access
- * markers, so the base subobject is first. A second sc_base does not parse.
+ * class Name : access base { members }
+ * One base. A second base, written with a comma, does not parse.
+ * public:, private:, and protected: are the C++ access specifiers.
+ * The scanner records the class name so it can later be a type name.
  */
 class_specifier
-    : SC_CLASS IDENTIFIER '{' class_member_list '}'
-    | SC_CLASS '{' class_member_list '}'
-    | SC_CLASS IDENTIFIER
+    : CLASS name base_clause '{' class_member_list_opt '}'
+    | CLASS name '{' class_member_list_opt '}'
+    | CLASS name
+    | CLASS '{' class_member_list_opt '}'
+    ;
+
+name
+    : IDENTIFIER
+    | TYPEDEF_NAME
+    ;
+
+base_clause
+    : ':' name
+    | ':' access_keyword name
+    ;
+
+access_keyword
+    : PUBLIC
+    | PRIVATE
+    | PROTECTED
+    ;
+
+class_member_list_opt
+    : %empty
+    | class_member_list
     ;
 
 class_member_list
-    : access_run class_after_access
+    : class_member
+    | class_member_list class_member
     ;
 
-access_run
-    : %empty
-    | access_run access_marker
-    ;
-
-class_after_access
-    : SC_BASE '(' IDENTIFIER ')' ';' class_rest
-    | struct_declaration class_rest
-    ;
-
-class_rest
-    : %empty
-    | class_rest access_marker
-    | class_rest struct_declaration
-    ;
-
-access_marker
-    : SC_PUBLIC
-    | SC_PRIVATE
-    | SC_PROTECTED
+class_member
+    : access_keyword ':'
+    | declaration
+    | function_definition
     ;
 
 type_qualifier
@@ -303,6 +259,7 @@ type_qualifier
 
 function_specifier
     : INLINE
+    | VIRTUAL
     ;
 
 init_declarator_list
@@ -334,11 +291,16 @@ declarator
     ;
 
 direct_declarator
-    : IDENTIFIER
-    | SC_QUAL '(' IDENTIFIER ',' IDENTIFIER ')'
+    : declarator_id
     | '(' declarator ')'
     | direct_declarator '[' constant_expression ']'
     | direct_declarator '(' parameter_type_list ')'
+    ;
+
+/* Point::move is qualified. The last component is an identifier, not a type. */
+declarator_id
+    : IDENTIFIER
+    | name SCOPE declarator_id
     ;
 
 pointer
@@ -389,7 +351,6 @@ parameter_declarator
 
 direct_parameter_declarator
     : IDENTIFIER
-    | SC_QUAL '(' IDENTIFIER ',' IDENTIFIER ')'
     | '(' parameter_declarator ')'
     | '[' ']'
     | '[' constant_expression ']'
@@ -479,13 +440,11 @@ jump_statement
     ;
 
 /*
- * sc_try compound-statement
- *     sc_catch ( specifiers named-declarator ) compound-statement
- * One or more catches. The declarator has a name so the for-init macro
- * can declare it. sc_catch ( int e ) is one macro argument.
+ * try compound-statement catch ( parameter-declaration ) compound-statement
+ * One or more catches. throw expression; is the C++ throw statement.
  */
 try_statement
-    : SC_TRY compound_statement catch_clause_list
+    : TRY compound_statement catch_clause_list
     ;
 
 catch_clause_list
@@ -494,19 +453,27 @@ catch_clause_list
     ;
 
 catch_clause
-    : SC_CATCH '(' parameter_specifiers declarator ')' compound_statement
+    : CATCH '(' parameter_declaration ')' compound_statement
     ;
 
 throw_statement
-    : SC_THROW '(' assignment_expression ')' ';'
+    : THROW assignment_expression ';'
+    | THROW ';'
     ;
 
 primary_expression
     : IDENTIFIER
+    | nested_name
+    | THIS
     | CONSTANT
     | STRING_LITERAL
     | '(' expression ')'
-    | SC_QUAL '(' IDENTIFIER ',' IDENTIFIER ')'
+    ;
+
+/* A nested name has at least one '::', so a bare type name is not an expression. */
+nested_name
+    : name SCOPE name
+    | nested_name SCOPE name
     ;
 
 postfix_expression
@@ -532,7 +499,31 @@ unary_expression
     | unary_operator cast_expression
     | SIZEOF unary_expression
     | SIZEOF '(' type_name ')'
-    | SC_NEW '(' type_name ')'
+    | NEW new_type
+    | NEW new_type '(' ')'
+    | NEW new_type '(' argument_expression_list ')'
+    ;
+
+/*
+ * new takes a class or typedef name, or one type specifier.
+ * Pointer and array types are not written in the new-expression, so '*'
+ * stays the multiplication operator.
+ */
+new_type
+    : name
+    | VOID
+    | CHAR
+    | SHORT
+    | INT
+    | LONG
+    | FLOAT
+    | DOUBLE
+    | SIGNED
+    | UNSIGNED
+    | STRUCT IDENTIFIER
+    | STRUCT TYPEDEF_NAME
+    | ENUM IDENTIFIER
+    | ENUM TYPEDEF_NAME
     ;
 
 unary_operator

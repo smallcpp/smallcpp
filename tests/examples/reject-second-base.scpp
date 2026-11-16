@@ -1,0 +1,11 @@
+class A {
+    int a;
+};
+
+class B {
+    int b;
+};
+
+class Derived : public A, public B {
+    int x;
+};
