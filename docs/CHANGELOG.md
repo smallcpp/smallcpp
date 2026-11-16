@@ -7,6 +7,10 @@ All notable changes to smallcpp are recorded in this file.
 ### Added
 
 - CTest runs the parser examples. `accept.scpp` must pass, and each reject example must fail. New parser checks are registered in `tests/CMakeLists.txt`.
+- `docs/smallcpp.y` is a copy of `src/compiler/smallcpp.y`, not a symbolic link. `docs/smallcpp.l` is a copy of `src/compiler/smallcpp.l`. The sources in `src/compiler` stay in place.
+- Scanner and parser diagnostics include the file, line, and column.
+- After a syntax error, the parser resynchronizes at a semicolon and continues. An invalid character is reported and skipped, so one file can report more than one error.
+- `tests/examples/reject-errors.scpp` contains several errors.
 
 ## 2026-11-16
 
@@ -16,7 +20,7 @@ All notable changes to smallcpp are recorded in this file.
 - CMake scaffold, hello-world `shell` program, and the `src`, `docs`, `scripts`, and `tests` directories (`9ab6636`, merged to main in pull request #1 as `46e46da`).
 - Generated binaries go to `bin/` and libraries to `lib/` (`6030c67`, merged in pull request #2 as `9ae000f`).
 - Bison grammar for smallcpp (`05dc0f2`, merged in pull request #3 as `b4321c9`).
-- Flex scanner, `parse_test`, and the compiler and test CMake builds (`f883fd7`, merged in pull request #4 as `c741163`). The grammar lives in `src/compiler/smallcpp.y`, and `docs/smallcpp.y` links to it.
+- Flex scanner, `parse_test`, and the compiler and test CMake builds (`f883fd7`, merged in pull request #4 as `c741163`). The grammar lives in `src/compiler/smallcpp.y`.
 
 ### Changed
 
