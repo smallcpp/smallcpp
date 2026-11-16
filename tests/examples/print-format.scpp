@@ -1,0 +1,17 @@
+int main(void) {
+    const char *name;
+    double amount;
+    const char *line;
+    int n;
+
+    name = "ada";
+    amount = 3.5;
+    n = 2;
+    line = format("{0} {1:.2f}", name, amount);
+    print("count is {}\n", n);
+    print("{:>4}\n", n);
+    print("{0:{1}d}\n", n, n);
+    print("{}\n", line);
+    print("{{literal}}\n");
+    return 0;
+}

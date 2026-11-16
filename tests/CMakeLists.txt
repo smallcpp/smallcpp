@@ -20,6 +20,7 @@ function(add_parse_example name source expect_fail)
 endfunction()
 
 add_parse_example(parse_accept accept.scpp FALSE)
+add_parse_example(parse_print_format print-format.scpp FALSE)
 add_parse_example(parse_reject_class reject-class.scpp TRUE)
 add_parse_example(parse_reject_designated reject-designated.scpp TRUE)
 add_parse_example(parse_reject_second_base reject-second-base.scpp TRUE)

@@ -47,6 +47,11 @@ static int tree_is_complete(const char *path, const AstNode *root)
         return 0;
     }
     ok = require_kind(root, AST_TRANSLATION_UNIT);
+    if (ends_with(path, "print-format.scpp")) {
+        ok = require_kind(root, AST_PRINT) && ok;
+        ok = require_kind(root, AST_FORMAT) && ok;
+        return ok;
+    }
     if (!ends_with(path, "accept.scpp"))
         return ok;
     ok = require_kind(root, AST_NAMESPACE) && ok;

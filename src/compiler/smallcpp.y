@@ -6,11 +6,15 @@
  * and a modern C++ compiler. smallcpp adds classes, single inheritance,
  * exceptions, namespaces, and precise garbage collection. It does not add
  * templates, multiple inheritance, operator overloading, or the C++
- * standard library.
+ * standard library. print and format are native, not declarations the
+ * program supplies. print writes formatted text. format produces the
+ * formatted string. Each takes a string literal in C++23 format-string
+ * syntax, then the arguments that fill its replacement fields.
  *
  * No keyword has an sc_ prefix. class, namespace, public, private,
- * protected, virtual, try, catch, throw, new, and this are the plain C++
- * keywords, not macros. namespace uses C++ syntax: namespace name { ... }.
+ * protected, virtual, try, catch, throw, new, this, print, and format are
+ * the plain spellings, not macros. namespace uses C++ syntax:
+ * namespace name { ... }.
  * A qualified name uses '::'. Allocation is a new-expression. There is no
  * delete spelling; precise collection is a compiler and runtime
  * requirement, and the compiler records the type in each new-expression.
@@ -55,6 +59,24 @@
 
 int yylex(void);
 void yyerror(const char *message);
+
+static int count_args(const struct AstNode *arg)
+{
+    int count = 0;
+
+    for (; arg != NULL; arg = arg->next)
+        count++;
+    return count;
+}
+
+static struct AstNode *native_format(AstKind kind, char *literal, struct AstNode *args)
+{
+    char message[160];
+
+    if (!ast_format_ok(literal, count_args(args), message, sizeof message))
+        yyerror(message);
+    return ast_make(kind, literal, args, NULL, NULL, NULL);
+}
 %}
 
 %locations
@@ -71,6 +93,7 @@ void yyerror(const char *message);
 %token PUBLIC "public" PRIVATE "private" PROTECTED "protected"
 %token VIRTUAL "virtual" THIS "this"
 %token TRY "try" CATCH "catch" THROW "throw" NEW "new"
+%token PRINT "print" FORMAT "format"
 %token AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
 %token EXTERN FLOAT FOR GOTO IF INLINE INT LONG REGISTER RETURN SHORT
 %token SIGNED SIZEOF STATIC STRUCT SWITCH TYPEDEF UNION UNSIGNED VOID
@@ -108,7 +131,7 @@ void yyerror(const char *message);
 %type <node> compound_statement block_item_list block_item expression_statement
 %type <node> selection_statement iteration_statement jump_statement
 %type <node> try_statement catch_clause_list catch_clause throw_statement
-%type <node> primary_expression nested_name postfix_expression
+%type <node> primary_expression nested_name postfix_expression format_expression
 %type <node> argument_expression_list unary_expression new_type cast_expression
 %type <node> multiplicative_expression additive_expression shift_expression
 %type <node> relational_expression equality_expression and_expression
@@ -602,6 +625,23 @@ primary_expression
     | CONSTANT { $$ = ast_text(AST_LITERAL, $1); }
     | STRING_LITERAL { $$ = ast_text(AST_LITERAL, $1); }
     | '(' expression ')' { $$ = $2; }
+    | format_expression { $$ = $1; }
+    ;
+
+/*
+ * print and format are native. The first operand is a string literal.
+ * Replacement fields use C++23 syntax: {}, {0}, {:.2f}, and the other
+ * standard format specs. The arguments follow the string.
+ */
+format_expression
+    : PRINT '(' STRING_LITERAL ')' { $$ = native_format(AST_PRINT, $3, NULL); }
+    | PRINT '(' STRING_LITERAL ',' argument_expression_list ')' {
+        $$ = native_format(AST_PRINT, $3, $5);
+      }
+    | FORMAT '(' STRING_LITERAL ')' { $$ = native_format(AST_FORMAT, $3, NULL); }
+    | FORMAT '(' STRING_LITERAL ',' argument_expression_list ')' {
+        $$ = native_format(AST_FORMAT, $3, $5);
+      }
     ;
 
 /* A nested name has at least one '::', so a bare type name is not an expression. */

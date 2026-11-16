@@ -1,5 +1,6 @@
 #include "ast.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -77,6 +78,297 @@ void ast_free(AstNode *node)
     free(node);
 }
 
+static int format_fail(char *message, size_t message_size, const char *text)
+{
+    if (message != NULL && message_size > 0)
+        snprintf(message, message_size, "%s", text);
+    return 0;
+}
+
+static int hex_value(char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+/* The scanned token includes the quotes. The result is the decoded text. */
+static int decode_string(const char *literal, char **out, char *message, size_t message_size)
+{
+    const char *p = literal;
+    char *buf;
+    size_t n = 0;
+
+    if (p != NULL && *p == 'L')
+        p++;
+    if (p == NULL || *p != '"')
+        return format_fail(message, message_size, "print and format require a string literal");
+    p++;
+    buf = malloc(strlen(p) + 1);
+    if (buf == NULL)
+        return format_fail(message, message_size, "out of memory");
+    while (*p != '\0' && *p != '"') {
+        if (*p != '\\') {
+            buf[n++] = *p++;
+            continue;
+        }
+        p++;
+        if (*p == '\0') {
+            free(buf);
+            return format_fail(message, message_size, "invalid format string");
+        }
+        if (*p >= '0' && *p <= '7') {
+            int value = 0;
+            int digits = 0;
+
+            while (digits < 3 && *p >= '0' && *p <= '7') {
+                value = value * 8 + (*p - '0');
+                p++;
+                digits++;
+            }
+            buf[n++] = (char)value;
+            continue;
+        }
+        if (*p == 'x') {
+            int value = 0;
+            int digits = 0;
+            int digit;
+
+            p++;
+            while ((digit = hex_value(*p)) >= 0) {
+                value = value * 16 + digit;
+                p++;
+                digits++;
+            }
+            if (digits == 0) {
+                free(buf);
+                return format_fail(message, message_size, "invalid format string");
+            }
+            buf[n++] = (char)value;
+            continue;
+        }
+        switch (*p) {
+        case 'n': buf[n++] = '\n'; break;
+        case 't': buf[n++] = '\t'; break;
+        case 'r': buf[n++] = '\r'; break;
+        case 'a': buf[n++] = '\a'; break;
+        case 'b': buf[n++] = '\b'; break;
+        case 'f': buf[n++] = '\f'; break;
+        case 'v': buf[n++] = '\v'; break;
+        default: buf[n++] = *p; break;
+        }
+        p++;
+    }
+    buf[n] = '\0';
+    *out = buf;
+    return 1;
+}
+
+struct FormatCheck {
+    const char *text;
+    int i;
+    int length;
+    int mode;
+    int next_auto;
+    int arg_count;
+    char *message;
+    size_t message_size;
+};
+
+static int is_align(char c)
+{
+    return c == '<' || c == '>' || c == '^';
+}
+
+static int is_format_type(char c)
+{
+    return c != '\0' && strchr("aAbBcdeEfFgGopsxX?", c) != NULL;
+}
+
+static int note_argument(struct FormatCheck *check, int manual, int id)
+{
+    if (manual) {
+        if (check->mode == 1)
+            return format_fail(check->message, check->message_size,
+                               "format string mixes automatic and manual indexing");
+        check->mode = 2;
+        if (id < 0 || id >= check->arg_count)
+            return format_fail(check->message, check->message_size,
+                               "format argument index is out of range");
+        return 1;
+    }
+    if (check->mode == 2)
+        return format_fail(check->message, check->message_size,
+                           "format string mixes automatic and manual indexing");
+    check->mode = 1;
+    if (check->next_auto >= check->arg_count)
+        return format_fail(check->message, check->message_size,
+                           "not enough arguments for format string");
+    check->next_auto++;
+    return 1;
+}
+
+static int parse_arg_id(struct FormatCheck *check, int *id, int *present)
+{
+    int value = 0;
+
+    if (check->i >= check->length
+        || check->text[check->i] < '0' || check->text[check->i] > '9') {
+        *present = 0;
+        *id = 0;
+        return 1;
+    }
+    while (check->i < check->length
+           && check->text[check->i] >= '0' && check->text[check->i] <= '9') {
+        int digit = check->text[check->i] - '0';
+
+        if (value > 1000000)
+            return format_fail(check->message, check->message_size,
+                               "format argument index is out of range");
+        value = value * 10 + digit;
+        check->i++;
+    }
+    *present = 1;
+    *id = value;
+    return 1;
+}
+
+static int parse_nested_argument(struct FormatCheck *check)
+{
+    int present = 0;
+    int id = 0;
+
+    if (check->i >= check->length || check->text[check->i] != '{')
+        return format_fail(check->message, check->message_size, "invalid format specifier");
+    check->i++;
+    if (!parse_arg_id(check, &id, &present))
+        return 0;
+    if (check->i >= check->length || check->text[check->i] != '}')
+        return format_fail(check->message, check->message_size,
+                           "unmatched '{' in format string");
+    check->i++;
+    return note_argument(check, present, id);
+}
+
+static int parse_format_spec(struct FormatCheck *check)
+{
+    const char *text = check->text;
+    int i = check->i;
+    int length = check->length;
+
+    if (i + 1 < length && is_align(text[i + 1]) && text[i] != '{' && text[i] != '}')
+        i += 2;
+    else if (i < length && is_align(text[i]))
+        i += 1;
+    if (i < length && (text[i] == '+' || text[i] == '-' || text[i] == ' '))
+        i++;
+    if (i < length && text[i] == '#')
+        i++;
+    if (i < length && text[i] == '0')
+        i++;
+    check->i = i;
+    if (check->i < length && text[check->i] == '{') {
+        if (!parse_nested_argument(check))
+            return 0;
+    } else if (check->i < length && text[check->i] >= '1' && text[check->i] <= '9') {
+        while (check->i < length && text[check->i] >= '0' && text[check->i] <= '9')
+            check->i++;
+    }
+    if (check->i < length && text[check->i] == '.') {
+        check->i++;
+        if (check->i < length && text[check->i] == '{') {
+            if (!parse_nested_argument(check))
+                return 0;
+        } else if (check->i < length && text[check->i] >= '0' && text[check->i] <= '9') {
+            while (check->i < length && text[check->i] >= '0' && text[check->i] <= '9')
+                check->i++;
+        } else {
+            return format_fail(check->message, check->message_size, "invalid format precision");
+        }
+    }
+    if (check->i < length && text[check->i] == 'L')
+        check->i++;
+    if (check->i < length && is_format_type(text[check->i]))
+        check->i++;
+    return 1;
+}
+
+static int parse_replacement(struct FormatCheck *check)
+{
+    int present = 0;
+    int id = 0;
+    int had_spec = 0;
+
+    check->i++;
+    if (!parse_arg_id(check, &id, &present))
+        return 0;
+    if (check->i < check->length && check->text[check->i] == ':') {
+        had_spec = 1;
+        check->i++;
+        if (!parse_format_spec(check))
+            return 0;
+    }
+    if (check->i >= check->length || check->text[check->i] != '}') {
+        return format_fail(check->message, check->message_size,
+                           had_spec ? "invalid format specifier"
+                                    : "unmatched '{' in format string");
+    }
+    check->i++;
+    return note_argument(check, present, id);
+}
+
+static int check_decoded_format(const char *text, int arg_count, char *message, size_t message_size)
+{
+    struct FormatCheck check;
+
+    check.text = text;
+    check.i = 0;
+    check.length = (int)strlen(text);
+    check.mode = 0;
+    check.next_auto = 0;
+    check.arg_count = arg_count;
+    check.message = message;
+    check.message_size = message_size;
+    while (check.i < check.length) {
+        char c = check.text[check.i];
+
+        if (c == '{') {
+            if (check.i + 1 < check.length && check.text[check.i + 1] == '{') {
+                check.i += 2;
+                continue;
+            }
+            if (!parse_replacement(&check))
+                return 0;
+            continue;
+        }
+        if (c == '}') {
+            if (check.i + 1 < check.length && check.text[check.i + 1] == '}') {
+                check.i += 2;
+                continue;
+            }
+            return format_fail(message, message_size, "unmatched '}' in format string");
+        }
+        check.i++;
+    }
+    return 1;
+}
+
+int ast_format_ok(const char *literal, int arg_count, char *message, size_t message_size)
+{
+    char *text = NULL;
+    int ok;
+
+    if (!decode_string(literal, &text, message, message_size))
+        return 0;
+    ok = check_decoded_format(text, arg_count, message, message_size);
+    free(text);
+    return ok;
+}
+
 int ast_contains(const AstNode *node, AstKind kind)
 {
     if (node == NULL)
@@ -145,6 +437,8 @@ const char *ast_kind_name(AstKind kind)
     case AST_CONDITIONAL: return "conditional";
     case AST_CAST: return "cast";
     case AST_SIZEOF: return "sizeof";
+    case AST_PRINT: return "print";
+    case AST_FORMAT: return "format";
     }
     return "unknown";
 }

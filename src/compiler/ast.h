@@ -1,6 +1,8 @@
 #ifndef SMALLCPP_AST_H
 #define SMALLCPP_AST_H
 
+#include <stddef.h>
+
 typedef enum AstKind {
     AST_TRANSLATION_UNIT,
     AST_NAMESPACE,
@@ -53,7 +55,9 @@ typedef enum AstKind {
     AST_ASSIGN,
     AST_CONDITIONAL,
     AST_CAST,
-    AST_SIZEOF
+    AST_SIZEOF,
+    AST_PRINT,
+    AST_FORMAT
 } AstKind;
 
 typedef struct AstNode {
@@ -78,6 +82,14 @@ void ast_add(AstNode *parent, AstNode *child);
 void ast_free(AstNode *node);
 int ast_contains(const AstNode *node, AstKind kind);
 const char *ast_kind_name(AstKind kind);
+
+/*
+ * literal is a scanned string token, including quotes. arg_count is the
+ * number of arguments after that string. Returns 1 when the literal is a
+ * C++23 format string those arguments can fill. On failure writes a
+ * message and returns 0. This is the format-string syntax, not formatting.
+ */
+int ast_format_ok(const char *literal, int arg_count, char *message, size_t message_size);
 
 extern AstNode *smallcpp_ast;
 
