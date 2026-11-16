@@ -4,6 +4,10 @@ All notable changes to smallcpp are recorded in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Merging the syntax tree into the error-recovery grammar dropped `%locations` and `%define parse.error custom` while leaving `yyreport_syntax_error` and the scanner's column tracking in place. The generated parser did not compile, so `cmake --build` stopped before the build finished. Those directives are restored, and `docs/smallcpp.y` and `docs/smallcpp.l` match `src/compiler` again.
+
 ### Added
 
 - The parser builds a syntax tree. Node kinds are defined in `src/compiler/ast.h` and constructed in `src/compiler/ast.c`. The grammar actions in `src/compiler/smallcpp.y` cover translation units, namespaces, classes, methods, statements, try/catch/throw, and new. There is no code generation.
