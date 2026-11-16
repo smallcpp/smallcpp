@@ -1,0 +1,21 @@
+class Point {
+    int x;
+    Point(int ax) : x(ax) {
+        x = ax;
+    }
+    ~Point() {
+    }
+};
+
+class Pair {
+    int x;
+    int y;
+    Pair(int ax, int ay);
+    ~Pair();
+};
+
+Pair::Pair(int ax, int ay) : x(ax), y(ay) {
+}
+
+Pair::~Pair() {
+}

@@ -251,6 +251,263 @@ static int delete_is_noop(const AstNode *node)
         || delete_is_noop(node->d) || delete_is_noop(node->next);
 }
 
+static int list_count(const AstNode *node)
+{
+    int count = 0;
+
+    while (node != NULL) {
+        count++;
+        node = node->next;
+    }
+    return count;
+}
+
+static const AstNode *find_class(const AstNode *node, const char *name)
+{
+    const AstNode *found;
+
+    if (node == NULL)
+        return NULL;
+    if (node->kind == AST_CLASS && node->a != NULL && node->a->text != NULL
+        && strcmp(node->a->text, name) == 0)
+        return node;
+    found = find_class(node->a, name);
+    if (found != NULL)
+        return found;
+    found = find_class(node->b, name);
+    if (found != NULL)
+        return found;
+    found = find_class(node->c, name);
+    if (found != NULL)
+        return found;
+    found = find_class(node->d, name);
+    if (found != NULL)
+        return found;
+    return find_class(node->next, name);
+}
+
+static const AstNode *find_ctor_inits(const AstNode *node, const char *name, int count)
+{
+    const AstNode *found;
+
+    if (node == NULL)
+        return NULL;
+    if (node->kind == AST_CONSTRUCTOR && node->text != NULL && strcmp(node->text, name) == 0
+        && list_count(node->b) == count)
+        return node;
+    found = find_ctor_inits(node->a, name, count);
+    if (found != NULL)
+        return found;
+    found = find_ctor_inits(node->b, name, count);
+    if (found != NULL)
+        return found;
+    found = find_ctor_inits(node->c, name, count);
+    if (found != NULL)
+        return found;
+    found = find_ctor_inits(node->d, name, count);
+    if (found != NULL)
+        return found;
+    return find_ctor_inits(node->next, name, count);
+}
+
+static const AstNode *find_named(const AstNode *node, AstKind kind, const char *text)
+{
+    const AstNode *found;
+
+    if (node == NULL)
+        return NULL;
+    if (node->kind == kind && node->text != NULL && strcmp(node->text, text) == 0)
+        return node;
+    found = find_named(node->a, kind, text);
+    if (found != NULL)
+        return found;
+    found = find_named(node->b, kind, text);
+    if (found != NULL)
+        return found;
+    found = find_named(node->c, kind, text);
+    if (found != NULL)
+        return found;
+    found = find_named(node->d, kind, text);
+    if (found != NULL)
+        return found;
+    return find_named(node->next, kind, text);
+}
+
+static int ctor_tree_ok(const AstNode *root)
+{
+    const AstNode *point;
+    const AstNode *pair;
+    int ok = require_kind(root, AST_CONSTRUCTOR) && require_kind(root, AST_DESTRUCTOR)
+        && require_kind(root, AST_MEM_INIT);
+
+    point = find_ctor_inits(root, "Point", 1);
+    if (point == NULL || point->b->text == NULL || strcmp(point->b->text, "x") != 0) {
+        fprintf(stderr, "Point constructor has no member initializer x\n");
+        ok = 0;
+    }
+    if (find_named(root, AST_DESTRUCTOR, "Point") == NULL) {
+        fprintf(stderr, "syntax tree has no Point destructor\n");
+        ok = 0;
+    }
+    pair = find_ctor_inits(root, "Pair", 2);
+    if (pair == NULL) {
+        fprintf(stderr, "Pair constructor does not initialize x and y\n");
+        ok = 0;
+    }
+    if (find_named(root, AST_DESTRUCTOR, "Pair") == NULL) {
+        fprintf(stderr, "syntax tree has no Pair destructor\n");
+        ok = 0;
+    }
+    return ok;
+}
+
+static int parameter_has_default(const AstNode *node, const char *literal)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_PARAMETER && node->c != NULL && node->c->kind == AST_LITERAL
+        && node->c->text != NULL && strcmp(node->c->text, literal) == 0)
+        return 1;
+    return parameter_has_default(node->a, literal) || parameter_has_default(node->b, literal)
+        || parameter_has_default(node->c, literal) || parameter_has_default(node->d, literal)
+        || parameter_has_default(node->next, literal);
+}
+
+static int default_arg_ok(const AstNode *root)
+{
+    if (!parameter_has_default(root, "2")) {
+        fprintf(stderr, "syntax tree has no parameter default 2\n");
+        return 0;
+    }
+    return 1;
+}
+
+static void find_usings(const AstNode *node, int *directive, int *declaration)
+{
+    if (node == NULL)
+        return;
+    if (node->kind == AST_USING) {
+        if (node->text != NULL && strcmp(node->text, "namespace") == 0)
+            *directive = 1;
+        if (node->text == NULL && node->a != NULL && node->a->kind == AST_QUALIFIED)
+            *declaration = 1;
+    }
+    find_usings(node->a, directive, declaration);
+    find_usings(node->b, directive, declaration);
+    find_usings(node->c, directive, declaration);
+    find_usings(node->d, directive, declaration);
+    find_usings(node->next, directive, declaration);
+}
+
+static int using_ok(const AstNode *root)
+{
+    int directive = 0;
+    int declaration = 0;
+    int ok = require_kind(root, AST_USING);
+
+    find_usings(root, &directive, &declaration);
+    if (!directive) {
+        fprintf(stderr, "syntax tree has no using-directive\n");
+        ok = 0;
+    }
+    if (!declaration) {
+        fprintf(stderr, "syntax tree has no using-declaration\n");
+        ok = 0;
+    }
+    return ok;
+}
+
+static const char *method_name(const AstNode *method)
+{
+    const AstNode *decl;
+
+    if (method == NULL || method->kind != AST_METHOD)
+        return NULL;
+    decl = method->b;
+    if (decl == NULL || decl->kind != AST_FUNCTION_DECL || decl->a == NULL)
+        return NULL;
+    return decl->a->text;
+}
+
+static void find_overloads(const AstNode *node, int *one, int *two)
+{
+    const char *name;
+
+    if (node == NULL)
+        return;
+    name = method_name(node);
+    if (name != NULL && strcmp(name, "sum") == 0) {
+        if (list_count(node->b->b) == 1)
+            *one = 1;
+        if (list_count(node->b->b) == 2)
+            *two = 1;
+    }
+    find_overloads(node->a, one, two);
+    find_overloads(node->b, one, two);
+    find_overloads(node->c, one, two);
+    find_overloads(node->d, one, two);
+    find_overloads(node->next, one, two);
+}
+
+static int overload_ok(const AstNode *root)
+{
+    int one = 0;
+    int two = 0;
+
+    find_overloads(root, &one, &two);
+    if (!one || !two) {
+        fprintf(stderr, "syntax tree does not have sum overloads with 1 and 2 parameters\n");
+        return 0;
+    }
+    return 1;
+}
+
+static int multi_base_ok(const AstNode *root)
+{
+    const AstNode *type_c;
+    const AstNode *ctor;
+    const AstNode *init;
+    int saw_a = 0;
+    int saw_b = 0;
+    int ok = 1;
+
+    type_c = find_class(root, "C");
+    if (type_c == NULL || type_c->b == NULL || type_c->b->kind != AST_BASE
+        || type_c->b->next == NULL || type_c->b->next->kind != AST_BASE) {
+        fprintf(stderr, "class C does not list two bases\n");
+        ok = 0;
+    }
+    ctor = find_named(type_c, AST_CONSTRUCTOR, "C");
+    if (ctor == NULL) {
+        fprintf(stderr, "class C has no constructor\n");
+        return 0;
+    }
+    for (init = ctor->b; init != NULL; init = init->next) {
+        if (init->kind != AST_MEM_INIT || init->text == NULL)
+            continue;
+        if (strcmp(init->text, "A") == 0)
+            saw_a = 1;
+        if (strcmp(init->text, "B") == 0)
+            saw_b = 1;
+    }
+    if (!saw_a || !saw_b) {
+        fprintf(stderr, "constructor does not initialize both bases\n");
+        ok = 0;
+    }
+    return ok;
+}
+
+static int super_ok(const AstNode *root)
+{
+    int ok = require_kind(root, AST_SUPER) && require_kind(root, AST_THIS);
+
+    if (find_named(root, AST_SUPER, "super") == NULL) {
+        fprintf(stderr, "syntax tree has no super keyword\n");
+        ok = 0;
+    }
+    return ok;
+}
+
 static int delete_tree_ok(const AstNode *root)
 {
     int ok = require_kind(root, AST_NEW) && require_kind(root, AST_DELETE);
@@ -301,6 +558,18 @@ static int tree_is_complete(const char *path, const AstNode *root)
         return nulls_match(root) && ok;
     if (ends_with(path, "delete.scpp"))
         return delete_tree_ok(root) && ok;
+    if (ends_with(path, "ctor-dtor.scpp"))
+        return ctor_tree_ok(root) && ok;
+    if (ends_with(path, "default-arg.scpp"))
+        return default_arg_ok(root) && ok;
+    if (ends_with(path, "using.scpp"))
+        return using_ok(root) && ok;
+    if (ends_with(path, "overload.scpp"))
+        return overload_ok(root) && ok;
+    if (ends_with(path, "multi-base.scpp"))
+        return multi_base_ok(root) && ok;
+    if (ends_with(path, "super.scpp"))
+        return super_ok(root) && ok;
     if (ends_with(path, "accept.scpp"))
         return require_kinds(root, accept_kinds, 7) && ok;
     return ok;

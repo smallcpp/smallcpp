@@ -462,6 +462,11 @@ const char *ast_kind_name(AstKind kind)
     case AST_FORMAT: return "format";
     case AST_NULL: return "null";
     case AST_DELETE: return "delete";
+    case AST_CONSTRUCTOR: return "constructor";
+    case AST_DESTRUCTOR: return "destructor";
+    case AST_MEM_INIT: return "mem-init";
+    case AST_USING: return "using";
+    case AST_SUPER: return "super";
     }
     return "unknown";
 }

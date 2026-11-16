@@ -1,0 +1,15 @@
+class A {
+    int a;
+    A(int v);
+};
+
+class B {
+    int b;
+    B(int v);
+};
+
+class C : public A, public B {
+    int z;
+    C(int v) : A(v), B(v), z(v) {
+    }
+};

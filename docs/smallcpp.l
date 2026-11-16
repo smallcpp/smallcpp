@@ -10,10 +10,10 @@
  * parameter.
  * nullptr and NULL are keywords for the same null pointer constant.
  * delete is a keyword. It is not an identifier.
+ * super names the base. using introduces a using-declaration or a
+ * using-directive. Neither is a macro.
  */
 %option noyywrap
-%option nounput
-%option noinput
 %option nodefault
 %option yylineno
 %x BLOCK_COMMENT
@@ -72,6 +72,34 @@ static int type_count;
 static int class_name_pending;
 static int comment_line;
 static int comment_column;
+static int member_start;
+
+#define CLASS_MAX 32
+
+static const char *class_stack[CLASS_MAX];
+static int class_depth;
+
+void smallcpp_push_class(const char *name)
+{
+    if (name == NULL || class_depth >= CLASS_MAX)
+        return;
+    class_stack[class_depth++] = name;
+}
+
+void smallcpp_pop_class(void)
+{
+    if (class_depth > 0)
+        class_depth--;
+}
+
+const char *smallcpp_current_class(void)
+{
+    if (class_depth == 0)
+        return NULL;
+    return class_stack[class_depth - 1];
+}
+
+static int at_constructor_name(const char *text);
 
 static int keyword_cmp(const void *key, const void *item)
 {
@@ -140,6 +168,7 @@ static int keyword_token(const char *name)
         {"sizeof", SIZEOF},
         {"static", STATIC},
         {"struct", STRUCT},
+        {"super", SUPER},
         {"switch", SWITCH},
         {"this", THIS},
         {"throw", THROW},
@@ -147,6 +176,7 @@ static int keyword_token(const char *name)
         {"typedef", TYPEDEF},
         {"union", UNION},
         {"unsigned", UNSIGNED},
+        {"using", USING},
         {"virtual", VIRTUAL},
         {"void", VOID},
         {"volatile", VOLATILE},
@@ -167,11 +197,12 @@ static int finish(int token, const char *text)
         && (token == IDENTIFIER || token == TYPEDEF_NAME))
         note_class_name(text);
     class_name_pending = (token == CLASS);
-    if (token == IDENTIFIER || token == TYPEDEF_NAME
+    if (token == IDENTIFIER || token == TYPEDEF_NAME || token == CTOR_NAME
         || token == CONSTANT || token == STRING_LITERAL) {
         const char *spelling = text != NULL ? text : yytext;
         yylval.text = strdup(spelling);
     }
+    member_start = (token == '{' || token == '}' || token == ';' || token == ':');
     return token;
 }
 
@@ -238,10 +269,16 @@ L?\'([^\'\\\n]|\\.)+\'  { return finish(CONSTANT, NULL); }
 [0-9]+([eE][+-]?[0-9]+)?([uU][lL]?|[lL][uU]?|[lL][lL][uU]?|[fF])? { return finish(CONSTANT, NULL); }
 
 [A-Za-z_][A-Za-z0-9_]*  {
-                            int token = keyword_token(yytext);
-                            if (token == IDENTIFIER && is_type_name(yytext))
+                            int length = yyleng;
+                            char *spelling = strndup(yytext, (size_t) length);
+                            int token = keyword_token(spelling != NULL ? spelling : yytext);
+                            if (token == IDENTIFIER && at_constructor_name(spelling))
+                                token = CTOR_NAME;
+                            else if (token == IDENTIFIER && is_type_name(spelling))
                                 token = TYPEDEF_NAME;
-                            return finish(token, yytext);
+                            token = finish(token, spelling != NULL ? spelling : yytext);
+                            free(spelling);
+                            return token;
                         }
 
 [(){}\[\];,:?~!+\-*/%&|^.<>=] { return finish(yytext[0], NULL); }
@@ -260,3 +297,30 @@ L?\'([^\'\\\n]|\\.)+\'  { return finish(CONSTANT, NULL); }
                         }
 
 %%
+
+static int peek_lparen(void)
+{
+    int i = 0;
+    int c = 0;
+    char buf[64];
+
+    while (i < (int) sizeof buf) {
+        c = input();
+        if (c == 0 || c == EOF)
+            break;
+        buf[i++] = (char) c;
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
+            continue;
+        break;
+    }
+    while (i > 0)
+        unput(buf[--i]);
+    return c == '(';
+}
+
+static int at_constructor_name(const char *text)
+{
+    if (!member_start || class_depth == 0 || text == NULL)
+        return 0;
+    return strcmp(text, class_stack[class_depth - 1]) == 0 && peek_lparen();
+}

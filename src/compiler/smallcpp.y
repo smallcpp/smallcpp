@@ -3,10 +3,18 @@
  *
  * The base language is the syntax shared by ISO C99 and ISO C++11, so a
  * program that stays in that subset is acceptable to a modern C compiler
- * and a modern C++ compiler. smallcpp adds classes, single inheritance,
- * exceptions, namespaces, and precise garbage collection. catch (...)
- * catches every exception type. That ... is not a parameter. smallcpp does not add
- * templates, multiple inheritance, operator overloading, or the C++
+ * and a modern C++ compiler. smallcpp adds classes, inheritance,
+ * exceptions, namespaces, and precise garbage collection. A class may
+ * list more than one base. catch (...) catches every exception type.
+ * That ... is not a parameter. A constructor is a method whose name is
+ * the class name and that has no return type. A destructor is
+ * ~ClassName(), also with no return type. A constructor may have an
+ * initializer list: ClassName(args) : member(expr), base(expr) { ... }.
+ * A parameter may have a default, written name = expression. using name;
+ * and using namespace name; are supported. Anonymous namespaces are not.
+ * Two functions may share a name when their parameter lists differ.
+ * Operator overloading is not supported. super is a keyword for the base.
+ * smallcpp does not add templates, operator overloading, or the C++
  * standard library. print and format are native, not declarations the
  * program supplies. print writes formatted text. format produces the
  * formatted string. Each takes a string literal in C++23 format-string
@@ -43,10 +51,11 @@
  *     two languages disagree about what () means
  *   - empty structs, anonymous struct members, and anonymous union members
  *   - u, U, and u8 string prefixes, which are not C99
- *   - a second base. The base-clause is a single name, so a comma does not
- *     parse. Access on that base is optional: class D : public B
+ *   - anonymous namespaces. A namespace has a name
  *   - templates and operator overloading
- *   - bit-fields. A ':' after a class name introduces the base-clause
+ *   - bit-fields. A ':' after a class name introduces the base-clause.
+ *     A ':' after a constructor's parameter list introduces its
+ *     initializer list
  *   - an array bound is syntactically an expression. A bound that is not an
  *     integer constant expression is a VLA and is excluded
  *   - a new-expression names a class, typedef, or plain type specifier.
@@ -194,6 +203,56 @@ static int operand_is_pointer(const struct AstNode *node)
         return 0;
     }
 }
+
+void smallcpp_push_class(const char *name);
+void smallcpp_pop_class(void);
+const char *smallcpp_current_class(void);
+
+static int text_is(const struct AstNode *name, const char *text)
+{
+    return name != NULL && name->text != NULL && text != NULL
+        && strcmp(name->text, text) == 0;
+}
+
+static int names_equal(const struct AstNode *a, const struct AstNode *b)
+{
+    return a != NULL && b != NULL && a->text != NULL && b->text != NULL
+        && strcmp(a->text, b->text) == 0;
+}
+
+static char *steal_text(struct AstNode *name)
+{
+    char *spelling = NULL;
+
+    if (name != NULL) {
+        spelling = name->text;
+        name->text = NULL;
+        ast_free(name);
+    }
+    return spelling;
+}
+
+static struct AstNode *make_ctor(struct AstNode *name, struct AstNode *params,
+                                 struct AstNode *inits, struct AstNode *body)
+{
+    return ast_make(AST_CONSTRUCTOR, steal_text(name), params, inits, body, NULL);
+}
+
+static struct AstNode *ctor_spelling(char *spelling, struct AstNode *params,
+                                     struct AstNode *inits, struct AstNode *body)
+{
+    return ast_make(AST_CONSTRUCTOR, spelling, params, inits, body, NULL);
+}
+
+static struct AstNode *make_dtor(struct AstNode *name, struct AstNode *body)
+{
+    return ast_make(AST_DESTRUCTOR, steal_text(name), body, NULL, NULL, NULL);
+}
+
+static struct AstNode *make_mem_init(struct AstNode *name, struct AstNode *args)
+{
+    return ast_make(AST_MEM_INIT, steal_text(name), args, NULL, NULL, NULL);
+}
 %}
 
 %locations
@@ -205,13 +264,14 @@ static int operand_is_pointer(const struct AstNode *node)
     int kind;
 }
 
-%token <text> IDENTIFIER TYPEDEF_NAME CONSTANT STRING_LITERAL
+%token <text> IDENTIFIER TYPEDEF_NAME CONSTANT STRING_LITERAL CTOR_NAME
 %token CLASS "class" NAMESPACE "namespace"
 %token PUBLIC "public" PRIVATE "private" PROTECTED "protected"
 %token VIRTUAL "virtual" THIS "this"
 %token TRY "try" CATCH "catch" THROW "throw" NEW "new"
 %token PRINT "print" FORMAT "format"
 %token NULLPTR "nullptr" NULL_KEYWORD "NULL" DELETE "delete"
+%token USING "using" SUPER "super"
 %token AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
 %token EXTERN FLOAT FOR GOTO IF INLINE INT LONG REGISTER RETURN SHORT
 %token SIGNED SIZEOF STATIC STRUCT SWITCH TYPEDEF UNION UNSIGNED VOID
@@ -249,6 +309,9 @@ static int operand_is_pointer(const struct AstNode *node)
 %type <node> compound_statement block_item_list block_item expression_statement
 %type <node> selection_statement iteration_statement jump_statement
 %type <node> try_statement catch_clause_list catch_clause throw_statement
+%type <node> base_specifier base_specifier_list constructor_member destructor_member
+%type <node> constructor_definition destructor_definition ctor_initializer_opt
+%type <node> mem_initializer_list mem_initializer using_declaration using_name
 %type <node> primary_expression nested_name postfix_expression format_expression
 %type <node> argument_expression_list unary_expression new_type cast_expression
 %type <node> multiplicative_expression additive_expression shift_expression
@@ -278,15 +341,23 @@ translation_unit
 
 external_declaration
     : function_definition { $$ = $1; }
+    | constructor_definition { $$ = $1; }
+    | destructor_definition { $$ = $1; }
     | declaration { $$ = $1; }
     | namespace_definition { $$ = $1; }
+    | using_declaration { $$ = $1; }
     | error ';' { yyerrok; $$ = NULL; }
     ;
 
 /*
  * namespace name { ... }
  * The same syntax as C++. Nested namespaces are allowed.
+ * A namespace has a name. Anonymous namespaces are not supported.
  * A namespace is not a statement and cannot appear inside a function.
+ *
+ * Two functions may share a name when their parameter lists differ.
+ * That is overloading. operator+ and other operator functions are not
+ * supported.
  */
 namespace_definition
     : NAMESPACE IDENTIFIER '{' '}' {
@@ -429,17 +500,26 @@ enumerator
     ;
 
 /*
- * class Name : access base { members }
- * One base. A second base, written with a comma, does not parse.
- * public:, private:, and protected: are the C++ access specifiers.
- * The scanner records the class name so it can later be a type name.
+ * class Name : access base, access base { members }
+ * More than one base is allowed. public:, private:, and protected: are
+ * the C++ access specifiers. The scanner records the class name so it
+ * can later be a type name.
+ *
+ * A constructor is Name(parameters), with no return type, optionally
+ * followed by : member(expr), base(expr) and a body. A destructor is
+ * ~Name(). Out of line they are Name::Name and Name::~Name.
+ * Inside a class, the scanner returns the class name as CTOR_NAME when
+ * it starts a member and the next token is '('. That keeps the
+ * constructor distinct from a declaration that begins with a type name.
  */
 class_specifier
-    : CLASS name base_clause '{' class_member_list_opt '}' {
-        $$ = ast_make(AST_CLASS, NULL, $2, $3, $5, NULL);
+    : CLASS name { smallcpp_push_class($2->text); } base_clause '{' class_member_list_opt '}' {
+        smallcpp_pop_class();
+        $$ = ast_make(AST_CLASS, NULL, $2, $4, $6, NULL);
       }
-    | CLASS name '{' class_member_list_opt '}' {
-        $$ = ast_make(AST_CLASS, NULL, $2, NULL, $4, NULL);
+    | CLASS name { smallcpp_push_class($2->text); } '{' class_member_list_opt '}' {
+        smallcpp_pop_class();
+        $$ = ast_make(AST_CLASS, NULL, $2, NULL, $5, NULL);
       }
     | CLASS name { $$ = ast_make(AST_CLASS, NULL, $2, NULL, NULL, NULL); }
     | CLASS '{' class_member_list_opt '}' {
@@ -453,8 +533,17 @@ name
     ;
 
 base_clause
-    : ':' name { $$ = ast_make(AST_BASE, NULL, $2, NULL, NULL, NULL); }
-    | ':' access_keyword name { $$ = ast_make(AST_BASE, NULL, $2, $3, NULL, NULL); }
+    : ':' base_specifier_list { $$ = $2; }
+    ;
+
+base_specifier_list
+    : base_specifier { $$ = $1; }
+    | base_specifier_list ',' base_specifier { ast_append($1, $3); $$ = $1; }
+    ;
+
+base_specifier
+    : access_keyword name { $$ = ast_make(AST_BASE, NULL, $1, $2, NULL, NULL); }
+    | name { $$ = ast_make(AST_BASE, NULL, $1, NULL, NULL, NULL); }
     ;
 
 access_keyword
@@ -475,9 +564,93 @@ class_member_list
 
 class_member
     : access_keyword ':' { $$ = $1; }
+    | constructor_member { $$ = $1; }
+    | destructor_member { $$ = $1; }
     | declaration { $$ = $1; }
     | function_definition { $$ = $1; }
+    | using_declaration { $$ = $1; }
     | error ';' { yyerrok; $$ = NULL; }
+    ;
+
+constructor_member
+    : CTOR_NAME '(' ')' ctor_initializer_opt compound_statement {
+        $$ = ctor_spelling($1, NULL, $4, $5);
+      }
+    | CTOR_NAME '(' ')' ';' { $$ = ctor_spelling($1, NULL, NULL, NULL); }
+    | CTOR_NAME '(' parameter_type_list ')' ctor_initializer_opt compound_statement {
+        $$ = ctor_spelling($1, $3, $5, $6);
+      }
+    | CTOR_NAME '(' parameter_type_list ')' ';' { $$ = ctor_spelling($1, $3, NULL, NULL); }
+    ;
+
+destructor_member
+    : '~' name '(' ')' compound_statement {
+        if (!text_is($2, smallcpp_current_class()))
+            yyerror("destructor name does not match the class");
+        $$ = make_dtor($2, $5);
+      }
+    | '~' name '(' ')' ';' {
+        if (!text_is($2, smallcpp_current_class()))
+            yyerror("destructor name does not match the class");
+        $$ = make_dtor($2, NULL);
+      }
+    ;
+
+constructor_definition
+    : name SCOPE name '(' ')' ctor_initializer_opt compound_statement {
+        if (!names_equal($1, $3))
+            yyerror("constructor name does not match the class");
+        ast_free($1);
+        $$ = make_ctor($3, NULL, $6, $7);
+      }
+    | name SCOPE name '(' parameter_type_list ')' ctor_initializer_opt compound_statement {
+        if (!names_equal($1, $3))
+            yyerror("constructor name does not match the class");
+        ast_free($1);
+        $$ = make_ctor($3, $5, $7, $8);
+      }
+    ;
+
+destructor_definition
+    : name SCOPE '~' name '(' ')' compound_statement {
+        if (!names_equal($1, $4))
+            yyerror("destructor name does not match the class");
+        ast_free($1);
+        $$ = make_dtor($4, $7);
+      }
+    | name SCOPE '~' name '(' ')' ';' {
+        if (!names_equal($1, $4))
+            yyerror("destructor name does not match the class");
+        ast_free($1);
+        $$ = make_dtor($4, NULL);
+      }
+    ;
+
+ctor_initializer_opt
+    : %empty { $$ = NULL; }
+    | ':' mem_initializer_list { $$ = $2; }
+    ;
+
+mem_initializer_list
+    : mem_initializer { $$ = $1; }
+    | mem_initializer_list ',' mem_initializer { ast_append($1, $3); $$ = $1; }
+    ;
+
+mem_initializer
+    : name '(' ')' { $$ = make_mem_init($1, NULL); }
+    | name '(' argument_expression_list ')' { $$ = make_mem_init($1, $3); }
+    ;
+
+using_declaration
+    : USING NAMESPACE name ';' {
+        $$ = ast_make(AST_USING, strdup("namespace"), $3, NULL, NULL, NULL);
+      }
+    | USING using_name ';' { $$ = ast_make(AST_USING, NULL, $2, NULL, NULL, NULL); }
+    ;
+
+using_name
+    : name { $$ = $1; }
+    | nested_name { $$ = $1; }
     ;
 
 type_qualifier
@@ -565,6 +738,10 @@ parameter_declaration
     | parameter_specifiers parameter_declarator {
         note_declarator($2);
         $$ = ast_make(AST_PARAMETER, NULL, $1, $2, NULL, NULL);
+      }
+    | parameter_specifiers parameter_declarator '=' assignment_expression {
+        note_declarator($2);
+        $$ = ast_make(AST_PARAMETER, NULL, $1, $2, $4, NULL);
       }
     ;
 
@@ -670,6 +847,7 @@ block_item_list
 block_item
     : declaration { $$ = $1; }
     | statement { $$ = $1; }
+    | using_declaration { $$ = $1; }
     ;
 
 expression_statement
@@ -747,6 +925,7 @@ primary_expression
     | THIS { $$ = ast_named(AST_THIS, "this"); }
     | NULLPTR { $$ = ast_null("nullptr"); }
     | NULL_KEYWORD { $$ = ast_null("NULL"); }
+    | SUPER { $$ = ast_named(AST_SUPER, "super"); }
     | CONSTANT { $$ = ast_text(AST_LITERAL, $1); }
     | STRING_LITERAL { $$ = ast_text(AST_LITERAL, $1); }
     | '(' expression ')' { $$ = $2; }
