@@ -46,6 +46,11 @@ AstNode *ast_assign(AstNode *lhs, const char *op, AstNode *rhs)
     return ast_make(AST_ASSIGN, op != NULL ? strdup(op) : NULL, lhs, rhs, NULL, NULL);
 }
 
+AstNode *ast_catch_all(AstNode *body)
+{
+    return ast_make(AST_CATCH, strdup("..."), NULL, body, NULL, NULL);
+}
+
 void ast_append(AstNode *head, AstNode *item)
 {
     if (head == NULL || item == NULL)

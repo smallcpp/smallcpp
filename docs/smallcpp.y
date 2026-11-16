@@ -4,7 +4,8 @@
  * The base language is the syntax shared by ISO C99 and ISO C++11, so a
  * program that stays in that subset is acceptable to a modern C compiler
  * and a modern C++ compiler. smallcpp adds classes, single inheritance,
- * exceptions, namespaces, and precise garbage collection. It does not add
+ * exceptions, namespaces, and precise garbage collection. catch (...)
+ * catches every exception type. That ... is not a parameter. smallcpp does not add
  * templates, multiple inheritance, operator overloading, or the C++
  * standard library. print and format are native, not declarations the
  * program supplies. print writes formatted text. format produces the
@@ -593,8 +594,10 @@ jump_statement
     ;
 
 /*
- * try compound-statement catch ( parameter-declaration ) compound-statement
- * One or more catches. throw expression; is the C++ throw statement.
+ * try compound-statement catch-clause+
+ * A catch names one parameter, or it is catch (...), which catches every
+ * type. The ... is not a parameter and is not the variadic-parameter marker.
+ * throw expression; is the C++ throw statement.
  */
 try_statement
     : TRY compound_statement catch_clause_list {
@@ -611,6 +614,7 @@ catch_clause
     : CATCH '(' parameter_declaration ')' compound_statement {
         $$ = ast_make(AST_CATCH, NULL, $3, $5, NULL, NULL);
       }
+    | CATCH '(' ELLIPSIS ')' compound_statement { $$ = ast_catch_all($5); }
     ;
 
 throw_statement

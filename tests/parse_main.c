@@ -150,6 +150,44 @@ static int tree_shape_ok(const AstNode *root)
     return ok;
 }
 
+static void find_catches(const AstNode *node, int *typed, int *every)
+{
+    if (node == NULL)
+        return;
+    if (node->kind == AST_CATCH && node->text != NULL && strcmp(node->text, "...") == 0) {
+        if (node->a == NULL)
+            *every = 1;
+    } else if (node->kind == AST_CATCH && node->a != NULL && node->a->kind == AST_PARAMETER) {
+        *typed = 1;
+    }
+    find_catches(node->a, typed, every);
+    find_catches(node->b, typed, every);
+    find_catches(node->c, typed, every);
+    find_catches(node->d, typed, every);
+    find_catches(node->next, typed, every);
+}
+
+/* catch-all.scpp: catch (...) is a catch with no parameter, and a typed catch remains. */
+static int catch_forms_ok(const AstNode *root)
+{
+    static const AstKind kinds[] = { AST_TRY, AST_CATCH, AST_THROW, AST_PARAMETER };
+    int typed = 0;
+    int every = 0;
+    int ok;
+
+    ok = require_kinds(root, kinds, 4);
+    find_catches(root, &typed, &every);
+    if (!every) {
+        fprintf(stderr, "syntax tree has no catch (...)\n");
+        ok = 0;
+    }
+    if (!typed) {
+        fprintf(stderr, "syntax tree has no catch parameter\n");
+        ok = 0;
+    }
+    return ok;
+}
+
 static int tree_is_complete(const char *path, const AstNode *root)
 {
     static const AstKind namespace_kinds[] = { AST_NAMESPACE };
@@ -175,6 +213,8 @@ static int tree_is_complete(const char *path, const AstNode *root)
         return require_kinds(root, class_kinds, 3) && ok;
     if (ends_with(path, "try-catch.scpp"))
         return require_kinds(root, try_kinds, 3) && ok;
+    if (ends_with(path, "catch-all.scpp"))
+        return catch_forms_ok(root) && ok;
     if (ends_with(path, "variadic.scpp"))
         return require_kinds(root, variadic_kinds, 2) && ok;
     if (ends_with(path, "print-format.scpp"))

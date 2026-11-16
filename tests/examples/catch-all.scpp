@@ -1,0 +1,12 @@
+int main(void) {
+    int value;
+
+    value = 1;
+    try {
+        throw value;
+    } catch (int error) {
+        return error;
+    } catch (...) {
+        return value;
+    }
+}
