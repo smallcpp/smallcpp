@@ -1,0 +1,24 @@
+namespace audio {
+class Point {
+    int x;
+};
+
+class Derived : public Point {
+public:
+    int move(int dx) {
+        try {
+            throw dx;
+        } catch (int error) {
+            return error;
+        }
+    }
+};
+}
+
+int report(int count, ...) {
+    const char *line;
+
+    line = format("{0}", count);
+    print("{}", line);
+    return count;
+}
