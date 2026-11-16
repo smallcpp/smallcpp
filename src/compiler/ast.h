@@ -66,8 +66,7 @@ typedef enum AstKind {
     AST_USING,
     AST_SUPER,
     AST_BITFIELD,
-    AST_DESIGNATED,
-    AST_COMPOUND_LITERAL
+    AST_DESIGNATED
 } AstKind;
 
 typedef struct AstNode {

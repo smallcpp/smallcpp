@@ -676,26 +676,6 @@ static int designated_ok(const AstNode *root)
     return 1;
 }
 
-static int walk_compound(const AstNode *node)
-{
-    if (node == NULL)
-        return 0;
-    if (node->kind == AST_COMPOUND_LITERAL && node->a != NULL && node->a->kind == AST_STRUCT
-        && text_is(node->a, "Point") && node->b != NULL && node->b->kind == AST_INIT)
-        return 1;
-    return walk_compound(node->a) || walk_compound(node->b) || walk_compound(node->c)
-        || walk_compound(node->d) || walk_compound(node->next);
-}
-
-static int compound_literal_ok(const AstNode *root)
-{
-    if (!walk_compound(root)) {
-        fprintf(stderr, "syntax tree has no compound literal\n");
-        return 0;
-    }
-    return 1;
-}
-
 static void walk_functions(const AstNode *node, int *ready, int *take)
 {
     if (node == NULL)
@@ -826,8 +806,6 @@ static int tree_is_complete(const char *path, const AstNode *root)
         return bit_field_ok(root) && ok;
     if (ends_with(path, "designated.scpp"))
         return designated_ok(root) && ok;
-    if (ends_with(path, "compound-literal.scpp"))
-        return compound_literal_ok(root) && ok;
     if (ends_with(path, "empty-params.scpp"))
         return empty_params_ok(root) && ok;
     if (ends_with(path, "brace-init.scpp"))

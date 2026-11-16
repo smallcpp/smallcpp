@@ -469,7 +469,6 @@ const char *ast_kind_name(AstKind kind)
     case AST_SUPER: return "super";
     case AST_BITFIELD: return "bit-field";
     case AST_DESIGNATED: return "designated";
-    case AST_COMPOUND_LITERAL: return "compound-literal";
     }
     return "unknown";
 }
