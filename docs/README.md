@@ -1,3 +1,3 @@
 # docs
 
-Project documentation. `smallcpp.y` is a symbolic link to the grammar in `src/compiler`.
+Project documentation. `smallcpp.y` and `smallcpp.l` are copies of the grammar and scanner in `src/compiler`.
