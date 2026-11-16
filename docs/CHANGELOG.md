@@ -4,9 +4,12 @@ All notable changes to smallcpp are recorded in this file.
 
 ## Unreleased
 
-### Changed
+### Added
 
 - `docs/smallcpp.y` is a copy of `src/compiler/smallcpp.y`, not a symbolic link. `docs/smallcpp.l` is a copy of `src/compiler/smallcpp.l`. The sources in `src/compiler` stay in place.
+- Scanner and parser diagnostics include the file, line, and column.
+- After a syntax error, the parser resynchronizes at a semicolon and continues. An invalid character is reported and skipped, so one file can report more than one error.
+- `tests/examples/reject-errors.scpp` contains several errors.
 
 ## 2026-11-16
 

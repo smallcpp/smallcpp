@@ -17,6 +17,10 @@
  * Source files use the .scpp extension. Ordinary preprocessing is already
  * done. This file is the grammar only. It is not a compiler.
  *
+ * A syntax error is reported with its line and column, then the error
+ * token resynchronizes at the next semicolon so later errors are still
+ * reported. That recovery is not part of the language.
+ *
  * Deliberate omissions:
  *   - variable-length arrays, including '[*]' and 'static' inside '[]'
  *   - restrict
@@ -44,9 +48,14 @@
  */
 
 %{
+#include <stdio.h>
+
 int yylex(void);
 void yyerror(const char *message);
 %}
+
+%locations
+%define parse.error custom
 
 %token IDENTIFIER TYPEDEF_NAME CONSTANT STRING_LITERAL
 %token CLASS "class" NAMESPACE "namespace"
@@ -86,6 +95,7 @@ external_declaration
     : function_definition
     | declaration
     | namespace_definition
+    | error ';' { yyerrok; }
     ;
 
 /*
@@ -167,6 +177,7 @@ struct_declaration_list
 /* Every member has a declarator, so the struct is non-empty and C99. */
 struct_declaration
     : specifier_qualifier_list struct_declarator_list ';'
+    | error ';' { yyerrok; }
     ;
 
 specifier_qualifier_list
@@ -250,6 +261,7 @@ class_member
     : access_keyword ':'
     | declaration
     | function_definition
+    | error ';' { yyerrok; }
     ;
 
 type_qualifier
@@ -390,6 +402,7 @@ statement
     | jump_statement
     | try_statement
     | throw_statement
+    | error ';' { yyerrok; }
     ;
 
 labeled_statement
@@ -637,3 +650,22 @@ constant_expression
     ;
 
 %%
+
+static int
+yyreport_syntax_error(const yypcontext_t *ctx)
+{
+    YYLTYPE *loc = yypcontext_location(ctx);
+    yysymbol_kind_t token = yypcontext_token(ctx);
+    char message[160];
+
+    if (loc != NULL)
+        yylloc = *loc;
+    if (token == YYSYMBOL_YYEMPTY)
+        yyerror("syntax error");
+    else {
+        snprintf(message, sizeof message, "syntax error, unexpected %s",
+                 yysymbol_name(token));
+        yyerror(message);
+    }
+    return 0;
+}
