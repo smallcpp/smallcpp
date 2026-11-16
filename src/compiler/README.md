@@ -1,3 +1,3 @@
 # compiler
 
-Source directory reserved for a later compiler target. No language or compiler is defined yet.
+Bison grammar (`smallcpp.y`) and Flex scanner (`smallcpp.l`). CMake builds them as the static library `smallcpp_parse`.

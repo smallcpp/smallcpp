@@ -1,0 +1,13 @@
+sc_class A {
+    int a;
+};
+
+sc_class B {
+    int b;
+};
+
+sc_class Derived {
+    sc_base(A);
+    sc_base(B);
+    int x;
+};
