@@ -18,7 +18,7 @@ Inputs for `parse_test`. Source files use the `.scpp` extension.
 - `using.scpp` parses `using namespace name;` and `using name;`. The test fails if either form is missing. An anonymous namespace still does not parse.
 - `overload.scpp` parses two functions named `sum` with different parameter lists. The test fails unless both are present. Operator overloading does not parse.
 - `multi-base.scpp` parses a class with two bases and a constructor that initializes both. The test fails if either base or either base initializer is missing.
-- `super.scpp` parses `super` and `this`. `super` names the base. The test fails if either keyword is missing.
+- `super` is not a keyword. A base method is `Base::method()`, or `method()` when that name is not hidden. `this` remains a keyword.
 - `const-method.scpp` parses a method with `const` after the parameter list. The test fails if that qualifier is missing.
 - `new-array.scpp` parses `new` of an array and `new` of a pointer type. The test fails if either form is missing.
 - `bool.scpp` parses `bool`, `true`, and `false`. The test fails if any of them is missing.

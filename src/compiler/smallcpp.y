@@ -13,7 +13,9 @@
  * A parameter may have a default, written name = expression. using name;
  * and using namespace name; are supported. Anonymous namespaces are not.
  * Two functions may share a name when their parameter lists differ.
- * Operator overloading is not supported. super is a keyword for the base.
+ * Operator overloading is not supported. super is not a keyword. A base
+ * method is Base::method(), or method() when that name is not hidden.
+ * this remains a keyword.
  * A method may be const, written after its parameter list. () is an
  * empty parameter list and means no parameters. bool, true, and false
  * are keywords. A new-expression may allocate an array or a pointer.
@@ -61,6 +63,8 @@
  *     and unnamed bit-fields. A bit-field names its member
  *   - u, U, and u8 string prefixes, which are not C99
  *   - anonymous namespaces. A namespace has a name
+ *   - super. A base method is Base::method(), or method() when the name
+ *     is not hidden. this remains a keyword
  *   - templates and operator overloading
  *   - an array bound is syntactically an expression. A bound that is not an
  *     integer constant expression is a VLA and is excluded
@@ -312,7 +316,7 @@ static struct AstNode *designate(struct AstNode *designators, struct AstNode *va
 %token TRY "try" CATCH "catch" THROW "throw" NEW "new"
 %token PRINT "print" FORMAT "format"
 %token NULLPTR "nullptr" NULL_KEYWORD "NULL" DELETE "delete"
-%token USING "using" SUPER "super"
+%token USING "using"
 %token BOOL "bool" TRUE "true" FALSE "false"
 %token AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
 %token EXTERN FLOAT FOR GOTO IF INLINE INT LONG REGISTER RETURN SHORT
@@ -1021,7 +1025,6 @@ primary_expression
     | FALSE { $$ = ast_named(AST_LITERAL, "false"); }
     | NULLPTR { $$ = ast_null("nullptr"); }
     | NULL_KEYWORD { $$ = ast_null("NULL"); }
-    | SUPER { $$ = ast_named(AST_SUPER, "super"); }
     | CONSTANT { $$ = ast_text(AST_LITERAL, $1); }
     | STRING_LITERAL { $$ = ast_text(AST_LITERAL, $1); }
     | '(' expression ')' { $$ = $2; }

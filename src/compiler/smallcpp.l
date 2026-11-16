@@ -10,8 +10,8 @@
  * parameter.
  * nullptr and NULL are keywords for the same null pointer constant.
  * delete is a keyword. It is not an identifier.
- * super names the base. using introduces a using-declaration or a
- * using-directive. Neither is a macro.
+ * super is not a keyword. using introduces a using-declaration or a
+ * using-directive. using is not a macro. this remains a keyword.
  * bool, true, and false are keywords.
  */
 %option noyywrap
@@ -171,7 +171,6 @@ static int keyword_token(const char *name)
         {"sizeof", SIZEOF},
         {"static", STATIC},
         {"struct", STRUCT},
-        {"super", SUPER},
         {"switch", SWITCH},
         {"this", THIS},
         {"throw", THROW},
