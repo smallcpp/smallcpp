@@ -24,8 +24,8 @@ Inputs for `parse_test`. Source files use the `.scpp` extension.
 - `bool.scpp` parses `bool`, `true`, and `false`. The test fails if any of them is missing.
 - `bit-field.scpp` parses named bit-fields. The test fails if a width is missing.
 - `designated.scpp` parses `.member = value` and `[index] = value`. The test fails if either designator is missing.
-- `compound-literal.scpp` parses `(type){ ... }`. The test fails if that node is missing.
 - `empty-params.scpp` parses `()` as no parameters, and `(void)` still parses. The test fails if either form is missing.
+- A compound literal, `(type){ ... }`, does not parse. `(int[]){1, 2}` is rejected.
 - `brace-init.scpp` parses a brace initializer for a struct and for an array. The test fails if either list is missing.
 - `reject-class.scpp` does not parse.
 - `reject-errors.scpp` has more than one error. `parse_test` prints more than one diagnostic and exits non-zero.

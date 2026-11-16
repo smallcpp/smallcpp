@@ -18,9 +18,10 @@
  * empty parameter list and means no parameters. bool, true, and false
  * are keywords. A new-expression may allocate an array or a pointer.
  * Struct and union members may be bit-fields. An initializer may use a
- * designator or a brace list. A compound literal is (type){ ... }.
- * smallcpp does not add templates, lambdas, references, ref-qualifiers,
- * operator overloading, or the C++ standard library. print and format
+ * designator or a brace list. A compound literal, (type){ ... }, does
+ * not parse. smallcpp does not add templates, lambdas, references,
+ * ref-qualifiers, operator overloading, or the C++ standard library.
+ * print and format
  * are native, not declarations the
  * program supplies. print writes formatted text. format produces the
  * formatted string. Each takes a string literal in C++23 format-string
@@ -47,6 +48,7 @@
  *   - restrict
  *   - flexible array members. Empty '[]' is recognized only on parameters,
  *     where both languages adjust the parameter to a pointer
+ *   - compound literals. (type){ ... } does not parse, including (int[]){1, 2}
  *   - C++11 brace initialization without '='. A brace list is written
  *     after '='. references, rvalue references, auto as a type, lambdas,
  *     constexpr, trailing return types, and ref-qualifiers. auto is only
@@ -1056,9 +1058,6 @@ postfix_expression
     | postfix_expression '(' ')' { $$ = ast_make(AST_CALL, NULL, $1, NULL, NULL, NULL); }
     | postfix_expression '(' argument_expression_list ')' {
         $$ = ast_make(AST_CALL, NULL, $1, $3, NULL, NULL);
-      }
-    | '(' type_name ')' brace_initializer {
-        $$ = ast_make(AST_COMPOUND_LITERAL, NULL, $2, $4, NULL, NULL);
       }
     | postfix_expression '.' IDENTIFIER { $$ = ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL); }
     | postfix_expression ARROW IDENTIFIER { $$ = ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL); }
