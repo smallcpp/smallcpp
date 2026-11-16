@@ -1,0 +1,4 @@
+struct Flags {
+    unsigned ready : 1;
+    unsigned code : 7;
+};

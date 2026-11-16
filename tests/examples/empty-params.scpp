@@ -1,0 +1,9 @@
+int ready();
+
+int ready() {
+    return 1;
+}
+
+int take(void) {
+    return 2;
+}

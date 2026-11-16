@@ -1,0 +1,7 @@
+struct Point {
+    int x;
+    int y;
+};
+
+struct Point origin = { .x = 1, .y = 2 };
+int values[3] = { [1] = 4 };

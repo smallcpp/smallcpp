@@ -1,0 +1,10 @@
+struct Pair {
+    int x;
+    int y;
+};
+
+int main(void) {
+    struct Pair p = { 1, 2 };
+    int values[2] = { 3, 4 };
+    return p.x + values[0];
+}
