@@ -1,0 +1,11 @@
+class Point {
+public:
+    int x;
+};
+
+class Derived : public Point {
+public:
+    virtual int move(int dx) {
+        return dx;
+    }
+};
