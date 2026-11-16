@@ -15,7 +15,7 @@
  * delete spelling; precise collection is a compiler and runtime
  * requirement, and the compiler records the type in each new-expression.
  * Source files use the .scpp extension. Ordinary preprocessing is already
- * done. This file is the grammar only. It is not a compiler.
+ * done. Semantic actions build a syntax tree. They do not generate code.
  *
  * Deliberate omissions:
  *   - variable-length arrays, including '[*]' and 'static' inside '[]'
@@ -44,11 +44,21 @@
  */
 
 %{
+#include "ast.h"
+
+#include <stdlib.h>
+
 int yylex(void);
 void yyerror(const char *message);
 %}
 
-%token IDENTIFIER TYPEDEF_NAME CONSTANT STRING_LITERAL
+%union {
+    char *text;
+    struct AstNode *node;
+    int kind;
+}
+
+%token <text> IDENTIFIER TYPEDEF_NAME CONSTANT STRING_LITERAL
 %token CLASS "class" NAMESPACE "namespace"
 %token PUBLIC "public" PRIVATE "private" PROTECTED "protected"
 %token VIRTUAL "virtual" THIS "this"
@@ -72,20 +82,55 @@ void yyerror(const char *message);
 
 %expect 0
 
+%type <node> translation_unit external_declaration namespace_definition
+%type <node> external_declaration_list function_definition declaration
+%type <node> declaration_specifiers declaration_specifier storage_class_specifier
+%type <node> type_specifier struct_or_union_specifier struct_declaration_list
+%type <node> struct_declaration specifier_qualifier_list specifier_qualifier
+%type <node> struct_declarator_list struct_declarator enum_specifier
+%type <node> enumerator_list enumerator class_specifier name base_clause
+%type <node> access_keyword class_member_list_opt class_member_list class_member
+%type <node> type_qualifier function_specifier init_declarator_list
+%type <node> init_declarator initializer initializer_list declarator
+%type <node> direct_declarator declarator_id pointer type_qualifier_list
+%type <node> parameter_type_list parameter_list parameter_declaration
+%type <node> parameter_specifiers parameter_specifier parameter_declarator
+%type <node> direct_parameter_declarator type_name abstract_declarator
+%type <node> direct_abstract_declarator statement labeled_statement
+%type <node> compound_statement block_item_list block_item expression_statement
+%type <node> selection_statement iteration_statement jump_statement
+%type <node> try_statement catch_clause_list catch_clause throw_statement
+%type <node> primary_expression nested_name postfix_expression
+%type <node> argument_expression_list unary_expression new_type cast_expression
+%type <node> multiplicative_expression additive_expression shift_expression
+%type <node> relational_expression equality_expression and_expression
+%type <node> exclusive_or_expression inclusive_or_expression
+%type <node> logical_and_expression logical_or_expression conditional_expression
+%type <node> assignment_expression expression expression_opt constant_expression
+%type <text> unary_operator assignment_operator
+%type <kind> struct_or_union
+
 %start translation_unit
 
 %%
 
 /* Start symbol. A translation unit is zero or more external declarations. */
 translation_unit
-    : %empty
-    | translation_unit external_declaration
+    : %empty {
+        $$ = ast_make(AST_TRANSLATION_UNIT, NULL, NULL, NULL, NULL, NULL);
+        smallcpp_ast = $$;
+      }
+    | translation_unit external_declaration {
+        ast_add($1, $2);
+        $$ = $1;
+        smallcpp_ast = $$;
+      }
     ;
 
 external_declaration
-    : function_definition
-    | declaration
-    | namespace_definition
+    : function_definition { $$ = $1; }
+    | declaration { $$ = $1; }
+    | namespace_definition { $$ = $1; }
     ;
 
 /*
@@ -94,117 +139,141 @@ external_declaration
  * A namespace is not a statement and cannot appear inside a function.
  */
 namespace_definition
-    : NAMESPACE IDENTIFIER '{' '}'
-    | NAMESPACE IDENTIFIER '{' external_declaration_list '}'
+    : NAMESPACE IDENTIFIER '{' '}' {
+        $$ = ast_make(AST_NAMESPACE, $2, NULL, NULL, NULL, NULL);
+      }
+    | NAMESPACE IDENTIFIER '{' external_declaration_list '}' {
+        $$ = ast_make(AST_NAMESPACE, $2, $4, NULL, NULL, NULL);
+      }
     ;
 
 external_declaration_list
-    : external_declaration
-    | external_declaration_list external_declaration
+    : external_declaration { $$ = $1; }
+    | external_declaration_list external_declaration { ast_append($1, $2); $$ = $1; }
     ;
 
 function_definition
-    : declaration_specifiers declarator compound_statement
+    : declaration_specifiers declarator compound_statement {
+        $$ = ast_make(AST_METHOD, NULL, $1, $2, $3, NULL);
+      }
     ;
 
 declaration
-    : declaration_specifiers init_declarator_list ';'
-    | declaration_specifiers ';'
+    : declaration_specifiers init_declarator_list ';' {
+        $$ = ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL);
+      }
+    | declaration_specifiers ';' {
+        $$ = ast_make(AST_DECLARATION, NULL, $1, NULL, NULL, NULL);
+      }
     ;
 
 declaration_specifiers
-    : declaration_specifier
-    | declaration_specifiers declaration_specifier
+    : declaration_specifier { $$ = $1; }
+    | declaration_specifiers declaration_specifier { ast_append($1, $2); $$ = $1; }
     ;
 
 declaration_specifier
-    : storage_class_specifier
-    | type_specifier
-    | type_qualifier
-    | function_specifier
+    : storage_class_specifier { $$ = $1; }
+    | type_specifier { $$ = $1; }
+    | type_qualifier { $$ = $1; }
+    | function_specifier { $$ = $1; }
     ;
 
 storage_class_specifier
-    : TYPEDEF
-    | EXTERN
-    | STATIC
-    | AUTO
-    | REGISTER
+    : TYPEDEF { $$ = ast_named(AST_SPECIFIER, "typedef"); }
+    | EXTERN { $$ = ast_named(AST_SPECIFIER, "extern"); }
+    | STATIC { $$ = ast_named(AST_SPECIFIER, "static"); }
+    | AUTO { $$ = ast_named(AST_SPECIFIER, "auto"); }
+    | REGISTER { $$ = ast_named(AST_SPECIFIER, "register"); }
     ;
 
 type_specifier
-    : VOID
-    | CHAR
-    | SHORT
-    | INT
-    | LONG
-    | FLOAT
-    | DOUBLE
-    | SIGNED
-    | UNSIGNED
-    | struct_or_union_specifier
-    | enum_specifier
-    | class_specifier
-    | TYPEDEF_NAME
+    : VOID { $$ = ast_named(AST_SPECIFIER, "void"); }
+    | CHAR { $$ = ast_named(AST_SPECIFIER, "char"); }
+    | SHORT { $$ = ast_named(AST_SPECIFIER, "short"); }
+    | INT { $$ = ast_named(AST_SPECIFIER, "int"); }
+    | LONG { $$ = ast_named(AST_SPECIFIER, "long"); }
+    | FLOAT { $$ = ast_named(AST_SPECIFIER, "float"); }
+    | DOUBLE { $$ = ast_named(AST_SPECIFIER, "double"); }
+    | SIGNED { $$ = ast_named(AST_SPECIFIER, "signed"); }
+    | UNSIGNED { $$ = ast_named(AST_SPECIFIER, "unsigned"); }
+    | struct_or_union_specifier { $$ = $1; }
+    | enum_specifier { $$ = $1; }
+    | class_specifier { $$ = $1; }
+    | TYPEDEF_NAME { $$ = ast_text(AST_TYPE_NAME, $1); }
     ;
 
 struct_or_union_specifier
-    : struct_or_union IDENTIFIER '{' struct_declaration_list '}'
-    | struct_or_union '{' struct_declaration_list '}'
-    | struct_or_union IDENTIFIER
+    : struct_or_union IDENTIFIER '{' struct_declaration_list '}' {
+        $$ = ast_make((AstKind) $1, $2, $4, NULL, NULL, NULL);
+      }
+    | struct_or_union '{' struct_declaration_list '}' {
+        $$ = ast_make((AstKind) $1, NULL, $3, NULL, NULL, NULL);
+      }
+    | struct_or_union IDENTIFIER {
+        $$ = ast_make((AstKind) $1, $2, NULL, NULL, NULL, NULL);
+      }
     ;
 
 struct_or_union
-    : STRUCT
-    | UNION
+    : STRUCT { $$ = AST_STRUCT; }
+    | UNION { $$ = AST_UNION; }
     ;
 
 struct_declaration_list
-    : struct_declaration
-    | struct_declaration_list struct_declaration
+    : struct_declaration { $$ = $1; }
+    | struct_declaration_list struct_declaration { ast_append($1, $2); $$ = $1; }
     ;
 
 /* Every member has a declarator, so the struct is non-empty and C99. */
 struct_declaration
-    : specifier_qualifier_list struct_declarator_list ';'
+    : specifier_qualifier_list struct_declarator_list ';' {
+        $$ = ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL);
+      }
     ;
 
 specifier_qualifier_list
-    : specifier_qualifier
-    | specifier_qualifier_list specifier_qualifier
+    : specifier_qualifier { $$ = $1; }
+    | specifier_qualifier_list specifier_qualifier { ast_append($1, $2); $$ = $1; }
     ;
 
 specifier_qualifier
-    : type_specifier
-    | type_qualifier
+    : type_specifier { $$ = $1; }
+    | type_qualifier { $$ = $1; }
     ;
 
 struct_declarator_list
-    : struct_declarator
-    | struct_declarator_list ',' struct_declarator
+    : struct_declarator { $$ = $1; }
+    | struct_declarator_list ',' struct_declarator { ast_append($1, $3); $$ = $1; }
     ;
 
 /* No bit-fields. A ':' after a class name is the base-clause. */
 struct_declarator
-    : declarator
+    : declarator { $$ = $1; }
     ;
 
 enum_specifier
-    : ENUM '{' enumerator_list '}'
-    | ENUM '{' enumerator_list ',' '}'
-    | ENUM IDENTIFIER '{' enumerator_list '}'
-    | ENUM IDENTIFIER '{' enumerator_list ',' '}'
-    | ENUM IDENTIFIER
+    : ENUM '{' enumerator_list '}' { $$ = ast_make(AST_ENUM, NULL, $3, NULL, NULL, NULL); }
+    | ENUM '{' enumerator_list ',' '}' { $$ = ast_make(AST_ENUM, NULL, $3, NULL, NULL, NULL); }
+    | ENUM IDENTIFIER '{' enumerator_list '}' {
+        $$ = ast_make(AST_ENUM, $2, $4, NULL, NULL, NULL);
+      }
+    | ENUM IDENTIFIER '{' enumerator_list ',' '}' {
+        $$ = ast_make(AST_ENUM, $2, $4, NULL, NULL, NULL);
+      }
+    | ENUM IDENTIFIER { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
     ;
 
 enumerator_list
-    : enumerator
-    | enumerator_list ',' enumerator
+    : enumerator { $$ = $1; }
+    | enumerator_list ',' enumerator { ast_append($1, $3); $$ = $1; }
     ;
 
 enumerator
-    : IDENTIFIER
-    | IDENTIFIER '=' constant_expression
+    : IDENTIFIER { $$ = ast_text(AST_ENUMERATOR, $1); }
+    | IDENTIFIER '=' constant_expression {
+        $$ = ast_make(AST_ENUMERATOR, $1, $3, NULL, NULL, NULL);
+      }
     ;
 
 /*
@@ -214,229 +283,278 @@ enumerator
  * The scanner records the class name so it can later be a type name.
  */
 class_specifier
-    : CLASS name base_clause '{' class_member_list_opt '}'
-    | CLASS name '{' class_member_list_opt '}'
-    | CLASS name
-    | CLASS '{' class_member_list_opt '}'
+    : CLASS name base_clause '{' class_member_list_opt '}' {
+        $$ = ast_make(AST_CLASS, NULL, $2, $3, $5, NULL);
+      }
+    | CLASS name '{' class_member_list_opt '}' {
+        $$ = ast_make(AST_CLASS, NULL, $2, NULL, $4, NULL);
+      }
+    | CLASS name { $$ = ast_make(AST_CLASS, NULL, $2, NULL, NULL, NULL); }
+    | CLASS '{' class_member_list_opt '}' {
+        $$ = ast_make(AST_CLASS, NULL, NULL, NULL, $3, NULL);
+      }
     ;
 
 name
-    : IDENTIFIER
-    | TYPEDEF_NAME
+    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
+    | TYPEDEF_NAME { $$ = ast_text(AST_TYPE_NAME, $1); }
     ;
 
 base_clause
-    : ':' name
-    | ':' access_keyword name
+    : ':' name { $$ = ast_make(AST_BASE, NULL, $2, NULL, NULL, NULL); }
+    | ':' access_keyword name { $$ = ast_make(AST_BASE, NULL, $2, $3, NULL, NULL); }
     ;
 
 access_keyword
-    : PUBLIC
-    | PRIVATE
-    | PROTECTED
+    : PUBLIC { $$ = ast_named(AST_ACCESS, "public"); }
+    | PRIVATE { $$ = ast_named(AST_ACCESS, "private"); }
+    | PROTECTED { $$ = ast_named(AST_ACCESS, "protected"); }
     ;
 
 class_member_list_opt
-    : %empty
-    | class_member_list
+    : %empty { $$ = NULL; }
+    | class_member_list { $$ = $1; }
     ;
 
 class_member_list
-    : class_member
-    | class_member_list class_member
+    : class_member { $$ = $1; }
+    | class_member_list class_member { ast_append($1, $2); $$ = $1; }
     ;
 
 class_member
-    : access_keyword ':'
-    | declaration
-    | function_definition
+    : access_keyword ':' { $$ = $1; }
+    | declaration { $$ = $1; }
+    | function_definition { $$ = $1; }
     ;
 
 type_qualifier
-    : CONST
-    | VOLATILE
+    : CONST { $$ = ast_named(AST_SPECIFIER, "const"); }
+    | VOLATILE { $$ = ast_named(AST_SPECIFIER, "volatile"); }
     ;
 
 function_specifier
-    : INLINE
-    | VIRTUAL
+    : INLINE { $$ = ast_named(AST_SPECIFIER, "inline"); }
+    | VIRTUAL { $$ = ast_named(AST_SPECIFIER, "virtual"); }
     ;
 
 init_declarator_list
-    : init_declarator
-    | init_declarator_list ',' init_declarator
+    : init_declarator { $$ = $1; }
+    | init_declarator_list ',' init_declarator { ast_append($1, $3); $$ = $1; }
     ;
 
 init_declarator
-    : declarator
-    | declarator '=' initializer
+    : declarator { $$ = $1; }
+    | declarator '=' initializer { $$ = ast_make(AST_INIT, NULL, $1, $3, NULL, NULL); }
     ;
 
 /* No designators and no brace-initialization without '='. */
 initializer
-    : assignment_expression
-    | '{' initializer_list '}'
-    | '{' initializer_list ',' '}'
+    : assignment_expression { $$ = $1; }
+    | '{' initializer_list '}' { $$ = ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL); }
+    | '{' initializer_list ',' '}' { $$ = ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL); }
     ;
 
 initializer_list
-    : initializer
-    | initializer_list ',' initializer
+    : initializer { $$ = $1; }
+    | initializer_list ',' initializer { ast_append($1, $3); $$ = $1; }
     ;
 
 /* Object and function declarators. No empty brackets, so no flexible array. */
 declarator
-    : pointer direct_declarator
-    | direct_declarator
+    : pointer direct_declarator { $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL); }
+    | direct_declarator { $$ = $1; }
     ;
 
 direct_declarator
-    : declarator_id
-    | '(' declarator ')'
-    | direct_declarator '[' constant_expression ']'
-    | direct_declarator '(' parameter_type_list ')'
+    : declarator_id { $$ = $1; }
+    | '(' declarator ')' { $$ = $2; }
+    | direct_declarator '[' constant_expression ']' {
+        $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
+      }
+    | direct_declarator '(' parameter_type_list ')' {
+        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL);
+      }
     ;
 
 /* Point::move is qualified. The last component is an identifier, not a type. */
 declarator_id
-    : IDENTIFIER
-    | name SCOPE declarator_id
+    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
+    | name SCOPE declarator_id { $$ = ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL); }
     ;
 
 pointer
-    : '*'
-    | '*' type_qualifier_list
-    | '*' pointer
-    | '*' type_qualifier_list pointer
+    : '*' { $$ = ast_named(AST_POINTER, "*"); }
+    | '*' type_qualifier_list { $$ = ast_make(AST_POINTER, NULL, $2, NULL, NULL, NULL); }
+    | '*' pointer { $$ = ast_make(AST_POINTER, NULL, $2, NULL, NULL, NULL); }
+    | '*' type_qualifier_list pointer { $$ = ast_make(AST_POINTER, NULL, $2, $3, NULL, NULL); }
     ;
 
 type_qualifier_list
-    : type_qualifier
-    | type_qualifier_list type_qualifier
+    : type_qualifier { $$ = $1; }
+    | type_qualifier_list type_qualifier { ast_append($1, $2); $$ = $1; }
     ;
 
 parameter_type_list
-    : parameter_list
-    | parameter_list ',' ELLIPSIS
+    : parameter_list { $$ = $1; }
+    | parameter_list ',' ELLIPSIS {
+        ast_append($1, ast_named(AST_ELLIPSIS, "..."));
+        $$ = $1;
+      }
     ;
 
 parameter_list
-    : parameter_declaration
-    | parameter_list ',' parameter_declaration
+    : parameter_declaration { $$ = $1; }
+    | parameter_list ',' parameter_declaration { ast_append($1, $3); $$ = $1; }
     ;
 
 parameter_declaration
-    : parameter_specifiers
-    | parameter_specifiers parameter_declarator
+    : parameter_specifiers { $$ = ast_make(AST_PARAMETER, NULL, $1, NULL, NULL, NULL); }
+    | parameter_specifiers parameter_declarator {
+        $$ = ast_make(AST_PARAMETER, NULL, $1, $2, NULL, NULL);
+      }
     ;
 
 /* register is the only storage class both languages allow on a parameter. */
 parameter_specifiers
-    : parameter_specifier
-    | parameter_specifiers parameter_specifier
+    : parameter_specifier { $$ = $1; }
+    | parameter_specifiers parameter_specifier { ast_append($1, $2); $$ = $1; }
     ;
 
 parameter_specifier
-    : type_specifier
-    | type_qualifier
-    | REGISTER
+    : type_specifier { $$ = $1; }
+    | type_qualifier { $$ = $1; }
+    | REGISTER { $$ = ast_named(AST_SPECIFIER, "register"); }
     ;
 
 /* Named and abstract parameter declarators. Empty [] adjusts to a pointer. */
 parameter_declarator
-    : pointer direct_parameter_declarator
-    | direct_parameter_declarator
-    | pointer
+    : pointer direct_parameter_declarator {
+        $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL);
+      }
+    | direct_parameter_declarator { $$ = $1; }
+    | pointer { $$ = $1; }
     ;
 
 direct_parameter_declarator
-    : IDENTIFIER
-    | '(' parameter_declarator ')'
-    | '[' ']'
-    | '[' constant_expression ']'
-    | '(' parameter_type_list ')'
-    | direct_parameter_declarator '[' ']'
-    | direct_parameter_declarator '[' constant_expression ']'
-    | direct_parameter_declarator '(' parameter_type_list ')'
+    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
+    | '(' parameter_declarator ')' { $$ = $2; }
+    | '[' ']' { $$ = ast_named(AST_ARRAY, "[]"); }
+    | '[' constant_expression ']' { $$ = ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL); }
+    | '(' parameter_type_list ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL); }
+    | direct_parameter_declarator '[' ']' {
+        $$ = ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL);
+      }
+    | direct_parameter_declarator '[' constant_expression ']' {
+        $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
+      }
+    | direct_parameter_declarator '(' parameter_type_list ')' {
+        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL);
+      }
     ;
 
 type_name
-    : specifier_qualifier_list
-    | specifier_qualifier_list abstract_declarator
+    : specifier_qualifier_list { $$ = $1; }
+    | specifier_qualifier_list abstract_declarator {
+        $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL);
+      }
     ;
 
 abstract_declarator
-    : pointer
-    | direct_abstract_declarator
-    | pointer direct_abstract_declarator
+    : pointer { $$ = $1; }
+    | direct_abstract_declarator { $$ = $1; }
+    | pointer direct_abstract_declarator {
+        $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL);
+      }
     ;
 
 direct_abstract_declarator
-    : '(' abstract_declarator ')'
-    | '[' ']'
-    | '[' constant_expression ']'
-    | '(' parameter_type_list ')'
-    | direct_abstract_declarator '[' ']'
-    | direct_abstract_declarator '[' constant_expression ']'
-    | direct_abstract_declarator '(' parameter_type_list ')'
+    : '(' abstract_declarator ')' { $$ = $2; }
+    | '[' ']' { $$ = ast_named(AST_ARRAY, "[]"); }
+    | '[' constant_expression ']' { $$ = ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL); }
+    | '(' parameter_type_list ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL); }
+    | direct_abstract_declarator '[' ']' {
+        $$ = ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL);
+      }
+    | direct_abstract_declarator '[' constant_expression ']' {
+        $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
+      }
+    | direct_abstract_declarator '(' parameter_type_list ')' {
+        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL);
+      }
     ;
 
 statement
-    : labeled_statement
-    | compound_statement
-    | expression_statement
-    | selection_statement
-    | iteration_statement
-    | jump_statement
-    | try_statement
-    | throw_statement
+    : labeled_statement { $$ = $1; }
+    | compound_statement { $$ = $1; }
+    | expression_statement { $$ = $1; }
+    | selection_statement { $$ = $1; }
+    | iteration_statement { $$ = $1; }
+    | jump_statement { $$ = $1; }
+    | try_statement { $$ = $1; }
+    | throw_statement { $$ = $1; }
     ;
 
 labeled_statement
-    : IDENTIFIER ':' statement
-    | CASE constant_expression ':' statement
-    | DEFAULT ':' statement
+    : IDENTIFIER ':' statement { $$ = ast_make(AST_LABEL, $1, $3, NULL, NULL, NULL); }
+    | CASE constant_expression ':' statement {
+        $$ = ast_make(AST_CASE, NULL, $2, $4, NULL, NULL);
+      }
+    | DEFAULT ':' statement { $$ = ast_make(AST_DEFAULT, NULL, $3, NULL, NULL, NULL); }
     ;
 
 compound_statement
-    : '{' '}'
-    | '{' block_item_list '}'
+    : '{' '}' { $$ = ast_make(AST_COMPOUND, NULL, NULL, NULL, NULL, NULL); }
+    | '{' block_item_list '}' { $$ = ast_make(AST_COMPOUND, NULL, $2, NULL, NULL, NULL); }
     ;
 
 block_item_list
-    : block_item
-    | block_item_list block_item
+    : block_item { $$ = $1; }
+    | block_item_list block_item { ast_append($1, $2); $$ = $1; }
     ;
 
 block_item
-    : declaration
-    | statement
+    : declaration { $$ = $1; }
+    | statement { $$ = $1; }
     ;
 
 expression_statement
-    : ';'
-    | expression ';'
+    : ';' { $$ = ast_named(AST_EXPR_STMT, ";"); }
+    | expression ';' { $$ = ast_make(AST_EXPR_STMT, NULL, $1, NULL, NULL, NULL); }
     ;
 
 selection_statement
-    : IF '(' expression ')' statement %prec LOWER_THAN_ELSE
-    | IF '(' expression ')' statement ELSE statement
-    | SWITCH '(' expression ')' statement
+    : IF '(' expression ')' statement %prec LOWER_THAN_ELSE {
+        $$ = ast_make(AST_IF, NULL, $3, $5, NULL, NULL);
+      }
+    | IF '(' expression ')' statement ELSE statement {
+        $$ = ast_make(AST_IF, NULL, $3, $5, $7, NULL);
+      }
+    | SWITCH '(' expression ')' statement {
+        $$ = ast_make(AST_SWITCH, NULL, $3, $5, NULL, NULL);
+      }
     ;
 
 iteration_statement
-    : WHILE '(' expression ')' statement
-    | DO statement WHILE '(' expression ')' ';'
-    | FOR '(' expression_opt ';' expression_opt ';' expression_opt ')' statement
-    | FOR '(' declaration expression_opt ';' expression_opt ')' statement
+    : WHILE '(' expression ')' statement {
+        $$ = ast_make(AST_WHILE, NULL, $3, $5, NULL, NULL);
+      }
+    | DO statement WHILE '(' expression ')' ';' {
+        $$ = ast_make(AST_DO, NULL, $2, $5, NULL, NULL);
+      }
+    | FOR '(' expression_opt ';' expression_opt ';' expression_opt ')' statement {
+        $$ = ast_make(AST_FOR, NULL, $3, $5, $7, $9);
+      }
+    | FOR '(' declaration expression_opt ';' expression_opt ')' statement {
+        $$ = ast_make(AST_FOR, NULL, $3, $4, $6, $8);
+      }
     ;
 
 jump_statement
-    : GOTO IDENTIFIER ';'
-    | CONTINUE ';'
-    | BREAK ';'
-    | RETURN ';'
-    | RETURN expression ';'
+    : GOTO IDENTIFIER ';' { $$ = ast_make(AST_GOTO, $2, NULL, NULL, NULL, NULL); }
+    | CONTINUE ';' { $$ = ast_named(AST_CONTINUE, "continue"); }
+    | BREAK ';' { $$ = ast_named(AST_BREAK, "break"); }
+    | RETURN ';' { $$ = ast_named(AST_RETURN, "return"); }
+    | RETURN expression ';' { $$ = ast_make(AST_RETURN, NULL, $2, NULL, NULL, NULL); }
     ;
 
 /*
@@ -444,64 +562,74 @@ jump_statement
  * One or more catches. throw expression; is the C++ throw statement.
  */
 try_statement
-    : TRY compound_statement catch_clause_list
+    : TRY compound_statement catch_clause_list {
+        $$ = ast_make(AST_TRY, NULL, $2, $3, NULL, NULL);
+      }
     ;
 
 catch_clause_list
-    : catch_clause
-    | catch_clause_list catch_clause
+    : catch_clause { $$ = $1; }
+    | catch_clause_list catch_clause { ast_append($1, $2); $$ = $1; }
     ;
 
 catch_clause
-    : CATCH '(' parameter_declaration ')' compound_statement
+    : CATCH '(' parameter_declaration ')' compound_statement {
+        $$ = ast_make(AST_CATCH, NULL, $3, $5, NULL, NULL);
+      }
     ;
 
 throw_statement
-    : THROW assignment_expression ';'
-    | THROW ';'
+    : THROW assignment_expression ';' { $$ = ast_make(AST_THROW, NULL, $2, NULL, NULL, NULL); }
+    | THROW ';' { $$ = ast_named(AST_THROW, "throw"); }
     ;
 
 primary_expression
-    : IDENTIFIER
-    | nested_name
-    | THIS
-    | CONSTANT
-    | STRING_LITERAL
-    | '(' expression ')'
+    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
+    | nested_name { $$ = $1; }
+    | THIS { $$ = ast_named(AST_THIS, "this"); }
+    | CONSTANT { $$ = ast_text(AST_LITERAL, $1); }
+    | STRING_LITERAL { $$ = ast_text(AST_LITERAL, $1); }
+    | '(' expression ')' { $$ = $2; }
     ;
 
 /* A nested name has at least one '::', so a bare type name is not an expression. */
 nested_name
-    : name SCOPE name
-    | nested_name SCOPE name
+    : name SCOPE name { $$ = ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL); }
+    | nested_name SCOPE name { $$ = ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL); }
     ;
 
 postfix_expression
-    : primary_expression
-    | postfix_expression '[' expression ']'
-    | postfix_expression '(' ')'
-    | postfix_expression '(' argument_expression_list ')'
-    | postfix_expression '.' IDENTIFIER
-    | postfix_expression ARROW IDENTIFIER
-    | postfix_expression INC
-    | postfix_expression DEC
+    : primary_expression { $$ = $1; }
+    | postfix_expression '[' expression ']' {
+        $$ = ast_make(AST_INDEX, NULL, $1, $3, NULL, NULL);
+      }
+    | postfix_expression '(' ')' { $$ = ast_make(AST_CALL, NULL, $1, NULL, NULL, NULL); }
+    | postfix_expression '(' argument_expression_list ')' {
+        $$ = ast_make(AST_CALL, NULL, $1, $3, NULL, NULL);
+      }
+    | postfix_expression '.' IDENTIFIER { $$ = ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL); }
+    | postfix_expression ARROW IDENTIFIER { $$ = ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL); }
+    | postfix_expression INC { $$ = ast_unary("++", $1); }
+    | postfix_expression DEC { $$ = ast_unary("--", $1); }
     ;
 
 argument_expression_list
-    : assignment_expression
-    | argument_expression_list ',' assignment_expression
+    : assignment_expression { $$ = $1; }
+    | argument_expression_list ',' assignment_expression { ast_append($1, $3); $$ = $1; }
     ;
 
 unary_expression
-    : postfix_expression
-    | INC unary_expression
-    | DEC unary_expression
-    | unary_operator cast_expression
-    | SIZEOF unary_expression
-    | SIZEOF '(' type_name ')'
-    | NEW new_type
-    | NEW new_type '(' ')'
-    | NEW new_type '(' argument_expression_list ')'
+    : postfix_expression { $$ = $1; }
+    | INC unary_expression { $$ = ast_unary("++", $2); }
+    | DEC unary_expression { $$ = ast_unary("--", $2); }
+    | unary_operator cast_expression { $$ = ast_unary($1, $2); }
+    | SIZEOF unary_expression { $$ = ast_make(AST_SIZEOF, NULL, $2, NULL, NULL, NULL); }
+    | SIZEOF '(' type_name ')' { $$ = ast_make(AST_SIZEOF, NULL, $3, NULL, NULL, NULL); }
+    | NEW new_type { $$ = ast_make(AST_NEW, NULL, $2, NULL, NULL, NULL); }
+    | NEW new_type '(' ')' { $$ = ast_make(AST_NEW, NULL, $2, NULL, NULL, NULL); }
+    | NEW new_type '(' argument_expression_list ')' {
+        $$ = ast_make(AST_NEW, NULL, $2, $4, NULL, NULL);
+      }
     ;
 
 /*
@@ -510,130 +638,134 @@ unary_expression
  * stays the multiplication operator.
  */
 new_type
-    : name
-    | VOID
-    | CHAR
-    | SHORT
-    | INT
-    | LONG
-    | FLOAT
-    | DOUBLE
-    | SIGNED
-    | UNSIGNED
-    | STRUCT IDENTIFIER
-    | STRUCT TYPEDEF_NAME
-    | ENUM IDENTIFIER
-    | ENUM TYPEDEF_NAME
+    : name { $$ = $1; }
+    | VOID { $$ = ast_named(AST_SPECIFIER, "void"); }
+    | CHAR { $$ = ast_named(AST_SPECIFIER, "char"); }
+    | SHORT { $$ = ast_named(AST_SPECIFIER, "short"); }
+    | INT { $$ = ast_named(AST_SPECIFIER, "int"); }
+    | LONG { $$ = ast_named(AST_SPECIFIER, "long"); }
+    | FLOAT { $$ = ast_named(AST_SPECIFIER, "float"); }
+    | DOUBLE { $$ = ast_named(AST_SPECIFIER, "double"); }
+    | SIGNED { $$ = ast_named(AST_SPECIFIER, "signed"); }
+    | UNSIGNED { $$ = ast_named(AST_SPECIFIER, "unsigned"); }
+    | STRUCT IDENTIFIER { $$ = ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL); }
+    | STRUCT TYPEDEF_NAME { $$ = ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL); }
+    | ENUM IDENTIFIER { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
+    | ENUM TYPEDEF_NAME { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
     ;
 
 unary_operator
-    : '&'
-    | '*'
-    | '+'
-    | '-'
-    | '~'
-    | '!'
+    : '&' { $$ = "&"; }
+    | '*' { $$ = "*"; }
+    | '+' { $$ = "+"; }
+    | '-' { $$ = "-"; }
+    | '~' { $$ = "~"; }
+    | '!' { $$ = "!"; }
     ;
 
 cast_expression
-    : unary_expression
-    | '(' type_name ')' cast_expression
+    : unary_expression { $$ = $1; }
+    | '(' type_name ')' cast_expression { $$ = ast_make(AST_CAST, NULL, $2, $4, NULL, NULL); }
     ;
 
 multiplicative_expression
-    : cast_expression
-    | multiplicative_expression '*' cast_expression
-    | multiplicative_expression '/' cast_expression
-    | multiplicative_expression '%' cast_expression
+    : cast_expression { $$ = $1; }
+    | multiplicative_expression '*' cast_expression { $$ = ast_binary($1, "*", $3); }
+    | multiplicative_expression '/' cast_expression { $$ = ast_binary($1, "/", $3); }
+    | multiplicative_expression '%' cast_expression { $$ = ast_binary($1, "%", $3); }
     ;
 
 additive_expression
-    : multiplicative_expression
-    | additive_expression '+' multiplicative_expression
-    | additive_expression '-' multiplicative_expression
+    : multiplicative_expression { $$ = $1; }
+    | additive_expression '+' multiplicative_expression { $$ = ast_binary($1, "+", $3); }
+    | additive_expression '-' multiplicative_expression { $$ = ast_binary($1, "-", $3); }
     ;
 
 shift_expression
-    : additive_expression
-    | shift_expression SHL additive_expression
-    | shift_expression SHR additive_expression
+    : additive_expression { $$ = $1; }
+    | shift_expression SHL additive_expression { $$ = ast_binary($1, "<<", $3); }
+    | shift_expression SHR additive_expression { $$ = ast_binary($1, ">>", $3); }
     ;
 
 relational_expression
-    : shift_expression
-    | relational_expression '<' shift_expression
-    | relational_expression '>' shift_expression
-    | relational_expression LE shift_expression
-    | relational_expression GE shift_expression
+    : shift_expression { $$ = $1; }
+    | relational_expression '<' shift_expression { $$ = ast_binary($1, "<", $3); }
+    | relational_expression '>' shift_expression { $$ = ast_binary($1, ">", $3); }
+    | relational_expression LE shift_expression { $$ = ast_binary($1, "<=", $3); }
+    | relational_expression GE shift_expression { $$ = ast_binary($1, ">=", $3); }
     ;
 
 equality_expression
-    : relational_expression
-    | equality_expression EQEQ relational_expression
-    | equality_expression NOTEQ relational_expression
+    : relational_expression { $$ = $1; }
+    | equality_expression EQEQ relational_expression { $$ = ast_binary($1, "==", $3); }
+    | equality_expression NOTEQ relational_expression { $$ = ast_binary($1, "!=", $3); }
     ;
 
 and_expression
-    : equality_expression
-    | and_expression '&' equality_expression
+    : equality_expression { $$ = $1; }
+    | and_expression '&' equality_expression { $$ = ast_binary($1, "&", $3); }
     ;
 
 exclusive_or_expression
-    : and_expression
-    | exclusive_or_expression '^' and_expression
+    : and_expression { $$ = $1; }
+    | exclusive_or_expression '^' and_expression { $$ = ast_binary($1, "^", $3); }
     ;
 
 inclusive_or_expression
-    : exclusive_or_expression
-    | inclusive_or_expression '|' exclusive_or_expression
+    : exclusive_or_expression { $$ = $1; }
+    | inclusive_or_expression '|' exclusive_or_expression { $$ = ast_binary($1, "|", $3); }
     ;
 
 logical_and_expression
-    : inclusive_or_expression
-    | logical_and_expression ANDAND inclusive_or_expression
+    : inclusive_or_expression { $$ = $1; }
+    | logical_and_expression ANDAND inclusive_or_expression { $$ = ast_binary($1, "&&", $3); }
     ;
 
 logical_or_expression
-    : logical_and_expression
-    | logical_or_expression OROR logical_and_expression
+    : logical_and_expression { $$ = $1; }
+    | logical_or_expression OROR logical_and_expression { $$ = ast_binary($1, "||", $3); }
     ;
 
 conditional_expression
-    : logical_or_expression
-    | logical_or_expression '?' expression ':' conditional_expression
+    : logical_or_expression { $$ = $1; }
+    | logical_or_expression '?' expression ':' conditional_expression {
+        $$ = ast_make(AST_CONDITIONAL, NULL, $1, $3, $5, NULL);
+      }
     ;
 
 assignment_expression
-    : conditional_expression
-    | unary_expression assignment_operator assignment_expression
+    : conditional_expression { $$ = $1; }
+    | unary_expression assignment_operator assignment_expression {
+        $$ = ast_assign($1, $2, $3);
+      }
     ;
 
 assignment_operator
-    : '='
-    | ADD_ASSIGN
-    | SUB_ASSIGN
-    | MUL_ASSIGN
-    | DIV_ASSIGN
-    | MOD_ASSIGN
-    | SHL_ASSIGN
-    | SHR_ASSIGN
-    | AND_ASSIGN
-    | XOR_ASSIGN
-    | OR_ASSIGN
+    : '=' { $$ = "="; }
+    | ADD_ASSIGN { $$ = "+="; }
+    | SUB_ASSIGN { $$ = "-="; }
+    | MUL_ASSIGN { $$ = "*="; }
+    | DIV_ASSIGN { $$ = "/="; }
+    | MOD_ASSIGN { $$ = "%="; }
+    | SHL_ASSIGN { $$ = "<<="; }
+    | SHR_ASSIGN { $$ = ">>="; }
+    | AND_ASSIGN { $$ = "&="; }
+    | XOR_ASSIGN { $$ = "^="; }
+    | OR_ASSIGN { $$ = "|="; }
     ;
 
 expression
-    : assignment_expression
-    | expression ',' assignment_expression
+    : assignment_expression { $$ = $1; }
+    | expression ',' assignment_expression { $$ = ast_binary($1, ",", $3); }
     ;
 
 expression_opt
-    : %empty
-    | expression
+    : %empty { $$ = NULL; }
+    | expression { $$ = $1; }
     ;
 
 constant_expression
-    : conditional_expression
+    : conditional_expression { $$ = $1; }
     ;
 
 %%
