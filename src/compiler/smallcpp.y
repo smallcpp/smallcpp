@@ -14,15 +14,22 @@
  * and using namespace name; are supported. Anonymous namespaces are not.
  * Two functions may share a name when their parameter lists differ.
  * Operator overloading is not supported. super is a keyword for the base.
- * smallcpp does not add templates, operator overloading, or the C++
- * standard library. print and format are native, not declarations the
+ * A method may be const, written after its parameter list. () is an
+ * empty parameter list and means no parameters. bool, true, and false
+ * are keywords. A new-expression may allocate an array or a pointer.
+ * Struct and union members may be bit-fields. An initializer may use a
+ * designator or a brace list. A compound literal is (type){ ... }.
+ * smallcpp does not add templates, lambdas, references, ref-qualifiers,
+ * operator overloading, or the C++ standard library. print and format
+ * are native, not declarations the
  * program supplies. print writes formatted text. format produces the
  * formatted string. Each takes a string literal in C++23 format-string
  * syntax, then the arguments that fill its replacement fields.
  *
  * No keyword has an sc_ prefix. class, namespace, public, private,
- * protected, virtual, try, catch, throw, new, this, print, and format are
- * the plain spellings, not macros. namespace uses C++ syntax:
+ * protected, virtual, try, catch, throw, new, this, print, format, bool,
+ * true, and false are the plain spellings, not macros. namespace uses
+ * C++ syntax:
  * namespace name { ... }.
  * A qualified name uses '::'. A new-expression creates a pointer. delete
  * is a keyword and a no-op, because collection is precise, but its operand
@@ -40,26 +47,21 @@
  *   - restrict
  *   - flexible array members. Empty '[]' is recognized only on parameters,
  *     where both languages adjust the parameter to a pointer
- *   - designated initializers
- *   - compound literals, which are C99 and not C++11
- *   - C++11 brace initialization, references, rvalue references, auto as a
- *     type, lambdas, constexpr, and trailing return types. auto is only
+ *   - C++11 brace initialization without '='. A brace list is written
+ *     after '='. references, rvalue references, auto as a type, lambdas,
+ *     constexpr, trailing return types, and ref-qualifiers. auto is only
  *     the C storage-class specifier
- *   - _Bool, _Complex, and _Imaginary, which are not C++11. bool, true,
- *     false, and wchar_t are not keywords here; they are not C99 keywords
- *   - K&R definitions and a parameter list written (). Write (void). The
- *     two languages disagree about what () means
- *   - empty structs, anonymous struct members, and anonymous union members
+ *   - _Bool, _Complex, and _Imaginary, which are not C++11. wchar_t is
+ *     not a keyword
+ *   - K&R definitions that name parameters before the body. () has no
+ *     parameters
+ *   - empty structs, anonymous struct members, anonymous union members,
+ *     and unnamed bit-fields. A bit-field names its member
  *   - u, U, and u8 string prefixes, which are not C99
  *   - anonymous namespaces. A namespace has a name
  *   - templates and operator overloading
- *   - bit-fields. A ':' after a class name introduces the base-clause.
- *     A ':' after a constructor's parameter list introduces its
- *     initializer list
  *   - an array bound is syntactically an expression. A bound that is not an
  *     integer constant expression is a VLA and is excluded
- *   - a new-expression names a class, typedef, or plain type specifier.
- *     It does not include a pointer or array declarator
  */
 
 %{
@@ -253,6 +255,43 @@ static struct AstNode *make_mem_init(struct AstNode *name, struct AstNode *args)
 {
     return ast_make(AST_MEM_INIT, steal_text(name), args, NULL, NULL, NULL);
 }
+
+/* The innermost pointer or array has no element type yet. */
+static struct AstNode *graft(struct AstNode *outer, struct AstNode *inner)
+{
+    struct AstNode *node = outer;
+
+    if (outer == NULL)
+        return inner;
+    while (node->a != NULL)
+        node = node->a;
+    node->a = inner;
+    return outer;
+}
+
+static struct AstNode *make_new(struct AstNode *base, struct AstNode *pointer,
+                                struct AstNode *array, struct AstNode *args)
+{
+    struct AstNode *type = base;
+
+    if (pointer != NULL)
+        type = graft(pointer, type);
+    if (array != NULL)
+        type = graft(array, type);
+    return ast_new_expr(type, args);
+}
+
+static struct AstNode *designate(struct AstNode *designators, struct AstNode *value)
+{
+    struct AstNode *last = designators;
+
+    if (last == NULL)
+        return value;
+    while (last->next != NULL)
+        last = last->next;
+    last->b = value;
+    return designators;
+}
 %}
 
 %locations
@@ -272,6 +311,7 @@ static struct AstNode *make_mem_init(struct AstNode *name, struct AstNode *args)
 %token PRINT "print" FORMAT "format"
 %token NULLPTR "nullptr" NULL_KEYWORD "NULL" DELETE "delete"
 %token USING "using" SUPER "super"
+%token BOOL "bool" TRUE "true" FALSE "false"
 %token AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
 %token EXTERN FLOAT FOR GOTO IF INLINE INT LONG REGISTER RETURN SHORT
 %token SIGNED SIZEOF STATIC STRUCT SWITCH TYPEDEF UNION UNSIGNED VOID
@@ -288,6 +328,14 @@ static struct AstNode *make_mem_init(struct AstNode *name, struct AstNode *args)
 /* Dangling else binds to the nearest if, as in both C99 and C++11. */
 %precedence LOWER_THAN_ELSE
 %precedence ELSE
+
+/*
+ * new int * p is a pointer type, and new int[n] is an array. The short
+ * new-expression yields to '*' and '['. (new int) * p multiplies, and
+ * (new int)[0] subscripts.
+ */
+%precedence NEW_BARE
+%nonassoc '*'
 
 %expect 0
 
@@ -314,6 +362,8 @@ static struct AstNode *make_mem_init(struct AstNode *name, struct AstNode *args)
 %type <node> mem_initializer_list mem_initializer using_declaration using_name
 %type <node> primary_expression nested_name postfix_expression format_expression
 %type <node> argument_expression_list unary_expression new_type cast_expression
+%type <node> new_pointer new_arrays brace_initializer cv_qualifier_opt
+%type <node> cv_qualifier_seq designator designator_list
 %type <node> multiplicative_expression additive_expression shift_expression
 %type <node> relational_expression equality_expression and_expression
 %type <node> exclusive_or_expression inclusive_or_expression
@@ -419,6 +469,7 @@ type_specifier
     | DOUBLE { $$ = ast_named(AST_SPECIFIER, "double"); }
     | SIGNED { $$ = ast_named(AST_SPECIFIER, "signed"); }
     | UNSIGNED { $$ = ast_named(AST_SPECIFIER, "unsigned"); }
+    | BOOL { $$ = ast_named(AST_SPECIFIER, "bool"); }
     | struct_or_union_specifier { $$ = $1; }
     | enum_specifier { $$ = $1; }
     | class_specifier { $$ = $1; }
@@ -470,9 +521,13 @@ struct_declarator_list
     | struct_declarator_list ',' struct_declarator { ast_append($1, $3); $$ = $1; }
     ;
 
-/* No bit-fields. A ':' after a class name is the base-clause. */
+/* A bit-field is a struct or union member. A ':' after a class name is
+ * still the base-clause, and a ':' after a constructor is its initializer. */
 struct_declarator
     : declarator { $$ = $1; }
+    | declarator ':' constant_expression {
+        $$ = ast_make(AST_BITFIELD, NULL, $1, $3, NULL, NULL);
+      }
     ;
 
 enum_specifier
@@ -673,16 +728,37 @@ init_declarator
     | declarator '=' initializer { $$ = ast_make(AST_INIT, NULL, $1, $3, NULL, NULL); }
     ;
 
-/* No designators and no brace-initialization without '='. */
+/* Brace initialization is written after '='. T x{...} is not supported.
+ * .member = value and [index] = value are designated initializers. */
 initializer
     : assignment_expression { $$ = $1; }
+    | brace_initializer { $$ = $1; }
+    ;
+
+brace_initializer
+    : '{' '}' { $$ = ast_make(AST_INIT, NULL, NULL, NULL, NULL, NULL); }
     | '{' initializer_list '}' { $$ = ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL); }
     | '{' initializer_list ',' '}' { $$ = ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL); }
     ;
 
 initializer_list
     : initializer { $$ = $1; }
+    | designator_list '=' initializer { $$ = designate($1, $3); }
     | initializer_list ',' initializer { ast_append($1, $3); $$ = $1; }
+    | initializer_list ',' designator_list '=' initializer {
+        ast_append($1, designate($3, $5));
+        $$ = $1;
+      }
+    ;
+
+designator_list
+    : designator { $$ = $1; }
+    | designator_list designator { ast_append($1, $2); $$ = $1; }
+    ;
+
+designator
+    : '.' IDENTIFIER { $$ = ast_make(AST_DESIGNATED, $2, NULL, NULL, NULL, NULL); }
+    | '[' constant_expression ']' { $$ = ast_make(AST_DESIGNATED, NULL, $2, NULL, NULL, NULL); }
     ;
 
 /* Object and function declarators. No empty brackets, so no flexible array. */
@@ -697,9 +773,23 @@ direct_declarator
     | direct_declarator '[' constant_expression ']' {
         $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
       }
-    | direct_declarator '(' parameter_type_list ')' {
-        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL);
+    | direct_declarator '(' ')' cv_qualifier_opt {
+        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, NULL, $4, NULL);
       }
+    | direct_declarator '(' parameter_type_list ')' cv_qualifier_opt {
+        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, $5, NULL);
+      }
+    ;
+
+/* const and volatile after a parameter list. No ref-qualifiers. */
+cv_qualifier_opt
+    : %empty { $$ = NULL; }
+    | cv_qualifier_seq { $$ = $1; }
+    ;
+
+cv_qualifier_seq
+    : type_qualifier { $$ = $1; }
+    | cv_qualifier_seq type_qualifier { ast_append($1, $2); $$ = $1; }
     ;
 
 /* Point::move is qualified. The last component is an identifier, not a type. */
@@ -771,6 +861,7 @@ direct_parameter_declarator
     | '(' parameter_declarator ')' { $$ = $2; }
     | '[' ']' { $$ = ast_named(AST_ARRAY, "[]"); }
     | '[' constant_expression ']' { $$ = ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL); }
+    | '(' ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, NULL, NULL, NULL, NULL); }
     | '(' parameter_type_list ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL); }
     | direct_parameter_declarator '[' ']' {
         $$ = ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL);
@@ -802,6 +893,7 @@ direct_abstract_declarator
     : '(' abstract_declarator ')' { $$ = $2; }
     | '[' ']' { $$ = ast_named(AST_ARRAY, "[]"); }
     | '[' constant_expression ']' { $$ = ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL); }
+    | '(' ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, NULL, NULL, NULL, NULL); }
     | '(' parameter_type_list ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL); }
     | direct_abstract_declarator '[' ']' {
         $$ = ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL);
@@ -923,6 +1015,8 @@ primary_expression
     : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
     | nested_name { $$ = $1; }
     | THIS { $$ = ast_named(AST_THIS, "this"); }
+    | TRUE { $$ = ast_named(AST_LITERAL, "true"); }
+    | FALSE { $$ = ast_named(AST_LITERAL, "false"); }
     | NULLPTR { $$ = ast_null("nullptr"); }
     | NULL_KEYWORD { $$ = ast_null("NULL"); }
     | SUPER { $$ = ast_named(AST_SUPER, "super"); }
@@ -963,6 +1057,9 @@ postfix_expression
     | postfix_expression '(' argument_expression_list ')' {
         $$ = ast_make(AST_CALL, NULL, $1, $3, NULL, NULL);
       }
+    | '(' type_name ')' brace_initializer {
+        $$ = ast_make(AST_COMPOUND_LITERAL, NULL, $2, $4, NULL, NULL);
+      }
     | postfix_expression '.' IDENTIFIER { $$ = ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL); }
     | postfix_expression ARROW IDENTIFIER { $$ = ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL); }
     | postfix_expression INC { $$ = ast_unary("++", $1); }
@@ -981,9 +1078,16 @@ unary_expression
     | unary_operator cast_expression { $$ = ast_unary($1, $2); }
     | SIZEOF unary_expression { $$ = ast_make(AST_SIZEOF, NULL, $2, NULL, NULL, NULL); }
     | SIZEOF '(' type_name ')' { $$ = ast_make(AST_SIZEOF, NULL, $3, NULL, NULL, NULL); }
-    | NEW new_type { $$ = ast_new_expr($2, NULL); }
-    | NEW new_type '(' ')' { $$ = ast_new_expr($2, NULL); }
-    | NEW new_type '(' argument_expression_list ')' { $$ = ast_new_expr($2, $4); }
+    | NEW new_type %prec NEW_BARE { $$ = make_new($2, NULL, NULL, NULL); }
+    | NEW new_type new_pointer { $$ = make_new($2, $3, NULL, NULL); }
+    | NEW new_type new_arrays { $$ = make_new($2, NULL, $3, NULL); }
+    | NEW new_type new_pointer new_arrays { $$ = make_new($2, $3, $4, NULL); }
+    | NEW new_type '(' ')' { $$ = make_new($2, NULL, NULL, NULL); }
+    | NEW new_type '(' argument_expression_list ')' { $$ = make_new($2, NULL, NULL, $4); }
+    | NEW new_type new_pointer '(' ')' { $$ = make_new($2, $3, NULL, NULL); }
+    | NEW new_type new_pointer '(' argument_expression_list ')' {
+        $$ = make_new($2, $3, NULL, $5);
+      }
     | DELETE cast_expression {
         if (!operand_is_pointer($2))
             yyerror("delete operand is not a pointer");
@@ -992,9 +1096,9 @@ unary_expression
     ;
 
 /*
- * new takes a class or typedef name, or one type specifier.
- * Pointer and array types are not written in the new-expression, so '*'
- * stays the multiplication operator.
+ * new takes a class or typedef name, or one type specifier, then an
+ * optional pointer declarator and an optional array bound. '*' and '['
+ * belong to the new-expression. (new int) * p is multiplication.
  */
 new_type
     : name { $$ = $1; }
@@ -1007,10 +1111,23 @@ new_type
     | DOUBLE { $$ = ast_named(AST_SPECIFIER, "double"); }
     | SIGNED { $$ = ast_named(AST_SPECIFIER, "signed"); }
     | UNSIGNED { $$ = ast_named(AST_SPECIFIER, "unsigned"); }
+    | BOOL { $$ = ast_named(AST_SPECIFIER, "bool"); }
     | STRUCT IDENTIFIER { $$ = ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL); }
     | STRUCT TYPEDEF_NAME { $$ = ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL); }
     | ENUM IDENTIFIER { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
     | ENUM TYPEDEF_NAME { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
+    ;
+
+new_pointer
+    : '*' { $$ = ast_named(AST_POINTER, "*"); }
+    | '*' new_pointer { $$ = ast_make(AST_POINTER, strdup("*"), $2, NULL, NULL, NULL); }
+    ;
+
+new_arrays
+    : '[' expression ']' { $$ = ast_make(AST_ARRAY, NULL, NULL, $2, NULL, NULL); }
+    | '[' expression ']' new_arrays {
+        $$ = ast_make(AST_ARRAY, NULL, $4, $2, NULL, NULL);
+      }
     ;
 
 unary_operator

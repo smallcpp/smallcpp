@@ -1,0 +1,8 @@
+class Box {
+    int value;
+    int read(void) const;
+};
+
+int Box::read(void) const {
+    return this->value;
+}

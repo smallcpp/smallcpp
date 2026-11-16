@@ -19,5 +19,13 @@ Inputs for `parse_test`. Source files use the `.scpp` extension.
 - `overload.scpp` parses two functions named `sum` with different parameter lists. The test fails unless both are present. Operator overloading does not parse.
 - `multi-base.scpp` parses a class with two bases and a constructor that initializes both. The test fails if either base or either base initializer is missing.
 - `super.scpp` parses `super` and `this`. `super` names the base. The test fails if either keyword is missing.
-- `reject-designated.scpp` and `reject-class.scpp` do not parse.
+- `const-method.scpp` parses a method with `const` after the parameter list. The test fails if that qualifier is missing.
+- `new-array.scpp` parses `new` of an array and `new` of a pointer type. The test fails if either form is missing.
+- `bool.scpp` parses `bool`, `true`, and `false`. The test fails if any of them is missing.
+- `bit-field.scpp` parses named bit-fields. The test fails if a width is missing.
+- `designated.scpp` parses `.member = value` and `[index] = value`. The test fails if either designator is missing.
+- `compound-literal.scpp` parses `(type){ ... }`. The test fails if that node is missing.
+- `empty-params.scpp` parses `()` as no parameters, and `(void)` still parses. The test fails if either form is missing.
+- `brace-init.scpp` parses a brace initializer for a struct and for an array. The test fails if either list is missing.
+- `reject-class.scpp` does not parse.
 - `reject-errors.scpp` has more than one error. `parse_test` prints more than one diagnostic and exits non-zero.

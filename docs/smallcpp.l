@@ -12,6 +12,7 @@
  * delete is a keyword. It is not an identifier.
  * super names the base. using introduces a using-declaration or a
  * using-directive. Neither is a macro.
+ * bool, true, and false are keywords.
  */
 %option noyywrap
 %option nodefault
@@ -132,6 +133,7 @@ static int keyword_token(const char *name)
     static const struct keyword keywords[] = {
         {"NULL", NULL_KEYWORD},
         {"auto", AUTO},
+        {"bool", BOOL},
         {"break", BREAK},
         {"case", CASE},
         {"catch", CATCH},
@@ -146,6 +148,7 @@ static int keyword_token(const char *name)
         {"else", ELSE},
         {"enum", ENUM},
         {"extern", EXTERN},
+        {"false", FALSE},
         {"float", FLOAT},
         {"for", FOR},
         {"format", FORMAT},
@@ -172,6 +175,7 @@ static int keyword_token(const char *name)
         {"switch", SWITCH},
         {"this", THIS},
         {"throw", THROW},
+        {"true", TRUE},
         {"try", TRY},
         {"typedef", TYPEDEF},
         {"union", UNION},

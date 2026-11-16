@@ -64,7 +64,10 @@ typedef enum AstKind {
     AST_DESTRUCTOR,
     AST_MEM_INIT,
     AST_USING,
-    AST_SUPER
+    AST_SUPER,
+    AST_BITFIELD,
+    AST_DESIGNATED,
+    AST_COMPOUND_LITERAL
 } AstKind;
 
 typedef struct AstNode {

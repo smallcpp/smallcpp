@@ -508,6 +508,252 @@ static int super_ok(const AstNode *root)
     return ok;
 }
 
+static int text_is(const AstNode *node, const char *text)
+{
+    return node != NULL && node->text != NULL && strcmp(node->text, text) == 0;
+}
+
+static const AstNode *function_id(const AstNode *decl)
+{
+    const AstNode *id;
+
+    if (decl == NULL || decl->kind != AST_FUNCTION_DECL)
+        return NULL;
+    id = decl->a;
+    while (id != NULL && id->kind == AST_QUALIFIED)
+        id = id->b;
+    return id;
+}
+
+static int walk_const_method(const AstNode *node)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_METHOD && text_is(function_id(node->b), "read")
+        && node->b->c != NULL && node->b->c->kind == AST_SPECIFIER
+        && text_is(node->b->c, "const") && node->c != NULL
+        && node->c->kind == AST_COMPOUND)
+        return 1;
+    return walk_const_method(node->a) || walk_const_method(node->b)
+        || walk_const_method(node->c) || walk_const_method(node->d)
+        || walk_const_method(node->next);
+}
+
+static int const_method_ok(const AstNode *root)
+{
+    if (!walk_const_method(root)) {
+        fprintf(stderr, "syntax tree has no const method read\n");
+        return 0;
+    }
+    return 1;
+}
+
+static void walk_new_forms(const AstNode *node, int *array, int *pointer)
+{
+    if (node == NULL)
+        return;
+    if (node->kind == AST_NEW && node->a != NULL && node->a->kind == AST_POINTER
+        && node->a->a != NULL) {
+        if (node->a->a->kind == AST_ARRAY)
+            *array = 1;
+        if (node->a->a->kind == AST_POINTER)
+            *pointer = 1;
+    }
+    walk_new_forms(node->a, array, pointer);
+    walk_new_forms(node->b, array, pointer);
+    walk_new_forms(node->c, array, pointer);
+    walk_new_forms(node->d, array, pointer);
+    walk_new_forms(node->next, array, pointer);
+}
+
+static int new_forms_ok(const AstNode *root)
+{
+    int array = 0;
+    int pointer = 0;
+
+    walk_new_forms(root, &array, &pointer);
+    if (!array) {
+        fprintf(stderr, "syntax tree has no array new-expression\n");
+        return 0;
+    }
+    if (!pointer) {
+        fprintf(stderr, "syntax tree has no pointer-type new-expression\n");
+        return 0;
+    }
+    return 1;
+}
+
+static int has_specifier(const AstNode *node, const char *text)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_SPECIFIER && text_is(node, text))
+        return 1;
+    return has_specifier(node->a, text) || has_specifier(node->b, text)
+        || has_specifier(node->c, text) || has_specifier(node->d, text)
+        || has_specifier(node->next, text);
+}
+
+static int has_literal(const AstNode *node, const char *text)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_LITERAL && text_is(node, text))
+        return 1;
+    return has_literal(node->a, text) || has_literal(node->b, text)
+        || has_literal(node->c, text) || has_literal(node->d, text)
+        || has_literal(node->next, text);
+}
+
+static int bool_ok(const AstNode *root)
+{
+    int ok = 1;
+
+    if (!has_specifier(root, "bool")) {
+        fprintf(stderr, "syntax tree has no bool specifier\n");
+        ok = 0;
+    }
+    if (!has_literal(root, "true") || !has_literal(root, "false")) {
+        fprintf(stderr, "syntax tree is missing true or false\n");
+        ok = 0;
+    }
+    return ok;
+}
+
+static int walk_bit_field(const AstNode *node, const char *name, const char *width)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_BITFIELD && text_is(node->a, name)
+        && node->b != NULL && node->b->kind == AST_LITERAL && text_is(node->b, width))
+        return 1;
+    return walk_bit_field(node->a, name, width) || walk_bit_field(node->b, name, width)
+        || walk_bit_field(node->c, name, width) || walk_bit_field(node->d, name, width)
+        || walk_bit_field(node->next, name, width);
+}
+
+static int bit_field_ok(const AstNode *root)
+{
+    int ok = require_kind(root, AST_BITFIELD);
+
+    if (!walk_bit_field(root, "ready", "1") || !walk_bit_field(root, "code", "7")) {
+        fprintf(stderr, "syntax tree is missing a named bit-field\n");
+        ok = 0;
+    }
+    return ok;
+}
+
+static int walk_designated(const AstNode *node, int *member, int *index)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_DESIGNATED) {
+        if (text_is(node, "x") && node->b != NULL && text_is(node->b, "1"))
+            *member = 1;
+        if (node->text == NULL && node->a != NULL && text_is(node->a, "1")
+            && node->b != NULL && text_is(node->b, "4"))
+            *index = 1;
+    }
+    return walk_designated(node->a, member, index) || walk_designated(node->b, member, index)
+        || walk_designated(node->c, member, index) || walk_designated(node->d, member, index)
+        || walk_designated(node->next, member, index);
+}
+
+static int designated_ok(const AstNode *root)
+{
+    int member = 0;
+    int index = 0;
+
+    walk_designated(root, &member, &index);
+    if (!member) {
+        fprintf(stderr, "syntax tree has no member designator\n");
+        return 0;
+    }
+    if (!index) {
+        fprintf(stderr, "syntax tree has no array designator\n");
+        return 0;
+    }
+    return 1;
+}
+
+static int walk_compound(const AstNode *node)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_COMPOUND_LITERAL && node->a != NULL && node->a->kind == AST_STRUCT
+        && text_is(node->a, "Point") && node->b != NULL && node->b->kind == AST_INIT)
+        return 1;
+    return walk_compound(node->a) || walk_compound(node->b) || walk_compound(node->c)
+        || walk_compound(node->d) || walk_compound(node->next);
+}
+
+static int compound_literal_ok(const AstNode *root)
+{
+    if (!walk_compound(root)) {
+        fprintf(stderr, "syntax tree has no compound literal\n");
+        return 0;
+    }
+    return 1;
+}
+
+static void walk_functions(const AstNode *node, int *ready, int *take)
+{
+    if (node == NULL)
+        return;
+    if (node->kind == AST_FUNCTION_DECL) {
+        if (text_is(function_id(node), "ready") && node->b == NULL)
+            *ready = 1;
+        if (text_is(function_id(node), "take") && node->b != NULL
+            && node->b->kind == AST_PARAMETER)
+            *take = 1;
+    }
+    walk_functions(node->a, ready, take);
+    walk_functions(node->b, ready, take);
+    walk_functions(node->c, ready, take);
+    walk_functions(node->d, ready, take);
+    walk_functions(node->next, ready, take);
+}
+
+static int empty_params_ok(const AstNode *root)
+{
+    int ready = 0;
+    int take = 0;
+
+    walk_functions(root, &ready, &take);
+    if (!ready) {
+        fprintf(stderr, "syntax tree has no empty parameter list\n");
+        return 0;
+    }
+    if (!take) {
+        fprintf(stderr, "syntax tree has no (void) parameter list\n");
+        return 0;
+    }
+    return 1;
+}
+
+static int brace_pair(const AstNode *node, const char *first, const char *second)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_INIT && node->a != NULL && node->a->kind == AST_LITERAL
+        && text_is(node->a, first) && node->a->next != NULL && text_is(node->a->next, second))
+        return 1;
+    return brace_pair(node->a, first, second) || brace_pair(node->b, first, second)
+        || brace_pair(node->c, first, second) || brace_pair(node->d, first, second)
+        || brace_pair(node->next, first, second);
+}
+
+static int brace_init_ok(const AstNode *root)
+{
+    int ok = require_kind(root, AST_STRUCT) && require_kind(root, AST_ARRAY);
+
+    if (!brace_pair(root, "1", "2") || !brace_pair(root, "3", "4")) {
+        fprintf(stderr, "syntax tree is missing a brace initializer\n");
+        ok = 0;
+    }
+    return ok;
+}
+
 static int delete_tree_ok(const AstNode *root)
 {
     int ok = require_kind(root, AST_NEW) && require_kind(root, AST_DELETE);
@@ -570,6 +816,22 @@ static int tree_is_complete(const char *path, const AstNode *root)
         return multi_base_ok(root) && ok;
     if (ends_with(path, "super.scpp"))
         return super_ok(root) && ok;
+    if (ends_with(path, "const-method.scpp"))
+        return const_method_ok(root) && ok;
+    if (ends_with(path, "new-array.scpp"))
+        return new_forms_ok(root) && ok;
+    if (ends_with(path, "bool.scpp"))
+        return bool_ok(root) && ok;
+    if (ends_with(path, "bit-field.scpp"))
+        return bit_field_ok(root) && ok;
+    if (ends_with(path, "designated.scpp"))
+        return designated_ok(root) && ok;
+    if (ends_with(path, "compound-literal.scpp"))
+        return compound_literal_ok(root) && ok;
+    if (ends_with(path, "empty-params.scpp"))
+        return empty_params_ok(root) && ok;
+    if (ends_with(path, "brace-init.scpp"))
+        return brace_init_ok(root) && ok;
     if (ends_with(path, "accept.scpp"))
         return require_kinds(root, accept_kinds, 7) && ok;
     return ok;

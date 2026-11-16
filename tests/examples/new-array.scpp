@@ -1,0 +1,9 @@
+int main(void) {
+    int *items;
+    int **indirect;
+
+    items = new int[4];
+    indirect = new int*;
+    delete items;
+    return 0;
+}
