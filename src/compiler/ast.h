@@ -77,6 +77,8 @@ AstNode *ast_named(AstKind kind, const char *spelling);
 AstNode *ast_binary(AstNode *lhs, const char *op, AstNode *rhs);
 AstNode *ast_unary(const char *op, AstNode *expr);
 AstNode *ast_assign(AstNode *lhs, const char *op, AstNode *rhs);
+/* Catch every exception type. The node text is "...". There is no parameter. */
+AstNode *ast_catch_all(AstNode *body);
 void ast_append(AstNode *head, AstNode *item);
 void ast_add(AstNode *parent, AstNode *child);
 void ast_free(AstNode *node);

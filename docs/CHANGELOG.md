@@ -10,6 +10,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `catch (...)` catches every exception type. The `...` is not a parameter and is not the variadic-parameter node. A `catch` with a parameter still parses. `tests/examples/catch-all.scpp` is registered with CTest.
 - Parser examples cover a namespace, a class with one base and a method, `try`/`catch`/`throw`, a variadic parameter, and native `print`/`format`. `parse_test` fails when an example's expected syntax-tree nodes are missing. `tests/examples/tree-shape.scpp` checks the shape of the tree. Each example is registered with CTest.
 - `print` and `format` are native. A call takes a string literal in C++23 format-string syntax, then the arguments that fill its replacement fields. `print` writes the formatted text. `format` produces the formatted string. They are not declarations the program supplies, and they are not the C++ standard library. The syntax tree records them as `print` and `format` nodes. `tests/examples/print-format.scpp` is registered with CTest.
 - The parser builds a syntax tree. Node kinds are defined in `src/compiler/ast.h` and constructed in `src/compiler/ast.c`. The grammar actions in `src/compiler/smallcpp.y` cover translation units, namespaces, classes, methods, statements, try/catch/throw, and new. There is no code generation.

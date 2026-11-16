@@ -5,6 +5,9 @@
  * Other typedef names are not recorded.
  * An invalid character is reported with its line and column and then
  * skipped, so scanning continues.
+ * "..." is one token. A parameter list uses it as a variadic parameter.
+ * catch (...) uses the same token, and the grammar does not make it a
+ * parameter.
  */
 %option noyywrap
 %option nounput
