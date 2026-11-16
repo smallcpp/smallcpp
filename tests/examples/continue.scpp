@@ -1,0 +1,12 @@
+int answer(int n) {
+    int i;
+    int t;
+    i = 0;
+    t = 0;
+    for (i = 0; i < n; i = i + 1) {
+        if (i == 0)
+            continue;
+        t = t + i;
+    }
+    return t;
+}

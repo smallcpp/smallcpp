@@ -1,0 +1,3 @@
+double answer(double n) {
+    return n;
+}

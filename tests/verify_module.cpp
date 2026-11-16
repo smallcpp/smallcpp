@@ -1,118 +1,881 @@
-#include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/IR/CFG.h"
-#include "llvm/IR/Dominators.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/raw_ostream.h"
+/*
+ * verify_module — load one example's bitcode and check one feature.
+ *
+ * Usage: verify_module <mode> <module.bc>
+ *
+ * verifyModule runs for every mode. The mode then checks the one thing
+ * that example lowers. A module that verifies but lacks the feature fails.
+ */
 
-#include <cstdio>
-#include <cstring>
+#include <llvm/Bitcode/BitcodeReader.h>
+#include <llvm/IR/CFG.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/Dominators.h>
+#include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/raw_ostream.h>
+
+#include <stdio.h>
+#include <string.h>
+
 #include <memory>
 #include <string>
 
-static int load_module(const char *path, llvm::LLVMContext &context,
-                       std::unique_ptr<llvm::Module> &module)
+static int fail(const char *mode, const char *why)
 {
-    std::string diagnostic;
-    llvm::raw_string_ostream errors(diagnostic);
-    auto buffer = llvm::MemoryBuffer::getFile(path);
+    fprintf(stderr, "%s: %s\n", mode, why);
+    return 1;
+}
 
-    if (!buffer) {
-        std::fprintf(stderr, "%s: %s\n", path, buffer.getError().message().c_str());
-        return 1;
+static llvm::Function *answer(llvm::Module &module)
+{
+    llvm::Function *fn = module.getFunction("answer");
+
+    if (fn == NULL || fn->empty())
+        return NULL;
+    return fn;
+}
+
+static llvm::ReturnInst *only_ret(llvm::Function &fn)
+{
+    llvm::ReturnInst *found = NULL;
+
+    for (llvm::BasicBlock &bb : fn) {
+        auto *ret = llvm::dyn_cast<llvm::ReturnInst>(bb.getTerminator());
+        if (ret == NULL)
+            continue;
+        if (found != NULL)
+            return NULL;
+        found = ret;
     }
-    auto parsed = llvm::parseBitcodeFile(buffer.get()->getMemBufferRef(), context);
-    if (!parsed) {
-        std::fprintf(stderr, "%s: bitcode did not load\n", path);
-        return 1;
+    return found;
+}
+
+static llvm::ConstantInt *ret_int(llvm::Function &fn)
+{
+    llvm::ReturnInst *ret = only_ret(fn);
+
+    if (ret == NULL || ret->getReturnValue() == NULL)
+        return NULL;
+    return llvm::dyn_cast<llvm::ConstantInt>(ret->getReturnValue());
+}
+
+static int expect_sig(const char *mode, llvm::Module &module,
+                      llvm::Type *ret, unsigned nargs, llvm::Type *arg)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail(mode, "no function answer");
+    if (fn->getReturnType() != ret)
+        return fail(mode, "wrong return type");
+    if (fn->arg_size() != nargs)
+        return fail(mode, "wrong parameter count");
+    if (nargs == 1 && fn->getArg(0)->getType() != arg)
+        return fail(mode, "wrong parameter type");
+    if (nargs == 2) {
+        if (fn->getArg(0)->getType() != arg || fn->getArg(1)->getType() != arg)
+            return fail(mode, "wrong parameter type");
     }
-    if (llvm::verifyModule(*parsed.get(), &errors)) {
-        errors.flush();
-        std::fprintf(stderr, "module failed verification: %s\n", diagnostic.c_str());
-        return 1;
-    }
-    module = std::move(parsed.get());
     return 0;
+}
+
+static int identity(const char *mode, llvm::Module &module, llvm::Type *ty)
+{
+    if (expect_sig(mode, module, ty, 1, ty) != 0)
+        return 1;
+    llvm::ReturnInst *ret = only_ret(*answer(module));
+    auto *load = ret == NULL ? NULL
+                             : llvm::dyn_cast<llvm::LoadInst>(ret->getReturnValue());
+
+    if (load == NULL || load->getType() != ty)
+        return fail(mode, "answer does not return its parameter");
+    return 0;
+}
+
+static bool const_eq(const llvm::Value *value, uint64_t n)
+{
+    auto *constant = llvm::dyn_cast<llvm::ConstantInt>(value);
+
+    return constant != NULL && constant->equalsInt(n);
+}
+
+static llvm::Instruction *ret_op(llvm::Function &fn)
+{
+    llvm::ReturnInst *ret = only_ret(fn);
+
+    if (ret == NULL)
+        return NULL;
+    return llvm::dyn_cast<llvm::Instruction>(ret->getReturnValue());
+}
+
+static int ret_bin(const char *mode, llvm::Module &module,
+                   llvm::Instruction::BinaryOps op, int which, uint64_t n)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig(mode, module, i32, 1, i32) != 0)
+        return 1;
+    auto *bin = llvm::dyn_cast_or_null<llvm::BinaryOperator>(ret_op(*answer(module)));
+
+    if (bin == NULL || bin->getOpcode() != op)
+        return fail(mode, "return is not that operation");
+    if (which == 0 && !const_eq(bin->getOperand(0), n))
+        return fail(mode, "wrong constant operand");
+    if (which == 1 && !const_eq(bin->getOperand(1), n))
+        return fail(mode, "wrong constant operand");
+    if (which < 0 && !const_eq(bin->getOperand(0), n) && !const_eq(bin->getOperand(1), n))
+        return fail(mode, "wrong constant operand");
+    return 0;
+}
+
+struct Back {
+    llvm::BasicBlock *from;
+    llvm::BasicBlock *to;
+    bool ok;
+};
+
+static Back one_back(llvm::Function &fn)
+{
+    llvm::DominatorTree tree(fn);
+    Back found = { NULL, NULL, false };
+    int count = 0;
+
+    for (llvm::BasicBlock &bb : fn) {
+        for (llvm::BasicBlock *succ : llvm::successors(&bb)) {
+            if (!tree.dominates(succ, &bb))
+                continue;
+            count++;
+            found.from = &bb;
+            found.to = succ;
+        }
+    }
+    found.ok = false;
+    if (count == 1 && llvm::succ_size(&fn.getEntryBlock()) == 1)
+        found.ok = found.to == *llvm::succ_begin(&fn.getEntryBlock());
+    return found;
+}
+
+struct Loop {
+    bool ok;
+    llvm::BasicBlock *header;
+    llvm::BasicBlock *latch;
+    llvm::BasicBlock *into;
+    llvm::BasicBlock *exit;
+};
+
+static Loop loop_of(llvm::Function &fn)
+{
+    Loop loop = { false, NULL, NULL, NULL, NULL };
+    Back back = one_back(fn);
+    auto *header_br = back.ok
+        ? llvm::dyn_cast<llvm::BranchInst>(back.to->getTerminator())
+        : NULL;
+
+    if (header_br == NULL || !header_br->isConditional())
+        return loop;
+    llvm::DominatorTree tree(fn);
+    llvm::BasicBlock *left = header_br->getSuccessor(0);
+    llvm::BasicBlock *right = header_br->getSuccessor(1);
+    bool left_in = tree.dominates(left, back.from);
+
+    loop.ok = true;
+    loop.header = back.to;
+    loop.latch = back.from;
+    loop.into = left_in ? left : right;
+    loop.exit = left_in ? right : left;
+    return loop;
+}
+
+static bool direct_succ(llvm::BasicBlock *from, llvm::BasicBlock *to)
+{
+    for (llvm::BasicBlock *succ : llvm::successors(from)) {
+        if (succ == to)
+            return true;
+    }
+    return false;
+}
+
+static bool uncond(llvm::BasicBlock *bb)
+{
+    auto *br = llvm::dyn_cast<llvm::BranchInst>(bb->getTerminator());
+
+    return br != NULL && br->isUnconditional();
+}
+
+static bool has_store(llvm::BasicBlock *bb)
+{
+    for (llvm::Instruction &inst : *bb) {
+        if (llvm::isa<llvm::StoreInst>(inst))
+            return true;
+    }
+    return false;
 }
 
 static int check_return(llvm::Module &module)
 {
-    llvm::Function *answer = module.getFunction("answer");
+    llvm::Function *fn = answer(module);
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
 
-    if (answer == NULL || answer->empty() || !answer->getReturnType()->isIntegerTy(32)) {
-        std::fprintf(stderr, "module has no int function answer\n");
-        return 1;
-    }
+    if (fn == NULL)
+        return fail("return", "no function answer");
+    if (fn->getReturnType() != i32 || fn->arg_size() != 0)
+        return fail("return", "answer is not int(void)");
     return 0;
 }
 
-static bool has_conditional_branch(const llvm::Function &function)
+static int check_if(llvm::Module &module)
 {
-    for (const llvm::BasicBlock &block : function) {
-        for (const llvm::Instruction &inst : block) {
-            const auto *branch = llvm::dyn_cast<llvm::BranchInst>(&inst);
-            if (branch != NULL && branch->isConditional())
-                return true;
-        }
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("if", "no function answer");
+    for (llvm::BasicBlock &bb : *fn) {
+        auto *br = llvm::dyn_cast<llvm::BranchInst>(bb.getTerminator());
+        if (br != NULL && br->isConditional())
+            return 0;
     }
-    return false;
+    return fail("if", "no conditional branch");
 }
 
-static bool has_back_edge(llvm::Function &function)
+static int check_else(llvm::Module &module)
 {
-    llvm::DominatorTree tree(function);
+    llvm::Function *fn = answer(module);
 
-    for (llvm::BasicBlock &block : function) {
-        for (llvm::BasicBlock *succ : llvm::successors(&block)) {
-            if (tree.dominates(succ, &block))
-                return true;
-        }
+    if (fn == NULL)
+        return fail("else", "no function answer");
+    for (llvm::BasicBlock &bb : *fn) {
+        auto *br = llvm::dyn_cast<llvm::BranchInst>(bb.getTerminator());
+        if (br == NULL || !br->isConditional())
+            continue;
+        llvm::BasicBlock *left = br->getSuccessor(0);
+        llvm::BasicBlock *right = br->getSuccessor(1);
+        if (!has_store(left) || !has_store(right) || !uncond(left) || !uncond(right))
+            continue;
+        if (*llvm::succ_begin(left) == *llvm::succ_begin(right))
+            return 0;
     }
-    return false;
+    return fail("else", "the two arms do not both store and join");
 }
 
-static int check_scalars(llvm::Module &module)
+static int check_while(llvm::Module &module)
 {
-    llvm::Function *scale = module.getFunction("scale");
+    llvm::Function *fn = answer(module);
 
-    if (scale == NULL || scale->empty()) {
-        std::fprintf(stderr, "module has no function scale\n");
-        return 1;
-    }
-    if (!scale->getReturnType()->isIntegerTy(32) || scale->arg_size() != 1
-        || !scale->getArg(0)->getType()->isIntegerTy(32)) {
-        std::fprintf(stderr, "scale is not int(int)\n");
-        return 1;
-    }
-    if (!has_conditional_branch(*scale)) {
-        std::fprintf(stderr, "scale has no conditional branch\n");
-        return 1;
-    }
-    if (!has_back_edge(*scale)) {
-        std::fprintf(stderr, "scale has no back-edge\n");
-        return 1;
-    }
+    if (fn == NULL)
+        return fail("while", "no function answer");
+    Loop loop = loop_of(*fn);
+    if (!loop.ok || loop.into != loop.latch || !uncond(loop.latch))
+        return fail("while", "not a while loop");
     return 0;
+}
+
+static int check_do(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("do", "no function answer");
+    Back back = one_back(*fn);
+
+    if (!back.ok || !uncond(back.to))
+        return fail("do", "not a do loop");
+    auto *br = llvm::dyn_cast<llvm::BranchInst>(back.from->getTerminator());
+    if (br == NULL || !br->isConditional())
+        return fail("do", "not a do loop");
+    return 0;
+}
+
+static int check_for(const char *mode, llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail(mode, "no function answer");
+    Loop loop = loop_of(*fn);
+
+    if (!loop.ok || direct_succ(loop.header, loop.latch) || !uncond(loop.latch))
+        return fail(mode, "not a for loop");
+    if (llvm::succ_size(loop.into) != 1 || *llvm::succ_begin(loop.into) != loop.latch)
+        return fail(mode, "not a for loop");
+    return 0;
+}
+
+static int check_switch(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("switch", "no function answer");
+    for (llvm::BasicBlock &bb : *fn) {
+        auto *sw = llvm::dyn_cast<llvm::SwitchInst>(bb.getTerminator());
+        if (sw == NULL || sw->getNumCases() < 1)
+            continue;
+        bool saw_one = false;
+        for (const auto &cse : sw->cases()) {
+            if (cse.getCaseValue()->equalsInt(1))
+                saw_one = true;
+        }
+        auto *def = llvm::dyn_cast<llvm::ReturnInst>(sw->getDefaultDest()->getTerminator());
+        if (saw_one && def != NULL)
+            return 0;
+    }
+    return fail("switch", "no switch with case 1 and a default return");
+}
+
+static int check_break(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("break", "no function answer");
+    Loop loop = loop_of(*fn);
+
+    if (!loop.ok || loop.into == loop.latch)
+        return fail("break", "not a loop that leaves early");
+    for (llvm::BasicBlock &bb : *fn) {
+        if (&bb == loop.header)
+            continue;
+        for (llvm::BasicBlock *succ : llvm::successors(&bb)) {
+            if (succ == loop.exit)
+                return 0;
+        }
+    }
+    return fail("break", "no branch to the loop exit");
+}
+
+static int check_continue(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("continue", "no function answer");
+    Loop loop = loop_of(*fn);
+    auto *inner = loop.ok ? llvm::dyn_cast<llvm::BranchInst>(loop.into->getTerminator()) : NULL;
+
+    if (inner == NULL || !inner->isConditional() || direct_succ(loop.header, loop.latch))
+        return fail("continue", "not a loop that skips to the step");
+    for (llvm::BasicBlock *succ : llvm::successors(loop.into)) {
+        if (llvm::succ_size(succ) == 1 && *llvm::succ_begin(succ) == loop.latch)
+            return 0;
+    }
+    return fail("continue", "not a loop that skips to the step");
+}
+
+static int check_goto(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("goto", "no function answer");
+    for (llvm::BasicBlock &bb : *fn) {
+        if (llvm::pred_size(&bb) != 2)
+            continue;
+        bool jump = false;
+        bool stored = false;
+        for (llvm::BasicBlock *pred : llvm::predecessors(&bb)) {
+            if (pred->size() == 1 && uncond(pred))
+                jump = true;
+            if (has_store(pred))
+                stored = true;
+        }
+        if (jump && stored)
+            return 0;
+    }
+    return fail("goto", "no label reached by a jump and by a fall-through");
+}
+
+static int check_void(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("void", "no function answer");
+    if (!fn->getReturnType()->isVoidTy() || fn->arg_size() != 0)
+        return fail("void", "answer is not void(void)");
+    llvm::ReturnInst *ret = only_ret(*fn);
+    if (ret == NULL || ret->getReturnValue() != NULL)
+        return fail("void", "missing bare return");
+    return 0;
+}
+
+static int check_empty(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig("empty-list", module, i32, 0, NULL) != 0)
+        return 1;
+    llvm::ConstantInt *value = ret_int(*answer(module));
+    if (value == NULL || !value->equalsInt(1))
+        return fail("empty-list", "empty () does not return 1");
+    return 0;
+}
+
+static int check_parameter(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    return identity("parameter", module, i32);
+}
+
+static int check_local(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig("local", module, i32, 0, NULL) != 0)
+        return 1;
+    llvm::Function *fn = answer(module);
+    llvm::ReturnInst *ret = only_ret(*fn);
+    auto *load = ret == NULL ? NULL
+                             : llvm::dyn_cast<llvm::LoadInst>(ret->getReturnValue());
+    bool stored = false;
+
+    if (load == NULL || !llvm::isa<llvm::AllocaInst>(load->getPointerOperand()))
+        return fail("local", "return is not a load of a local");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 4))
+            stored = true;
+    }
+    if (!stored)
+        return fail("local", "local is not stored");
+    return 0;
+}
+
+static llvm::GlobalVariable *global_n(llvm::Module &module)
+{
+    return module.getGlobalVariable("n", true);
+}
+
+static int check_global(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::GlobalVariable *global = global_n(module);
+
+    if (expect_sig("global", module, i32, 0, NULL) != 0)
+        return 1;
+    if (global == NULL || global->isConstant() || global->getValueType() != i32)
+        return fail("global", "no mutable int n");
+    return 0;
+}
+
+static int check_const(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::GlobalVariable *global = global_n(module);
+
+    if (expect_sig("const-var", module, i32, 0, NULL) != 0)
+        return 1;
+    if (global == NULL || !global->isConstant())
+        return fail("const-var", "n is not a constant");
+    auto *init = llvm::dyn_cast_or_null<llvm::ConstantInt>(global->getInitializer());
+    if (init == NULL || !init->equalsInt(3))
+        return fail("const-var", "n is not 3");
+    return 0;
+}
+
+static int check_volatile(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    bool load = false;
+    bool store = false;
+
+    if (fn == NULL)
+        return fail("volatile", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        if (auto *op = llvm::dyn_cast<llvm::LoadInst>(&inst))
+            load = load || op->isVolatile();
+        if (auto *op = llvm::dyn_cast<llvm::StoreInst>(&inst))
+            store = store || op->isVolatile();
+    }
+    if (!load || !store)
+        return fail("volatile", "missing a volatile load or store");
+    return 0;
+}
+
+static int check_bool_const(const char *mode, llvm::Module &module, uint64_t bit)
+{
+    llvm::Type *i1 = llvm::Type::getInt1Ty(module.getContext());
+
+    if (expect_sig(mode, module, i1, 0, NULL) != 0)
+        return 1;
+    llvm::ConstantInt *value = ret_int(*answer(module));
+    if (value == NULL || !value->equalsInt(bit))
+        return fail(mode, "wrong bool constant");
+    return 0;
+}
+
+static int check_literal(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig("literal", module, i32, 0, NULL) != 0)
+        return 1;
+    llvm::ConstantInt *value = ret_int(*answer(module));
+    if (value == NULL || !value->equalsInt(42))
+        return fail("literal", "does not return 42");
+    return 0;
+}
+
+static int check_cast(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig("cast", module, i32, 1, i32) != 0)
+        return 1;
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *trunc = llvm::dyn_cast<llvm::TruncInst>(&inst);
+        if (trunc != NULL && trunc->getType()->isIntegerTy(8))
+            return 0;
+    }
+    return fail("cast", "no truncation to char");
+}
+
+static int check_sizeof(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig("sizeof", module, i32, 0, NULL) != 0)
+        return 1;
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *trunc = llvm::dyn_cast<llvm::TruncInst>(&inst);
+        auto *wide = trunc == NULL ? NULL
+                                   : llvm::dyn_cast<llvm::ConstantInt>(trunc->getOperand(0));
+        if (wide != NULL && wide->getType()->isIntegerTy(64) && wide->equalsInt(4))
+            return 0;
+    }
+    llvm::ConstantInt *value = ret_int(*fn);
+    if (value != NULL && value->equalsInt(4))
+        return 0;
+    return fail("sizeof", "sizeof(int) is not 4");
+}
+
+static int check_comma(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+
+    if (expect_sig("comma", module, i32, 0, NULL) != 0)
+        return 1;
+    llvm::ConstantInt *value = ret_int(*answer(module));
+    if (value == NULL || !value->equalsInt(2))
+        return fail("comma", "comma did not yield the right operand");
+    return 0;
+}
+
+static int check_conditional(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    auto *phi = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::PHINode>(ret_op(*fn));
+    bool one = false;
+    bool two = false;
+
+    if (phi == NULL)
+        return fail("conditional", "return is not a phi");
+    for (unsigned i = 0; i < phi->getNumIncomingValues(); i++) {
+        one = one || const_eq(phi->getIncomingValue(i), 1);
+        two = two || const_eq(phi->getIncomingValue(i), 2);
+    }
+    if (!one || !two)
+        return fail("conditional", "phi is missing 1 or 2");
+    return 0;
+}
+
+static int check_compare(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    auto *ext = llvm::dyn_cast_or_null<llvm::ZExtInst>(
+        answer(module) == NULL ? NULL : ret_op(*answer(module)));
+
+    if (expect_sig("compare", module, i32, 1, i32) != 0)
+        return 1;
+    if (ext == NULL || !llvm::isa<llvm::ICmpInst>(ext->getOperand(0)))
+        return fail("compare", "return is not a comparison");
+    return 0;
+}
+
+static int check_complement(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    auto *bin = llvm::dyn_cast_or_null<llvm::BinaryOperator>(
+        answer(module) == NULL ? NULL : ret_op(*answer(module)));
+
+    if (expect_sig("complement", module, i32, 1, i32) != 0)
+        return 1;
+    if (bin == NULL || bin->getOpcode() != llvm::Instruction::Xor)
+        return fail("complement", "return is not a complement");
+    auto *mask = llvm::dyn_cast<llvm::ConstantInt>(bin->getOperand(1));
+    if (mask == NULL || !mask->isMinusOne())
+        return fail("complement", "return is not a complement");
+    return 0;
+}
+
+static int check_not(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    auto *ext = llvm::dyn_cast_or_null<llvm::ZExtInst>(
+        answer(module) == NULL ? NULL : ret_op(*answer(module)));
+    auto *bin = ext == NULL ? NULL
+                            : llvm::dyn_cast<llvm::BinaryOperator>(ext->getOperand(0));
+
+    if (expect_sig("not", module, i32, 1, i32) != 0)
+        return 1;
+    if (bin == NULL || bin->getOpcode() != llvm::Instruction::Xor
+            || !bin->getType()->isIntegerTy(1))
+        return fail("not", "return is not a logical not");
+    return 0;
+}
+
+static int check_logic(const char *mode, llvm::Module &module, bool want_true)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::Function *fn = answer(module);
+    auto *ext = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::ZExtInst>(ret_op(*fn));
+    auto *phi = ext == NULL ? NULL : llvm::dyn_cast<llvm::PHINode>(ext->getOperand(0));
+    bool saw = false;
+    bool branched = false;
+
+    if (expect_sig(mode, module, i32, 2, i32) != 0)
+        return 1;
+    if (phi == NULL || !phi->getType()->isIntegerTy(1))
+        return fail(mode, "missing a bool phi");
+    for (unsigned i = 0; i < phi->getNumIncomingValues(); i++) {
+        if (const_eq(phi->getIncomingValue(i), want_true ? 1 : 0))
+            saw = true;
+    }
+    for (llvm::BasicBlock &bb : *fn) {
+        auto *br = llvm::dyn_cast<llvm::BranchInst>(bb.getTerminator());
+        if (br != NULL && br->isConditional())
+            branched = true;
+    }
+    if (!saw || !branched)
+        return fail(mode, "not a short-circuit operator");
+    return 0;
+}
+
+static int check_assign(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::Function *fn = answer(module);
+    bool stored = false;
+
+    if (expect_sig("assign", module, i32, 1, i32) != 0)
+        return 1;
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 7))
+            stored = true;
+    }
+    if (!stored)
+        return fail("assign", "no store of 7");
+    return 0;
+}
+
+static int check_add_assign(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::Function *fn = answer(module);
+
+    if (expect_sig("add-assign", module, i32, 1, i32) != 0)
+        return 1;
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        auto *add = store == NULL ? NULL
+                                  : llvm::dyn_cast<llvm::BinaryOperator>(store->getValueOperand());
+        if (add != NULL && add->getOpcode() == llvm::Instruction::Add
+                && (const_eq(add->getOperand(0), 3) || const_eq(add->getOperand(1), 3)))
+            return 0;
+    }
+    return fail("add-assign", "no store of an add by 3");
+}
+
+static int check_post(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::Function *fn = answer(module);
+    auto *load = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::LoadInst>(ret_op(*fn));
+    bool added = false;
+
+    if (expect_sig("post-inc", module, i32, 1, i32) != 0)
+        return 1;
+    if (load == NULL)
+        return fail("post-inc", "postfix does not return the old value");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *add = llvm::dyn_cast<llvm::BinaryOperator>(&inst);
+        if (add != NULL && add->getOpcode() == llvm::Instruction::Add)
+            added = true;
+    }
+    if (!added)
+        return fail("post-inc", "postfix does not update the variable");
+    return 0;
+}
+
+static int check_pre(llvm::Module &module)
+{
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    llvm::Function *fn = answer(module);
+    auto *add = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::BinaryOperator>(ret_op(*fn));
+    bool stored = false;
+
+    if (expect_sig("pre-inc", module, i32, 1, i32) != 0)
+        return 1;
+    if (add == NULL || add->getOpcode() != llvm::Instruction::Add)
+        return fail("pre-inc", "prefix does not return the new value");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && store->getValueOperand() == add)
+            stored = true;
+    }
+    if (!stored)
+        return fail("pre-inc", "prefix does not store the new value");
+    return 0;
+}
+
+static int check_shift_kind(const char *mode, llvm::Module &module,
+                            llvm::Instruction::BinaryOps op)
+{
+    return ret_bin(mode, module, op, 1, 1);
 }
 
 int main(int argc, char **argv)
 {
-    llvm::LLVMContext context;
-    std::unique_ptr<llvm::Module> module;
-
     if (argc != 3) {
-        std::fprintf(stderr, "usage: %s return|scalars module.bc\n", argv[0]);
+        fprintf(stderr, "usage: verify_module <mode> <module.bc>\n");
         return 2;
     }
-    if (load_module(argv[2], context, module) != 0)
+
+    const char *mode = argv[1];
+    llvm::LLVMContext context;
+    auto buffer = llvm::MemoryBuffer::getFile(argv[2]);
+
+    if (!buffer) {
+        fprintf(stderr, "%s: %s\n", argv[2], buffer.getError().message().c_str());
         return 1;
-    if (std::strcmp(argv[1], "return") == 0)
+    }
+    auto parsed = llvm::parseBitcodeFile(buffer.get()->getMemBufferRef(), context);
+    if (!parsed) {
+        fprintf(stderr, "%s: bitcode did not load\n", argv[2]);
+        return 1;
+    }
+    std::unique_ptr<llvm::Module> module = std::move(parsed.get());
+    std::string diagnostic;
+    llvm::raw_string_ostream errors(diagnostic);
+    if (llvm::verifyModule(*module, &errors)) {
+        errors.flush();
+        fprintf(stderr, "module failed verification: %s\n", diagnostic.c_str());
+        return 1;
+    }
+
+    llvm::LLVMContext &ctx = module->getContext();
+    if (strcmp(mode, "return") == 0)
         return check_return(*module);
-    if (std::strcmp(argv[1], "scalars") == 0)
-        return check_scalars(*module);
-    std::fprintf(stderr, "usage: %s return|scalars module.bc\n", argv[0]);
+    if (strcmp(mode, "if") == 0)
+        return check_if(*module);
+    if (strcmp(mode, "else") == 0)
+        return check_else(*module);
+    if (strcmp(mode, "while") == 0)
+        return check_while(*module);
+    if (strcmp(mode, "do") == 0)
+        return check_do(*module);
+    if (strcmp(mode, "for") == 0)
+        return check_for("for", *module);
+    if (strcmp(mode, "for-decl") == 0)
+        return check_for("for-decl", *module);
+    if (strcmp(mode, "switch") == 0)
+        return check_switch(*module);
+    if (strcmp(mode, "break") == 0)
+        return check_break(*module);
+    if (strcmp(mode, "continue") == 0)
+        return check_continue(*module);
+    if (strcmp(mode, "goto") == 0)
+        return check_goto(*module);
+    if (strcmp(mode, "void") == 0)
+        return check_void(*module);
+    if (strcmp(mode, "bool-type") == 0)
+        return identity("bool-type", *module, llvm::Type::getInt1Ty(ctx));
+    if (strcmp(mode, "char") == 0)
+        return identity("char", *module, llvm::Type::getInt8Ty(ctx));
+    if (strcmp(mode, "short") == 0)
+        return identity("short", *module, llvm::Type::getInt16Ty(ctx));
+    if (strcmp(mode, "long") == 0)
+        return identity("long", *module, llvm::Type::getInt64Ty(ctx));
+    if (strcmp(mode, "float") == 0)
+        return identity("float", *module, llvm::Type::getFloatTy(ctx));
+    if (strcmp(mode, "double") == 0)
+        return identity("double", *module, llvm::Type::getDoubleTy(ctx));
+    if (strcmp(mode, "signed") == 0)
+        return check_shift_kind("signed", *module, llvm::Instruction::AShr);
+    if (strcmp(mode, "unsigned") == 0)
+        return check_shift_kind("unsigned", *module, llvm::Instruction::LShr);
+    if (strcmp(mode, "empty-list") == 0)
+        return check_empty(*module);
+    if (strcmp(mode, "parameter") == 0)
+        return check_parameter(*module);
+    if (strcmp(mode, "local") == 0)
+        return check_local(*module);
+    if (strcmp(mode, "global") == 0)
+        return check_global(*module);
+    if (strcmp(mode, "const-var") == 0)
+        return check_const(*module);
+    if (strcmp(mode, "volatile") == 0)
+        return check_volatile(*module);
+    if (strcmp(mode, "true") == 0)
+        return check_bool_const("true", *module, 1);
+    if (strcmp(mode, "false") == 0)
+        return check_bool_const("false", *module, 0);
+    if (strcmp(mode, "literal") == 0)
+        return check_literal(*module);
+    if (strcmp(mode, "cast") == 0)
+        return check_cast(*module);
+    if (strcmp(mode, "sizeof") == 0)
+        return check_sizeof(*module);
+    if (strcmp(mode, "comma") == 0)
+        return check_comma(*module);
+    if (strcmp(mode, "conditional") == 0)
+        return check_conditional(*module);
+    if (strcmp(mode, "add") == 0)
+        return ret_bin("add", *module, llvm::Instruction::Add, 1, 1);
+    if (strcmp(mode, "sub") == 0)
+        return ret_bin("sub", *module, llvm::Instruction::Sub, 1, 1);
+    if (strcmp(mode, "mul") == 0)
+        return ret_bin("mul", *module, llvm::Instruction::Mul, 1, 2);
+    if (strcmp(mode, "div") == 0)
+        return ret_bin("div", *module, llvm::Instruction::SDiv, 1, 2);
+    if (strcmp(mode, "mod") == 0)
+        return ret_bin("mod", *module, llvm::Instruction::SRem, 1, 2);
+    if (strcmp(mode, "shift") == 0)
+        return ret_bin("shift", *module, llvm::Instruction::Shl, 1, 1);
+    if (strcmp(mode, "compare") == 0)
+        return check_compare(*module);
+    if (strcmp(mode, "bit-and") == 0)
+        return ret_bin("bit-and", *module, llvm::Instruction::And, 1, 1);
+    if (strcmp(mode, "bit-or") == 0)
+        return ret_bin("bit-or", *module, llvm::Instruction::Or, 1, 1);
+    if (strcmp(mode, "bit-xor") == 0)
+        return ret_bin("bit-xor", *module, llvm::Instruction::Xor, 1, 1);
+    if (strcmp(mode, "complement") == 0)
+        return check_complement(*module);
+    if (strcmp(mode, "negate") == 0)
+        return ret_bin("negate", *module, llvm::Instruction::Sub, 0, 0);
+    if (strcmp(mode, "not") == 0)
+        return check_not(*module);
+    if (strcmp(mode, "logical-and") == 0)
+        return check_logic("logical-and", *module, false);
+    if (strcmp(mode, "logical-or") == 0)
+        return check_logic("logical-or", *module, true);
+    if (strcmp(mode, "assign") == 0)
+        return check_assign(*module);
+    if (strcmp(mode, "add-assign") == 0)
+        return check_add_assign(*module);
+    if (strcmp(mode, "post-inc") == 0)
+        return check_post(*module);
+    if (strcmp(mode, "pre-inc") == 0)
+        return check_pre(*module);
+
+    fprintf(stderr, "unknown mode %s\n", mode);
     return 2;
 }

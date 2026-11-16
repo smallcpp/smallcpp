@@ -1,0 +1,5 @@
+const int n = 3;
+
+int answer(void) {
+    return n;
+}

@@ -1,0 +1,4 @@
+int answer(int n) {
+    n += 3;
+    return n;
+}

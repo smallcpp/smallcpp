@@ -57,12 +57,67 @@ add_test(
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
         -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/answer.bc
         -P ${CMAKE_CURRENT_SOURCE_DIR}/CompileReturn.cmake)
-add_test(
-    NAME compile_scalars
-    COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
-        -DVERIFY=$<TARGET_FILE:verify_module>
-        -DMODE=scalars
-        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/scalars.scpp
-        -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/scalars.bc
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/CompileReturn.cmake)
+# One short example per scalar feature. The mode name is the file stem.
+function(add_compile_example name)
+    add_test(
+        NAME compile_${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCOMPILER=$<TARGET_FILE:shell>
+            -DVERIFY=$<TARGET_FILE:verify_module>
+            -DMODE=${name}
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${name}.scpp
+            -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/${name}.bc
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/CompileReturn.cmake)
+endfunction()
+
+add_compile_example(if)
+add_compile_example(else)
+add_compile_example(while)
+add_compile_example(do)
+add_compile_example(for)
+add_compile_example(for-decl)
+add_compile_example(switch)
+add_compile_example(break)
+add_compile_example(continue)
+add_compile_example(goto)
+add_compile_example(void)
+add_compile_example(bool-type)
+add_compile_example(char)
+add_compile_example(short)
+add_compile_example(long)
+add_compile_example(float)
+add_compile_example(double)
+add_compile_example(signed)
+add_compile_example(unsigned)
+add_compile_example(empty-list)
+add_compile_example(parameter)
+add_compile_example(local)
+add_compile_example(global)
+add_compile_example(const-var)
+add_compile_example(volatile)
+add_compile_example(true)
+add_compile_example(false)
+add_compile_example(literal)
+add_compile_example(cast)
+add_compile_example(sizeof)
+add_compile_example(comma)
+add_compile_example(conditional)
+add_compile_example(add)
+add_compile_example(sub)
+add_compile_example(mul)
+add_compile_example(div)
+add_compile_example(mod)
+add_compile_example(shift)
+add_compile_example(compare)
+add_compile_example(bit-and)
+add_compile_example(bit-or)
+add_compile_example(bit-xor)
+add_compile_example(complement)
+add_compile_example(negate)
+add_compile_example(not)
+add_compile_example(logical-and)
+add_compile_example(logical-or)
+add_compile_example(assign)
+add_compile_example(add-assign)
+add_compile_example(post-inc)
+add_compile_example(pre-inc)
