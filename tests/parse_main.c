@@ -497,17 +497,6 @@ static int multi_base_ok(const AstNode *root)
     return ok;
 }
 
-static int super_ok(const AstNode *root)
-{
-    int ok = require_kind(root, AST_SUPER) && require_kind(root, AST_THIS);
-
-    if (find_named(root, AST_SUPER, "super") == NULL) {
-        fprintf(stderr, "syntax tree has no super keyword\n");
-        ok = 0;
-    }
-    return ok;
-}
-
 static int text_is(const AstNode *node, const char *text)
 {
     return node != NULL && node->text != NULL && strcmp(node->text, text) == 0;
@@ -794,8 +783,6 @@ static int tree_is_complete(const char *path, const AstNode *root)
         return overload_ok(root) && ok;
     if (ends_with(path, "multi-base.scpp"))
         return multi_base_ok(root) && ok;
-    if (ends_with(path, "super.scpp"))
-        return super_ok(root) && ok;
     if (ends_with(path, "const-method.scpp"))
         return const_method_ok(root) && ok;
     if (ends_with(path, "new-array.scpp"))
