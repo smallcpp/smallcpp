@@ -1,0 +1,3 @@
+char answer(char n) {
+    return n;
+}

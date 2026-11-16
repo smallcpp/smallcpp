@@ -1,0 +1,6 @@
+volatile int n;
+
+int answer(void) {
+    n = 1;
+    return n;
+}

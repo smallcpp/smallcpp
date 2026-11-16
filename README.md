@@ -9,7 +9,7 @@ cmake -S . -B build
 cmake --build build
 (cd build && ctest --output-on-failure)
 ./bin/shell tests/examples/return-zero.scpp answer.bc
-./bin/shell tests/examples/scalars.scpp scalars.bc
+./bin/shell tests/examples/if.scpp if.bc
 ./bin/parse_test tests/examples/accept.scpp
 ```
 

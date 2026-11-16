@@ -1,0 +1,3 @@
+long answer(long n) {
+    return n;
+}

@@ -28,6 +28,6 @@ Inputs for `parse_test`. Source files use the `.scpp` extension.
 - A compound literal, `(type){ ... }`, does not parse. `(int[]){1, 2}` is rejected.
 - `brace-init.scpp` parses a brace initializer for a struct and for an array. The test fails if either list is missing.
 - `return-zero.scpp` is `int answer(void) { return 0; }`. The shell lowers it to a verified LLVM module. `compile_return` fails if that module does not verify or `answer` is not an `int` function.
-- `scalars.scpp` lowers scalar functions, including `int scale(int n)`, which branches, loops, and returns `int`. `compile_scalars` checks that function's type, a conditional branch, and a back-edge.
+- Each other `*.scpp` file named for one scalar feature (`if`, `while`, `switch`, `cast`, `sizeof`, `local`, and the rest listed in `docs/CHANGELOG.md`) is a short working snippet. Its CTest loads that file's bitcode, runs `verifyModule`, and checks that one feature.
 - `reject-class.scpp` does not parse.
 - `reject-errors.scpp` has more than one error. `parse_test` prints more than one diagnostic and exits non-zero.
