@@ -1,5 +1,5 @@
-if(NOT COMPILER OR NOT VERIFY OR NOT SOURCE OR NOT BITCODE)
-    message(FATAL_ERROR "compile_return is missing a path")
+if(NOT COMPILER OR NOT VERIFY OR NOT SOURCE OR NOT BITCODE OR NOT MODE)
+    message(FATAL_ERROR "compile check is missing a path")
 endif()
 
 execute_process(
@@ -10,7 +10,7 @@ if(NOT compile_status EQUAL 0)
 endif()
 
 execute_process(
-    COMMAND "${VERIFY}" "${BITCODE}"
+    COMMAND "${VERIFY}" "${MODE}" "${BITCODE}"
     RESULT_VARIABLE verify_status)
 if(NOT verify_status EQUAL 0)
     message(FATAL_ERROR "module did not verify")

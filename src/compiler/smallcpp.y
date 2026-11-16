@@ -1064,8 +1064,8 @@ postfix_expression
       }
     | postfix_expression '.' IDENTIFIER { $$ = ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL); }
     | postfix_expression ARROW IDENTIFIER { $$ = ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL); }
-    | postfix_expression INC { $$ = ast_unary("++", $1); }
-    | postfix_expression DEC { $$ = ast_unary("--", $1); }
+    | postfix_expression INC { $$ = ast_unary("post++", $1); }
+    | postfix_expression DEC { $$ = ast_unary("post--", $1); }
     ;
 
 argument_expression_list

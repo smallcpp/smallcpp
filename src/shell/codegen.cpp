@@ -2,11 +2,17 @@ extern "C" {
 #include "ast.h"
 }
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/APSInt.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
@@ -14,116 +20,2352 @@ extern "C" {
 #include "llvm/Support/raw_ostream.h"
 
 #include <cerrno>
+#include <cctype>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
+#include <optional>
+#include <set>
 #include <string>
+#include <vector>
 
-static int is_specifier(const AstNode *node, const char *text)
-{
-    return node != NULL && node->kind == AST_SPECIFIER && node->text != NULL
-        && std::strcmp(node->text, text) == 0 && node->next == NULL;
-}
+enum class Where { File, Local, Param, Return };
 
-static int no_parameters(const AstNode *params)
-{
-    if (params == NULL)
-        return 1;
-    if (params->next != NULL || params->kind != AST_PARAMETER || params->b != NULL)
+struct Ty {
+    llvm::Type *ir = nullptr;
+    bool is_signed = false;
+    bool is_float = false;
+    bool is_bool = false;
+    bool is_void = false;
+    bool is_const = false;
+    bool is_volatile = false;
+    int rank = 0;
+    int fp_rank = 0;
+};
+
+struct Slot {
+    llvm::Value *addr = nullptr;
+    Ty ty;
+};
+
+struct RValue {
+    llvm::Value *v = nullptr;
+    Ty ty;
+};
+
+struct Const {
+    bool ok = false;
+    llvm::Constant *v = nullptr;
+    Ty ty;
+};
+
+struct LoopFrame {
+    llvm::BasicBlock *break_bb = nullptr;
+    llvm::BasicBlock *continue_bb = nullptr;
+};
+
+struct CaseDest {
+    llvm::ConstantInt *value = nullptr;
+    llvm::BasicBlock *block = nullptr;
+};
+
+struct SwitchFrame {
+    Ty ty;
+    std::map<uint64_t, CaseDest> cases;
+    llvm::BasicBlock *default_bb = nullptr;
+    bool saw_default = false;
+};
+
+struct LabelInfo {
+    llvm::BasicBlock *bb = nullptr;
+    bool defined = false;
+};
+
+struct Param {
+    std::string name;
+    Ty ty;
+};
+
+class Codegen {
+public:
+    Codegen(llvm::LLVMContext &context, llvm::Module &module)
+        : context(context), module(module), builder(context)
+    {
+        scopes.emplace_back();
+        module.setDataLayout(
+            "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");
+    }
+
+    int run(const AstNode *root)
+    {
+        if (root == NULL || root->kind != AST_TRANSLATION_UNIT) {
+            error("expected a translation unit");
+            return 1;
+        }
+        for (const AstNode *item = root->a; item != NULL; item = item->next) {
+            if (item->kind == AST_METHOD)
+                emit_function(item);
+            else if (item->kind == AST_DECLARATION)
+                emit_declaration(item, true);
+            else
+                reject_node(item);
+            if (failed)
+                return 1;
+        }
         return 0;
-    return is_specifier(params->a, "void");
-}
+    }
 
-static int integer_literal(const AstNode *node, int32_t *value)
-{
-    char *end = NULL;
-    long parsed;
+private:
+    llvm::LLVMContext &context;
+    llvm::Module &module;
+    llvm::IRBuilder<> builder;
+    llvm::Function *function = nullptr;
+    llvm::BasicBlock *entry = nullptr;
+    Ty ret_ty;
+    bool failed = false;
+    std::vector<std::map<std::string, Slot>> scopes;
+    std::set<std::string> functions;
+    std::vector<LoopFrame> loops;
+    std::vector<SwitchFrame> switches;
+    SwitchFrame *collecting = nullptr;
+    std::map<std::string, LabelInfo> labels;
 
-    if (node == NULL || node->kind != AST_LITERAL || node->text == NULL)
-        return 0;
-    errno = 0;
-    parsed = std::strtol(node->text, &end, 10);
-    if (errno != 0 || end == node->text || *end != '\0')
-        return 0;
-    if (parsed < INT32_MIN || parsed > INT32_MAX)
-        return 0;
-    *value = static_cast<int32_t>(parsed);
-    return 1;
-}
+    void error(const char *message)
+    {
+        if (!failed)
+            std::fprintf(stderr, "%s\n", message);
+        failed = true;
+    }
 
-static const AstNode *return_literal(const AstNode *body, int32_t *value)
-{
-    const AstNode *stmt;
+    void error_name(const char *message, const char *name)
+    {
+        if (!failed)
+            std::fprintf(stderr, "%s: %s\n", message, name != NULL ? name : "");
+        failed = true;
+    }
 
-    if (body == NULL || body->kind != AST_COMPOUND)
-        return NULL;
-    stmt = body->a;
-    if (stmt == NULL || stmt->next != NULL || stmt->kind != AST_RETURN)
-        return NULL;
-    if (!integer_literal(stmt->a, value))
-        return NULL;
-    return stmt;
-}
+    Ty drop(Ty ty)
+    {
+        ty.is_const = false;
+        ty.is_volatile = false;
+        return ty;
+    }
+
+    Ty integer(unsigned bits, bool is_signed, int rank)
+    {
+        Ty ty;
+        ty.ir = llvm::Type::getIntNTy(context, bits);
+        ty.is_signed = is_signed;
+        ty.is_bool = bits == 1;
+        ty.rank = rank;
+        return ty;
+    }
+
+    Ty floating(bool is_double)
+    {
+        Ty ty;
+        ty.ir = is_double ? llvm::Type::getDoubleTy(context) : llvm::Type::getFloatTy(context);
+        ty.is_float = true;
+        ty.fp_rank = is_double ? 2 : 1;
+        return ty;
+    }
+
+    Ty bool_ty()
+    {
+        return integer(1, false, 0);
+    }
+
+    Ty int_ty()
+    {
+        return integer(32, true, 3);
+    }
+
+    Ty size_ty()
+    {
+        return integer(64, false, 4);
+    }
+
+    Ty void_ty()
+    {
+        Ty ty;
+        ty.ir = llvm::Type::getVoidTy(context);
+        ty.is_void = true;
+        return ty;
+    }
+
+    RValue fallback()
+    {
+        RValue value;
+        value.ty = int_ty();
+        value.v = llvm::ConstantInt::get(value.ty.ir, 0);
+        return value;
+    }
+
+    bool op_is(const AstNode *node, const char *text)
+    {
+        return node != NULL && node->text != NULL && std::strcmp(node->text, text) == 0;
+    }
+
+    bool is_integer(const Ty &ty)
+    {
+        return !ty.is_void && !ty.is_float && ty.ir != NULL && ty.ir->isIntegerTy();
+    }
+
+    void reject_node(const AstNode *node)
+    {
+        if (node == NULL) {
+            error("not in this phase");
+            return;
+        }
+        switch (node->kind) {
+        case AST_CALL:
+            error("calls are a later phase");
+            break;
+        case AST_ARRAY:
+        case AST_INDEX:
+            error("arrays are a later phase");
+            break;
+        case AST_POINTER:
+        case AST_DECLARATOR:
+        case AST_NULL:
+            error("pointers are a later phase");
+            break;
+        case AST_STRUCT:
+        case AST_UNION:
+        case AST_ENUM:
+        case AST_ENUMERATOR:
+        case AST_MEMBER:
+        case AST_ARROW:
+        case AST_BITFIELD:
+        case AST_DESIGNATED:
+            error("aggregates are a later phase");
+            break;
+        case AST_NAMESPACE:
+        case AST_USING:
+        case AST_QUALIFIED:
+            error("namespaces are a later phase");
+            break;
+        case AST_CLASS:
+        case AST_BASE:
+        case AST_ACCESS:
+        case AST_CONSTRUCTOR:
+        case AST_DESTRUCTOR:
+        case AST_MEM_INIT:
+        case AST_THIS:
+            error("classes are a later phase");
+            break;
+        case AST_TRY:
+        case AST_CATCH:
+        case AST_THROW:
+            error("exceptions are a later phase");
+            break;
+        case AST_NEW:
+        case AST_DELETE:
+            error("allocation is a later phase");
+            break;
+        case AST_PRINT:
+        case AST_FORMAT:
+            error("print and format are a later phase");
+            break;
+        case AST_TYPE_NAME:
+            error("typedef is a later phase");
+            break;
+        case AST_ELLIPSIS:
+            error("varargs are a later phase");
+            break;
+        default:
+            if (node->kind == AST_LITERAL && node->text != NULL && node->text[0] == '"')
+                error("string literals are a later phase");
+            else
+                error("not in this phase");
+            break;
+        }
+    }
+
+    void reject_declarator(const AstNode *node)
+    {
+        if (node == NULL)
+            error("declaration has no name");
+        else if (node->kind == AST_ARRAY)
+            error("arrays are a later phase");
+        else if (node->kind == AST_POINTER || node->kind == AST_DECLARATOR)
+            error("pointers are a later phase");
+        else if (node->kind == AST_FUNCTION_DECL)
+            error("calls are a later phase");
+        else if (node->kind == AST_QUALIFIED)
+            error("qualified names are a later phase");
+        else if (node->kind == AST_BITFIELD)
+            error("aggregates are a later phase");
+        else
+            error("not a scalar");
+    }
+
+    Ty parse_specs(const AstNode *list, Where where)
+    {
+        int longs = 0;
+        int shorts = 0;
+        bool saw_signed = false;
+        bool saw_unsigned = false;
+        bool saw_int = false;
+        bool is_const = false;
+        bool is_volatile = false;
+        enum Base { Missing, Void, Bool, Char, Int, Float, Double } base = Missing;
+
+        for (const AstNode *node = list; node != NULL; node = node->next) {
+            if (node->kind != AST_SPECIFIER || node->text == NULL) {
+                reject_node(node);
+                return int_ty();
+            }
+            const char *text = node->text;
+            if (std::strcmp(text, "const") == 0) {
+                if (is_const)
+                    error("duplicate const");
+                is_const = true;
+            } else if (std::strcmp(text, "volatile") == 0) {
+                if (is_volatile)
+                    error("duplicate volatile");
+                is_volatile = true;
+            } else if (std::strcmp(text, "typedef") == 0)
+                error("typedef is a later phase");
+            else if (std::strcmp(text, "extern") == 0)
+                error("extern is a later phase");
+            else if (std::strcmp(text, "static") == 0)
+                error("static is a later phase");
+            else if (std::strcmp(text, "inline") == 0)
+                error("inline is a later phase");
+            else if (std::strcmp(text, "virtual") == 0)
+                error("classes are a later phase");
+            else if (std::strcmp(text, "register") == 0)
+                error("register is a later phase");
+            else if (std::strcmp(text, "auto") == 0) {
+                if (where != Where::Local)
+                    error("auto is not allowed here");
+            } else if (std::strcmp(text, "void") == 0) {
+                if (base != Missing)
+                    error("invalid type");
+                base = Void;
+            } else if (std::strcmp(text, "bool") == 0) {
+                if (base != Missing)
+                    error("invalid type");
+                base = Bool;
+            } else if (std::strcmp(text, "char") == 0) {
+                if (base != Missing)
+                    error("invalid type");
+                base = Char;
+            } else if (std::strcmp(text, "int") == 0) {
+                if (saw_int || (base != Missing && base != Int))
+                    error("invalid type");
+                saw_int = true;
+                if (base == Missing)
+                    base = Int;
+            } else if (std::strcmp(text, "short") == 0) {
+                if (shorts)
+                    error("invalid type");
+                shorts++;
+            } else if (std::strcmp(text, "long") == 0) {
+                if (longs >= 2)
+                    error("invalid type");
+                longs++;
+            } else if (std::strcmp(text, "float") == 0) {
+                if (base != Missing)
+                    error("invalid type");
+                base = Float;
+            } else if (std::strcmp(text, "double") == 0) {
+                if (base != Missing)
+                    error("invalid type");
+                base = Double;
+            } else if (std::strcmp(text, "signed") == 0) {
+                if (saw_signed || saw_unsigned)
+                    error("invalid type");
+                saw_signed = true;
+            } else if (std::strcmp(text, "unsigned") == 0) {
+                if (saw_signed || saw_unsigned)
+                    error("invalid type");
+                saw_unsigned = true;
+            } else {
+                error("type is a later phase");
+                return int_ty();
+            }
+            if (failed)
+                return int_ty();
+        }
+
+        if (shorts && longs)
+            error("invalid type");
+        if (base == Void || base == Bool || base == Float) {
+            if (shorts || longs || saw_signed || saw_unsigned || saw_int)
+                error("invalid type");
+        }
+        if (base == Char && (shorts || longs || saw_int))
+            error("invalid type");
+        if (base == Double && (shorts || saw_int || saw_signed || saw_unsigned))
+            error("invalid type");
+        if (base == Double && longs)
+            error("long double is not in this phase");
+        if (base == Float && (shorts || longs))
+            error("invalid type");
+        if ((shorts || longs) && base != Missing && base != Int)
+            error("invalid type");
+        if (failed)
+            return int_ty();
+        if (base == Missing && !shorts && !longs && !saw_signed && !saw_unsigned && !saw_int) {
+            error("declaration has no type");
+            return int_ty();
+        }
+
+        Ty ty;
+        if (base == Void)
+            ty = void_ty();
+        else if (base == Bool)
+            ty = bool_ty();
+        else if (base == Float)
+            ty = floating(false);
+        else if (base == Double)
+            ty = floating(true);
+        else if (base == Char)
+            ty = integer(8, !saw_unsigned, 1);
+        else if (shorts)
+            ty = integer(16, !saw_unsigned, 2);
+        else if (longs)
+            ty = integer(64, !saw_unsigned, 4);
+        else
+            ty = integer(32, !saw_unsigned, 3);
+        ty.is_const = is_const;
+        ty.is_volatile = is_volatile;
+        if (where == Where::Return)
+            ty = drop(ty);
+        return ty;
+    }
+
+    bool is_type_form(const AstNode *node)
+    {
+        if (node == NULL)
+            return false;
+        return node->kind == AST_SPECIFIER || node->kind == AST_DECLARATOR
+            || node->kind == AST_STRUCT || node->kind == AST_UNION
+            || node->kind == AST_ENUM || node->kind == AST_CLASS
+            || node->kind == AST_TYPE_NAME;
+    }
+
+    Ty type_from_name(const AstNode *node)
+    {
+        if (node != NULL && node->kind == AST_DECLARATOR) {
+            if (node->b != NULL) {
+                reject_declarator(node->b);
+                return int_ty();
+            }
+            return parse_specs(node->a, Where::Param);
+        }
+        if (node != NULL && node->kind == AST_SPECIFIER)
+            return parse_specs(node, Where::Param);
+        reject_node(node);
+        return int_ty();
+    }
+
+    Ty promote(Ty ty)
+    {
+        ty = drop(ty);
+        if (ty.is_float || ty.is_void)
+            return ty;
+        if (!ty.is_bool && ty.rank >= 3)
+            return ty;
+        return int_ty();
+    }
+
+    Ty usual(Ty left, Ty right)
+    {
+        if (left.is_void || right.is_void) {
+            error("void operand");
+            return int_ty();
+        }
+        if (left.is_float || right.is_float) {
+            if (!left.is_float)
+                return drop(right);
+            if (!right.is_float)
+                return drop(left);
+            return drop(left.fp_rank >= right.fp_rank ? left : right);
+        }
+        left = promote(left);
+        right = promote(right);
+        if (left.rank == right.rank && left.is_signed == right.is_signed)
+            return left;
+        if (left.is_signed == right.is_signed)
+            return left.rank >= right.rank ? left : right;
+        Ty uns = left.is_signed ? right : left;
+        Ty sig = left.is_signed ? left : right;
+        if (uns.rank >= sig.rank)
+            return uns;
+        return sig;
+    }
+
+    bool suffix_is(const std::string &spell, const char *suffix)
+    {
+        std::size_t length = spell.size();
+        std::size_t mark = std::strlen(suffix);
+        if (length < mark)
+            return false;
+        for (std::size_t i = 0; i < mark; i++) {
+            if (std::tolower(static_cast<unsigned char>(spell[length - mark + i])) != suffix[i])
+                return false;
+        }
+        return true;
+    }
+
+    bool decode_char(const char *text, unsigned &code)
+    {
+        if (text[0] == 'L')
+            text++;
+        if (text[0] != '\'')
+            return false;
+        text++;
+        if (text[0] == '\\') {
+            text++;
+            if (text[0] == 'n')
+                code = '\n';
+            else if (text[0] == 't')
+                code = '\t';
+            else if (text[0] == 'r')
+                code = '\r';
+            else if (text[0] == 'a')
+                code = '\a';
+            else if (text[0] == 'b')
+                code = '\b';
+            else if (text[0] == 'f')
+                code = '\f';
+            else if (text[0] == 'v')
+                code = '\v';
+            else if (text[0] == '0')
+                code = '\0';
+            else if (text[0] == 'x' || text[0] == 'X') {
+                text++;
+                char *end = NULL;
+                unsigned long hex = std::strtoul(text, &end, 16);
+                if (end == text || hex > 0xff)
+                    return false;
+                code = static_cast<unsigned>(hex);
+                text = end - 1;
+            } else if (std::isdigit(static_cast<unsigned char>(text[0]))) {
+                char *end = NULL;
+                unsigned long oct = std::strtoul(text, &end, 8);
+                if (end == text || oct > 0xff)
+                    return false;
+                code = static_cast<unsigned>(oct);
+                text = end - 1;
+            } else
+                code = static_cast<unsigned char>(text[0]);
+            text++;
+        } else {
+            code = static_cast<unsigned char>(text[0]);
+            text++;
+        }
+        return text[0] == '\'' && text[1] == '\0';
+    }
+
+    bool looks_float(const char *text)
+    {
+        if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+            return false;
+        if (std::strchr(text, '.') != NULL || std::strpbrk(text, "eE") != NULL)
+            return true;
+        std::size_t length = std::strlen(text);
+        return length != 0 && (text[length - 1] == 'f' || text[length - 1] == 'F');
+    }
+
+    bool decode_literal(const char *text, Ty &ty, llvm::Constant *&value)
+    {
+        unsigned code = 0;
+        if (text == NULL)
+            return false;
+        if (std::strcmp(text, "true") == 0) {
+            ty = bool_ty();
+            value = llvm::ConstantInt::get(ty.ir, 1);
+            return true;
+        }
+        if (std::strcmp(text, "false") == 0) {
+            ty = bool_ty();
+            value = llvm::ConstantInt::get(ty.ir, 0);
+            return true;
+        }
+        if (text[0] == '\'' || (text[0] == 'L' && text[1] == '\'')) {
+            if (!decode_char(text, code))
+                return false;
+            ty = int_ty();
+            value = llvm::ConstantInt::get(ty.ir, code);
+            return true;
+        }
+        if (text[0] == '"')
+            return false;
+        if (looks_float(text)) {
+            char *end = NULL;
+            double magnitude = std::strtod(text, &end);
+            if (end == text)
+                return false;
+            bool single = false;
+            if (*end == 'f' || *end == 'F') {
+                single = true;
+                end++;
+            } else if (*end == 'l' || *end == 'L') {
+                error("long double is not in this phase");
+                return false;
+            }
+            if (*end != '\0')
+                return false;
+            llvm::APFloat parsed(magnitude);
+            if (single) {
+                bool loses = false;
+                parsed.convert(llvm::APFloat::IEEEsingle(),
+                               llvm::APFloat::rmNearestTiesToEven, &loses);
+            }
+            ty = floating(!single);
+            value = llvm::ConstantFP::get(context, parsed);
+            return true;
+        }
+
+        std::string spell(text);
+        enum Suf { None, U, L, UL, LL, ULL } suffix = None;
+        if (suffix_is(spell, "ull") || suffix_is(spell, "llu")) {
+            suffix = ULL;
+            spell.resize(spell.size() - 3);
+        } else if (suffix_is(spell, "ll")) {
+            suffix = LL;
+            spell.resize(spell.size() - 2);
+        } else if (suffix_is(spell, "ul") || suffix_is(spell, "lu")) {
+            suffix = UL;
+            spell.resize(spell.size() - 2);
+        } else if (suffix_is(spell, "u")) {
+            suffix = U;
+            spell.resize(spell.size() - 1);
+        } else if (suffix_is(spell, "l")) {
+            suffix = L;
+            spell.resize(spell.size() - 1);
+        }
+        if (spell.empty())
+            return false;
+        int base = 10;
+        const char *digits = spell.c_str();
+        if (digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X')) {
+            base = 16;
+            digits += 2;
+        } else if (digits[0] == '0')
+            base = 8;
+        if (digits[0] == '\0')
+            return false;
+        if (base == 8) {
+            for (const char *scan = digits; *scan != '\0'; scan++) {
+                if (*scan < '0' || *scan > '7')
+                    return false;
+            }
+        }
+        errno = 0;
+        char *end = NULL;
+        unsigned long long magnitude = std::strtoull(digits, &end, base);
+        if (end == digits || *end != '\0' || errno != 0)
+            return false;
+
+        struct Fit {
+            unsigned bits;
+            bool is_signed;
+            int rank;
+        };
+        Fit options[4];
+        int count = 0;
+        auto add = [&](unsigned bits, bool is_signed, int rank) {
+            options[count++] = Fit{bits, is_signed, rank};
+        };
+        bool hex_or_oct = base != 10;
+        if (suffix == None && !hex_or_oct) {
+            add(32, true, 3);
+            add(64, true, 4);
+        } else if (suffix == None) {
+            add(32, true, 3);
+            add(32, false, 3);
+            add(64, true, 4);
+            add(64, false, 4);
+        } else if (suffix == U) {
+            add(32, false, 3);
+            add(64, false, 4);
+        } else if (suffix == L && !hex_or_oct)
+            add(64, true, 4);
+        else if (suffix == L) {
+            add(64, true, 4);
+            add(64, false, 4);
+        } else if (suffix == UL)
+            add(64, false, 4);
+        else if (suffix == LL && !hex_or_oct)
+            add(64, true, 4);
+        else if (suffix == LL) {
+            add(64, true, 4);
+            add(64, false, 4);
+        } else
+            add(64, false, 4);
+
+        for (int i = 0; i < count; i++) {
+            bool fits;
+            if (options[i].bits >= 64)
+                fits = !options[i].is_signed
+                    || magnitude <= static_cast<unsigned long long>(INT64_MAX);
+            else if (options[i].is_signed)
+                fits = magnitude <= (1ULL << (options[i].bits - 1)) - 1;
+            else
+                fits = magnitude <= (1ULL << options[i].bits) - 1;
+            if (!fits)
+                continue;
+            ty = integer(options[i].bits, options[i].is_signed, options[i].rank);
+            value = llvm::ConstantInt::get(ty.ir, magnitude, false);
+            return true;
+        }
+        return false;
+    }
+
+    llvm::Constant *convert_const(llvm::Constant *value, const Ty &from, const Ty &to)
+    {
+        if (failed || value == NULL)
+            return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
+        if (to.is_void || from.is_void) {
+            if (!(to.is_void && from.is_void))
+                error("cannot convert void");
+            return value;
+        }
+        if (from.ir == to.ir)
+            return value;
+        if (to.is_bool) {
+            bool nonzero = false;
+            if (from.is_float)
+                nonzero = !llvm::cast<llvm::ConstantFP>(value)->isZero();
+            else
+                nonzero = !llvm::cast<llvm::ConstantInt>(value)->isZero();
+            return llvm::ConstantInt::get(to.ir, nonzero ? 1 : 0);
+        }
+        if (to.is_float && !from.is_float) {
+            auto *iconst = llvm::cast<llvm::ConstantInt>(value);
+            llvm::APFloat parsed(to.fp_rank >= 2 ? llvm::APFloat::IEEEdouble()
+                                                 : llvm::APFloat::IEEEsingle());
+            parsed.convertFromAPInt(iconst->getValue(), from.is_signed,
+                                    llvm::APFloat::rmNearestTiesToEven);
+            return llvm::ConstantFP::get(context, parsed);
+        }
+        if (from.is_float && to.is_float) {
+            llvm::APFloat parsed = llvm::cast<llvm::ConstantFP>(value)->getValueAPF();
+            bool loses = false;
+            parsed.convert(to.fp_rank >= 2 ? llvm::APFloat::IEEEdouble()
+                                           : llvm::APFloat::IEEEsingle(),
+                           llvm::APFloat::rmNearestTiesToEven, &loses);
+            return llvm::ConstantFP::get(context, parsed);
+        }
+        if (from.is_float) {
+            llvm::APFloat parsed = llvm::cast<llvm::ConstantFP>(value)->getValueAPF();
+            llvm::APSInt bits(to.ir->getIntegerBitWidth(), !to.is_signed);
+            bool exact = false;
+            llvm::APFloat::opStatus status = parsed.convertToInteger(
+                bits, llvm::APFloat::rmTowardZero, &exact);
+            if (status != llvm::APFloat::opOK && status != llvm::APFloat::opInexact)
+                return llvm::ConstantInt::get(to.ir, 0);
+            return llvm::ConstantInt::get(context, bits);
+        }
+        llvm::APInt bits = llvm::cast<llvm::ConstantInt>(value)->getValue();
+        unsigned width = to.ir->getIntegerBitWidth();
+        if (bits.getBitWidth() > width)
+            bits = bits.trunc(width);
+        else if (bits.getBitWidth() < width)
+            bits = from.is_signed ? bits.sext(width) : bits.zext(width);
+        return llvm::ConstantInt::get(context, bits);
+    }
+
+    llvm::Value *convert(llvm::Value *value, const Ty &from, const Ty &to)
+    {
+        if (failed)
+            return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
+        if (to.is_void || from.is_void) {
+            if (!(to.is_void && from.is_void))
+                error("cannot convert void");
+            return value;
+        }
+        if (from.ir == to.ir)
+            return value;
+        if (to.is_bool) {
+            if (from.is_float)
+                return builder.CreateFCmpUNE(value, llvm::ConstantFP::get(from.ir, 0.0));
+            return builder.CreateICmpNE(value, llvm::ConstantInt::get(from.ir, 0));
+        }
+        if (to.is_float && !from.is_float) {
+            if (from.is_signed)
+                return builder.CreateSIToFP(value, to.ir);
+            return builder.CreateUIToFP(value, to.ir);
+        }
+        if (from.is_float && to.is_float) {
+            if (from.fp_rank < to.fp_rank)
+                return builder.CreateFPExt(value, to.ir);
+            if (from.fp_rank > to.fp_rank)
+                return builder.CreateFPTrunc(value, to.ir);
+            return value;
+        }
+        if (from.is_float) {
+            if (to.is_signed)
+                return builder.CreateFPToSI(value, to.ir);
+            return builder.CreateFPToUI(value, to.ir);
+        }
+        unsigned src = from.ir->getIntegerBitWidth();
+        unsigned dst = to.ir->getIntegerBitWidth();
+        if (dst < src)
+            return builder.CreateTrunc(value, to.ir);
+        if (dst > src) {
+            if (from.is_signed)
+                return builder.CreateSExt(value, to.ir);
+            return builder.CreateZExt(value, to.ir);
+        }
+        return value;
+    }
+
+    RValue cast_to(RValue value, Ty dest)
+    {
+        if (failed)
+            return fallback();
+        RValue out;
+        out.ty = drop(dest);
+        out.v = convert(value.v, value.ty, dest);
+        return out;
+    }
+
+    void push_scope()
+    {
+        scopes.emplace_back();
+    }
+
+    void pop_scope()
+    {
+        if (scopes.size() > 1)
+            scopes.pop_back();
+    }
+
+    std::optional<Slot> lookup(const char *name)
+    {
+        if (name == NULL)
+            return std::nullopt;
+        for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
+            auto found = scope->find(name);
+            if (found != scope->end())
+                return found->second;
+        }
+        return std::nullopt;
+    }
+
+    void bind(const std::string &name, Slot slot)
+    {
+        if (name.empty())
+            return;
+        if (scopes.back().count(name) != 0) {
+            error_name("name is already defined", name.c_str());
+            return;
+        }
+        scopes.back()[name] = slot;
+    }
+
+    llvm::AllocaInst *alloca_entry(llvm::Type *ty, const std::string &name)
+    {
+        llvm::IRBuilder<> allocas(entry, entry->begin());
+        return allocas.CreateAlloca(ty, nullptr, name);
+    }
+
+    llvm::Value *load_slot(const Slot &slot)
+    {
+        return builder.CreateLoad(slot.ty.ir, slot.addr, slot.ty.is_volatile);
+    }
+
+    void store_slot(const Slot &slot, llvm::Value *value, bool initializing)
+    {
+        if (slot.ty.is_const && !initializing) {
+            error("assignment to const");
+            return;
+        }
+        builder.CreateStore(value, slot.addr, slot.ty.is_volatile);
+    }
+
+    bool terminated()
+    {
+        llvm::BasicBlock *block = builder.GetInsertBlock();
+        return block == NULL || block->getTerminator() != NULL;
+    }
+
+    void ensure_insert()
+    {
+        if (failed)
+            return;
+        if (!terminated())
+            return;
+        llvm::BasicBlock *dead = llvm::BasicBlock::Create(context, "dead", function);
+        builder.SetInsertPoint(dead);
+    }
+
+    llvm::BasicBlock *new_block(const char *name)
+    {
+        return llvm::BasicBlock::Create(context, name, function);
+    }
+
+    std::optional<Slot> lvalue(const AstNode *node)
+    {
+        if (node == NULL || node->kind != AST_IDENT || node->text == NULL) {
+            error("assignment target is not a scalar");
+            return std::nullopt;
+        }
+        std::optional<Slot> slot = lookup(node->text);
+        if (!slot)
+            error_name("unknown name", node->text);
+        return slot;
+    }
+
+    Ty type_of(const AstNode *node)
+    {
+        if (failed || node == NULL)
+            return int_ty();
+        if (node->kind == AST_LITERAL) {
+            Ty ty;
+            llvm::Constant *value = nullptr;
+            if (!decode_literal(node->text, ty, value)) {
+                if (!failed)
+                    error("bad literal");
+                return int_ty();
+            }
+            return ty;
+        }
+        if (node->kind == AST_IDENT) {
+            std::optional<Slot> slot = lookup(node->text);
+            if (!slot) {
+                error_name("unknown name", node->text);
+                return int_ty();
+            }
+            return drop(slot->ty);
+        }
+        if (node->kind == AST_SIZEOF)
+            return size_ty();
+        if (node->kind == AST_CAST) {
+            Ty ty = type_from_name(node->a);
+            return drop(ty);
+        }
+        if (node->kind == AST_UNARY)
+            return type_unary(node);
+        if (node->kind == AST_BINARY)
+            return type_binary(node);
+        if (node->kind == AST_ASSIGN) {
+            std::optional<Slot> slot = lvalue(node->a);
+            if (!slot)
+                return int_ty();
+            return drop(slot->ty);
+        }
+        if (node->kind == AST_CONDITIONAL) {
+            Ty left = type_of(node->b);
+            Ty right = type_of(node->c);
+            if (left.is_void || right.is_void) {
+                error("conditional operand is void");
+                return int_ty();
+            }
+            return usual(left, right);
+        }
+        reject_node(node);
+        return int_ty();
+    }
+
+    Ty type_unary(const AstNode *node)
+    {
+        if (op_is(node, "&") || op_is(node, "*")) {
+            error("pointers are a later phase");
+            return int_ty();
+        }
+        if (op_is(node, "!"))
+            return bool_ty();
+        if (op_is(node, "++") || op_is(node, "--") || op_is(node, "post++")
+            || op_is(node, "post--")) {
+            std::optional<Slot> slot = lvalue(node->a);
+            if (!slot)
+                return int_ty();
+            return drop(slot->ty);
+        }
+        Ty inner = type_of(node->a);
+        if (op_is(node, "~") && inner.is_float)
+            error("complement of a float");
+        return promote(inner);
+    }
+
+    Ty type_binary(const AstNode *node)
+    {
+        if (op_is(node, "&&") || op_is(node, "||"))
+            return bool_ty();
+        if (op_is(node, ",")) {
+            type_of(node->a);
+            return type_of(node->b);
+        }
+        Ty left = type_of(node->a);
+        Ty right = type_of(node->b);
+        if (op_is(node, "<") || op_is(node, ">") || op_is(node, "<=") || op_is(node, ">=")
+            || op_is(node, "==") || op_is(node, "!="))
+            return bool_ty();
+        if (op_is(node, "<<") || op_is(node, ">>")) {
+            if (left.is_float || right.is_float)
+                error("shift of a float");
+            return promote(left);
+        }
+        if ((op_is(node, "&") || op_is(node, "|") || op_is(node, "^"))
+            && (left.is_float || right.is_float))
+            error("bitwise operator on a float");
+        return usual(left, right);
+    }
+
+    Const eval_const(const AstNode *node)
+    {
+        Const none;
+        if (failed || node == NULL)
+            return none;
+        if (node->kind == AST_LITERAL) {
+            Const out;
+            if (!decode_literal(node->text, out.ty, out.v)) {
+                if (!failed)
+                    error("bad literal");
+                return none;
+            }
+            out.ok = true;
+            return out;
+        }
+        if (node->kind == AST_SIZEOF)
+            return eval_sizeof(node->a);
+        if (node->kind == AST_CAST) {
+            Const inner = eval_const(node->b);
+            if (!inner.ok)
+                return none;
+            Ty dest = type_from_name(node->a);
+            if (failed)
+                return none;
+            if (dest.is_void) {
+                Const out;
+                out.ok = true;
+                out.ty = void_ty();
+                out.v = nullptr;
+                return out;
+            }
+            Const out;
+            out.ok = true;
+            out.ty = drop(dest);
+            out.v = convert_const(inner.v, inner.ty, dest);
+            return out;
+        }
+        if (node->kind == AST_UNARY)
+            return eval_unary(node);
+        if (node->kind == AST_BINARY)
+            return eval_binary(node);
+        if (node->kind == AST_CONDITIONAL)
+            return eval_conditional(node);
+        if (node->kind == AST_IDENT) {
+            if (!lookup(node->text))
+                error_name("unknown name", node->text);
+            return none;
+        }
+        if (node->kind == AST_ASSIGN)
+            return none;
+        reject_node(node);
+        return none;
+    }
+
+    Const eval_sizeof(const AstNode *operand)
+    {
+        Const none;
+        Ty ty = is_type_form(operand) ? type_from_name(operand) : type_of(operand);
+        if (failed || ty.is_void || ty.ir == NULL) {
+            if (!failed)
+                error("sizeof void");
+            return none;
+        }
+        uint64_t bytes = module.getDataLayout().getTypeAllocSize(ty.ir).getFixedValue();
+        Const out;
+        out.ok = true;
+        out.ty = size_ty();
+        out.v = llvm::ConstantInt::get(out.ty.ir, bytes);
+        return out;
+    }
+
+    Const with_const(llvm::Constant *value, Ty ty)
+    {
+        Const out;
+        out.ok = true;
+        out.v = value;
+        out.ty = ty;
+        return out;
+    }
+
+    Const eval_unary(const AstNode *node)
+    {
+        Const none;
+        if (op_is(node, "&") || op_is(node, "*") || op_is(node, "++") || op_is(node, "--")
+            || op_is(node, "post++") || op_is(node, "post--")) {
+            if (op_is(node, "&") || op_is(node, "*"))
+                error("pointers are a later phase");
+            return none;
+        }
+        Const inner = eval_const(node->a);
+        if (!inner.ok || inner.ty.is_void)
+            return none;
+        if (op_is(node, "!")) {
+            bool nonzero = const_true(inner);
+            return with_const(llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), nonzero ? 0 : 1),
+                              bool_ty());
+        }
+        if (op_is(node, "~") && inner.ty.is_float) {
+            error("complement of a float");
+            return none;
+        }
+        Ty dest = promote(inner.ty);
+        llvm::Constant *value = convert_const(inner.v, inner.ty, dest);
+        if (op_is(node, "+"))
+            return with_const(value, dest);
+        if (dest.is_float) {
+            llvm::APFloat parsed = llvm::cast<llvm::ConstantFP>(value)->getValueAPF();
+            parsed.changeSign();
+            return with_const(llvm::ConstantFP::get(context, parsed), dest);
+        }
+        llvm::APInt bits = llvm::cast<llvm::ConstantInt>(value)->getValue();
+        if (op_is(node, "-"))
+            bits = -bits;
+        else
+            bits = ~bits;
+        return with_const(llvm::ConstantInt::get(context, bits), dest);
+    }
+
+    bool const_true(const Const &value)
+    {
+        if (value.ty.is_float)
+            return !llvm::cast<llvm::ConstantFP>(value.v)->isZero();
+        return !llvm::cast<llvm::ConstantInt>(value.v)->isZero();
+    }
+
+    Const eval_binary(const AstNode *node)
+    {
+        Const none;
+        Const left = eval_const(node->a);
+        Const right = eval_const(node->b);
+        if (!left.ok || !right.ok)
+            return none;
+        if (op_is(node, ","))
+            return right;
+        if (op_is(node, "&&") || op_is(node, "||")) {
+            bool result = op_is(node, "&&") ? (const_true(left) && const_true(right))
+                                            : (const_true(left) || const_true(right));
+            return with_const(llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), result ? 1 : 0),
+                              bool_ty());
+        }
+        if (left.ty.is_void || right.ty.is_void)
+            return none;
+        const char *op = node->text != NULL ? node->text : "";
+        bool compare = std::strcmp(op, "<") == 0 || std::strcmp(op, ">") == 0
+            || std::strcmp(op, "<=") == 0 || std::strcmp(op, ">=") == 0
+            || std::strcmp(op, "==") == 0 || std::strcmp(op, "!=") == 0;
+        bool shift = std::strcmp(op, "<<") == 0 || std::strcmp(op, ">>") == 0;
+        if (shift) {
+            if (left.ty.is_float || right.ty.is_float) {
+                error("shift of a float");
+                return none;
+            }
+            Ty dest = promote(left.ty);
+            llvm::Constant *lhs = convert_const(left.v, left.ty, dest);
+            llvm::Constant *rhs = convert_const(right.v, right.ty, dest);
+            llvm::APInt a = llvm::cast<llvm::ConstantInt>(lhs)->getValue();
+            llvm::APInt b = llvm::cast<llvm::ConstantInt>(rhs)->getValue();
+            if (b.uge(a.getBitWidth())) {
+                error("shift is too wide");
+                return none;
+            }
+            llvm::APInt folded = std::strcmp(op, "<<") == 0 ? a.shl(b)
+                : (dest.is_signed ? a.ashr(b) : a.lshr(b));
+            return with_const(llvm::ConstantInt::get(context, folded), dest);
+        }
+        if ((std::strcmp(op, "&") == 0 || std::strcmp(op, "|") == 0 || std::strcmp(op, "^") == 0)
+            && (left.ty.is_float || right.ty.is_float)) {
+            error("bitwise operator on a float");
+            return none;
+        }
+        Ty dest = usual(left.ty, right.ty);
+        llvm::Constant *lhs = convert_const(left.v, left.ty, dest);
+        llvm::Constant *rhs = convert_const(right.v, right.ty, dest);
+        if (dest.is_float)
+            return fold_float(op, lhs, rhs, dest, compare);
+        return fold_int(op, lhs, rhs, dest, compare);
+    }
+
+    Const fold_int(const char *op, llvm::Constant *lhs, llvm::Constant *rhs, Ty dest, bool compare)
+    {
+        Const none;
+        llvm::APInt a = llvm::cast<llvm::ConstantInt>(lhs)->getValue();
+        llvm::APInt b = llvm::cast<llvm::ConstantInt>(rhs)->getValue();
+        if (compare) {
+            bool result = false;
+            if (std::strcmp(op, "==") == 0)
+                result = a.eq(b);
+            else if (std::strcmp(op, "!=") == 0)
+                result = a.ne(b);
+            else if (dest.is_signed) {
+                if (std::strcmp(op, "<") == 0)
+                    result = a.slt(b);
+                else if (std::strcmp(op, ">") == 0)
+                    result = a.sgt(b);
+                else if (std::strcmp(op, "<=") == 0)
+                    result = a.sle(b);
+                else
+                    result = a.sge(b);
+            } else if (std::strcmp(op, "<") == 0)
+                result = a.ult(b);
+            else if (std::strcmp(op, ">") == 0)
+                result = a.ugt(b);
+            else if (std::strcmp(op, "<=") == 0)
+                result = a.ule(b);
+            else
+                result = a.uge(b);
+            return with_const(llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), result ? 1 : 0),
+                              bool_ty());
+        }
+        if ((std::strcmp(op, "/") == 0 || std::strcmp(op, "%") == 0) && b.isZero()) {
+            error("division by zero");
+            return none;
+        }
+        llvm::APInt folded(a.getBitWidth(), 0);
+        if (std::strcmp(op, "+") == 0)
+            folded = a + b;
+        else if (std::strcmp(op, "-") == 0)
+            folded = a - b;
+        else if (std::strcmp(op, "*") == 0)
+            folded = a * b;
+        else if (std::strcmp(op, "/") == 0)
+            folded = dest.is_signed ? a.sdiv(b) : a.udiv(b);
+        else if (std::strcmp(op, "%") == 0)
+            folded = dest.is_signed ? a.srem(b) : a.urem(b);
+        else if (std::strcmp(op, "&") == 0)
+            folded = a & b;
+        else if (std::strcmp(op, "|") == 0)
+            folded = a | b;
+        else if (std::strcmp(op, "^") == 0)
+            folded = a ^ b;
+        else {
+            error("not in this phase");
+            return none;
+        }
+        return with_const(llvm::ConstantInt::get(context, folded), dest);
+    }
+
+    Const fold_float(const char *op, llvm::Constant *lhs, llvm::Constant *rhs, Ty dest, bool compare)
+    {
+        Const none;
+        llvm::APFloat a = llvm::cast<llvm::ConstantFP>(lhs)->getValueAPF();
+        llvm::APFloat b = llvm::cast<llvm::ConstantFP>(rhs)->getValueAPF();
+        if (compare) {
+            llvm::APFloat::cmpResult relation = a.compare(b);
+            bool result = false;
+            if (std::strcmp(op, "==") == 0)
+                result = relation == llvm::APFloat::cmpEqual;
+            else if (std::strcmp(op, "!=") == 0)
+                result = relation != llvm::APFloat::cmpEqual;
+            else if (std::strcmp(op, "<") == 0)
+                result = relation == llvm::APFloat::cmpLessThan;
+            else if (std::strcmp(op, ">") == 0)
+                result = relation == llvm::APFloat::cmpGreaterThan;
+            else if (std::strcmp(op, "<=") == 0)
+                result = relation == llvm::APFloat::cmpLessThan
+                    || relation == llvm::APFloat::cmpEqual;
+            else
+                result = relation == llvm::APFloat::cmpGreaterThan
+                    || relation == llvm::APFloat::cmpEqual;
+            return with_const(llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), result ? 1 : 0),
+                              bool_ty());
+        }
+        if ((std::strcmp(op, "/") == 0 || std::strcmp(op, "%") == 0) && b.isZero()) {
+            error("division by zero");
+            return none;
+        }
+        llvm::APFloat::opStatus status = llvm::APFloat::opOK;
+        if (std::strcmp(op, "+") == 0)
+            status = a.add(b, llvm::APFloat::rmNearestTiesToEven);
+        else if (std::strcmp(op, "-") == 0)
+            status = a.subtract(b, llvm::APFloat::rmNearestTiesToEven);
+        else if (std::strcmp(op, "*") == 0)
+            status = a.multiply(b, llvm::APFloat::rmNearestTiesToEven);
+        else if (std::strcmp(op, "/") == 0)
+            status = a.divide(b, llvm::APFloat::rmNearestTiesToEven);
+        else if (std::strcmp(op, "%") == 0)
+            status = a.remainder(b);
+        else {
+            error("not in this phase");
+            return none;
+        }
+        (void) status;
+        return with_const(llvm::ConstantFP::get(context, a), dest);
+    }
+
+    Const eval_conditional(const AstNode *node)
+    {
+        Const none;
+        Const cond = eval_const(node->a);
+        Const left = eval_const(node->b);
+        Const right = eval_const(node->c);
+        if (!cond.ok || !left.ok || !right.ok)
+            return none;
+        if (left.ty.is_void || right.ty.is_void) {
+            error("conditional operand is void");
+            return none;
+        }
+        Ty dest = usual(left.ty, right.ty);
+        llvm::Constant *taken = const_true(cond) ? convert_const(left.v, left.ty, dest)
+                                                 : convert_const(right.v, right.ty, dest);
+        return with_const(taken, dest);
+    }
+
+    RValue emit_rvalue(const AstNode *node)
+    {
+        if (failed || node == NULL)
+            return fallback();
+        if (node->kind == AST_LITERAL) {
+            if (node->text != NULL
+                && (node->text[0] == '"' || (node->text[0] == 'L' && node->text[1] == '"'))) {
+                error("string literals are a later phase");
+                return fallback();
+            }
+            RValue out;
+            llvm::Constant *constant = nullptr;
+            if (!decode_literal(node->text, out.ty, constant)) {
+                if (!failed)
+                    error("bad literal");
+                return fallback();
+            }
+            out.v = constant;
+            return out;
+        }
+        if (node->kind == AST_IDENT) {
+            std::optional<Slot> slot = lookup(node->text);
+            if (!slot) {
+                error_name("unknown name", node->text);
+                return fallback();
+            }
+            RValue out;
+            out.v = load_slot(*slot);
+            out.ty = drop(slot->ty);
+            return out;
+        }
+        if (node->kind == AST_SIZEOF) {
+            Const size = eval_sizeof(node->a);
+            if (!size.ok) {
+                if (!failed)
+                    error("sizeof is not constant");
+                return fallback();
+            }
+            return RValue{size.v, size.ty};
+        }
+        if (node->kind == AST_CAST)
+            return emit_cast(node);
+        if (node->kind == AST_UNARY)
+            return emit_unary(node);
+        if (node->kind == AST_BINARY)
+            return emit_binary(node);
+        if (node->kind == AST_ASSIGN)
+            return emit_assign(node);
+        if (node->kind == AST_CONDITIONAL)
+            return emit_conditional(node);
+        reject_node(node);
+        return fallback();
+    }
+
+    RValue emit_cast(const AstNode *node)
+    {
+        Ty dest = type_from_name(node->a);
+        if (failed)
+            return fallback();
+        RValue value = emit_rvalue(node->b);
+        if (failed)
+            return fallback();
+        if (dest.is_void) {
+            RValue out;
+            out.ty = void_ty();
+            return out;
+        }
+        return cast_to(value, dest);
+    }
+
+    RValue emit_unary(const AstNode *node)
+    {
+        if (op_is(node, "&") || op_is(node, "*")) {
+            error("pointers are a later phase");
+            return fallback();
+        }
+        if (op_is(node, "++") || op_is(node, "--") || op_is(node, "post++")
+            || op_is(node, "post--"))
+            return emit_inc(node);
+        if (op_is(node, "!")) {
+            llvm::Value *value = emit_bool(node->a);
+            if (failed)
+                return fallback();
+            RValue out;
+            out.v = builder.CreateNot(value);
+            out.ty = bool_ty();
+            return out;
+        }
+        RValue inner = emit_rvalue(node->a);
+        if (failed)
+            return fallback();
+        if (inner.ty.is_void) {
+            error("void operand");
+            return fallback();
+        }
+        if (op_is(node, "~") && inner.ty.is_float) {
+            error("complement of a float");
+            return fallback();
+        }
+        Ty dest = promote(inner.ty);
+        inner = cast_to(inner, dest);
+        RValue out;
+        out.ty = dest;
+        if (op_is(node, "+"))
+            out.v = inner.v;
+        else if (dest.is_float)
+            out.v = builder.CreateFNeg(inner.v);
+        else if (op_is(node, "-"))
+            out.v = builder.CreateNeg(inner.v);
+        else
+            out.v = builder.CreateNot(inner.v);
+        return out;
+    }
+
+    RValue emit_inc(const AstNode *node)
+    {
+        std::optional<Slot> slot = lvalue(node->a);
+        if (!slot || failed)
+            return fallback();
+        if (slot->ty.is_const) {
+            error("assignment to const");
+            return fallback();
+        }
+        bool postfix = op_is(node, "post++") || op_is(node, "post--");
+        bool decrement = op_is(node, "--") || op_is(node, "post--");
+        llvm::Value *old = load_slot(*slot);
+        Ty object = drop(slot->ty);
+        Ty widened = promote(object);
+        llvm::Value *current = convert(old, object, widened);
+        llvm::Value *one = widened.is_float ? static_cast<llvm::Value *>(llvm::ConstantFP::get(widened.ir, 1.0))
+                                            : llvm::ConstantInt::get(widened.ir, 1);
+        llvm::Value *next = widened.is_float
+            ? (decrement ? builder.CreateFSub(current, one) : builder.CreateFAdd(current, one))
+            : (decrement ? builder.CreateSub(current, one) : builder.CreateAdd(current, one));
+        llvm::Value *stored = convert(next, widened, object);
+        store_slot(*slot, stored, false);
+        RValue out;
+        out.ty = object;
+        out.v = postfix ? old : stored;
+        return out;
+    }
+
+    llvm::Value *emit_bool(const AstNode *node)
+    {
+        RValue value = emit_rvalue(node);
+        if (failed)
+            return llvm::ConstantInt::getFalse(context);
+        if (value.ty.is_void) {
+            error("void is not a condition");
+            return llvm::ConstantInt::getFalse(context);
+        }
+        if (value.ty.is_bool)
+            return value.v;
+        if (value.ty.is_float)
+            return builder.CreateFCmpUNE(value.v, llvm::ConstantFP::get(value.ty.ir, 0.0));
+        return builder.CreateICmpNE(value.v, llvm::ConstantInt::get(value.ty.ir, 0));
+    }
+
+    RValue emit_and(const AstNode *left, const AstNode *right)
+    {
+        llvm::Value *lhs = emit_bool(left);
+        if (failed)
+            return fallback();
+        llvm::BasicBlock *lhs_block = builder.GetInsertBlock();
+        llvm::BasicBlock *rhs_block = new_block("and.rhs");
+        llvm::BasicBlock *end_block = new_block("and.end");
+        builder.CreateCondBr(lhs, rhs_block, end_block);
+        builder.SetInsertPoint(rhs_block);
+        llvm::Value *rhs = emit_bool(right);
+        if (failed)
+            return fallback();
+        llvm::BasicBlock *rhs_end = builder.GetInsertBlock();
+        builder.CreateBr(end_block);
+        builder.SetInsertPoint(end_block);
+        llvm::PHINode *phi = builder.CreatePHI(llvm::Type::getInt1Ty(context), 2);
+        phi->addIncoming(llvm::ConstantInt::getFalse(context), lhs_block);
+        phi->addIncoming(rhs, rhs_end);
+        return RValue{phi, bool_ty()};
+    }
+
+    RValue emit_or(const AstNode *left, const AstNode *right)
+    {
+        llvm::Value *lhs = emit_bool(left);
+        if (failed)
+            return fallback();
+        llvm::BasicBlock *lhs_block = builder.GetInsertBlock();
+        llvm::BasicBlock *rhs_block = new_block("or.rhs");
+        llvm::BasicBlock *end_block = new_block("or.end");
+        builder.CreateCondBr(lhs, end_block, rhs_block);
+        builder.SetInsertPoint(rhs_block);
+        llvm::Value *rhs = emit_bool(right);
+        if (failed)
+            return fallback();
+        llvm::BasicBlock *rhs_end = builder.GetInsertBlock();
+        builder.CreateBr(end_block);
+        builder.SetInsertPoint(end_block);
+        llvm::PHINode *phi = builder.CreatePHI(llvm::Type::getInt1Ty(context), 2);
+        phi->addIncoming(llvm::ConstantInt::getTrue(context), lhs_block);
+        phi->addIncoming(rhs, rhs_end);
+        return RValue{phi, bool_ty()};
+    }
+
+    RValue emit_binary(const AstNode *node)
+    {
+        if (op_is(node, "&&"))
+            return emit_and(node->a, node->b);
+        if (op_is(node, "||"))
+            return emit_or(node->a, node->b);
+        if (op_is(node, ",")) {
+            emit_rvalue(node->a);
+            if (failed)
+                return fallback();
+            return emit_rvalue(node->b);
+        }
+        RValue left = emit_rvalue(node->a);
+        RValue right = emit_rvalue(node->b);
+        if (failed)
+            return fallback();
+        return apply_op(node->text, left, right);
+    }
+
+    RValue apply_op(const char *op, RValue left, RValue right)
+    {
+        if (op == NULL) {
+            error("not in this phase");
+            return fallback();
+        }
+        bool compare = std::strcmp(op, "<") == 0 || std::strcmp(op, ">") == 0
+            || std::strcmp(op, "<=") == 0 || std::strcmp(op, ">=") == 0
+            || std::strcmp(op, "==") == 0 || std::strcmp(op, "!=") == 0;
+        bool shift = std::strcmp(op, "<<") == 0 || std::strcmp(op, ">>") == 0;
+        if (shift) {
+            if (left.ty.is_float || right.ty.is_float || left.ty.is_void || right.ty.is_void) {
+                error("shift of a float");
+                return fallback();
+            }
+            Ty dest = promote(left.ty);
+            left = cast_to(left, dest);
+            right = cast_to(right, dest);
+            RValue out;
+            out.ty = dest;
+            if (std::strcmp(op, "<<") == 0)
+                out.v = builder.CreateShl(left.v, right.v);
+            else if (dest.is_signed)
+                out.v = builder.CreateAShr(left.v, right.v);
+            else
+                out.v = builder.CreateLShr(left.v, right.v);
+            return out;
+        }
+        if ((std::strcmp(op, "&") == 0 || std::strcmp(op, "|") == 0 || std::strcmp(op, "^") == 0)
+            && (left.ty.is_float || right.ty.is_float)) {
+            error("bitwise operator on a float");
+            return fallback();
+        }
+        Ty dest = usual(left.ty, right.ty);
+        if (failed)
+            return fallback();
+        left = cast_to(left, dest);
+        right = cast_to(right, dest);
+        RValue out;
+        if (compare) {
+            out.ty = bool_ty();
+            if (dest.is_float) {
+                llvm::CmpInst::Predicate pred = llvm::CmpInst::FCMP_OEQ;
+                if (std::strcmp(op, "<") == 0)
+                    pred = llvm::CmpInst::FCMP_OLT;
+                else if (std::strcmp(op, ">") == 0)
+                    pred = llvm::CmpInst::FCMP_OGT;
+                else if (std::strcmp(op, "<=") == 0)
+                    pred = llvm::CmpInst::FCMP_OLE;
+                else if (std::strcmp(op, ">=") == 0)
+                    pred = llvm::CmpInst::FCMP_OGE;
+                else if (std::strcmp(op, "!=") == 0)
+                    pred = llvm::CmpInst::FCMP_UNE;
+                out.v = builder.CreateFCmp(pred, left.v, right.v);
+            } else {
+                llvm::CmpInst::Predicate pred = llvm::CmpInst::ICMP_EQ;
+                bool sig = dest.is_signed;
+                if (std::strcmp(op, "<") == 0)
+                    pred = sig ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT;
+                else if (std::strcmp(op, ">") == 0)
+                    pred = sig ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT;
+                else if (std::strcmp(op, "<=") == 0)
+                    pred = sig ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE;
+                else if (std::strcmp(op, ">=") == 0)
+                    pred = sig ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE;
+                else if (std::strcmp(op, "!=") == 0)
+                    pred = llvm::CmpInst::ICMP_NE;
+                out.v = builder.CreateICmp(pred, left.v, right.v);
+            }
+            return out;
+        }
+        out.ty = dest;
+        if (dest.is_float) {
+            if (std::strcmp(op, "+") == 0)
+                out.v = builder.CreateFAdd(left.v, right.v);
+            else if (std::strcmp(op, "-") == 0)
+                out.v = builder.CreateFSub(left.v, right.v);
+            else if (std::strcmp(op, "*") == 0)
+                out.v = builder.CreateFMul(left.v, right.v);
+            else if (std::strcmp(op, "/") == 0)
+                out.v = builder.CreateFDiv(left.v, right.v);
+            else if (std::strcmp(op, "%") == 0)
+                out.v = builder.CreateFRem(left.v, right.v);
+            else {
+                error("not in this phase");
+                return fallback();
+            }
+            return out;
+        }
+        if (std::strcmp(op, "+") == 0)
+            out.v = builder.CreateAdd(left.v, right.v);
+        else if (std::strcmp(op, "-") == 0)
+            out.v = builder.CreateSub(left.v, right.v);
+        else if (std::strcmp(op, "*") == 0)
+            out.v = builder.CreateMul(left.v, right.v);
+        else if (std::strcmp(op, "/") == 0)
+            out.v = dest.is_signed ? builder.CreateSDiv(left.v, right.v)
+                                   : builder.CreateUDiv(left.v, right.v);
+        else if (std::strcmp(op, "%") == 0)
+            out.v = dest.is_signed ? builder.CreateSRem(left.v, right.v)
+                                   : builder.CreateURem(left.v, right.v);
+        else if (std::strcmp(op, "&") == 0)
+            out.v = builder.CreateAnd(left.v, right.v);
+        else if (std::strcmp(op, "|") == 0)
+            out.v = builder.CreateOr(left.v, right.v);
+        else if (std::strcmp(op, "^") == 0)
+            out.v = builder.CreateXor(left.v, right.v);
+        else {
+            error("not in this phase");
+            return fallback();
+        }
+        return out;
+    }
+
+    RValue emit_assign(const AstNode *node)
+    {
+        std::optional<Slot> slot = lvalue(node->a);
+        if (!slot || failed)
+            return fallback();
+        if (node->text == NULL) {
+            error("not in this phase");
+            return fallback();
+        }
+        RValue stored;
+        if (std::strcmp(node->text, "=") == 0) {
+            RValue value = emit_rvalue(node->b);
+            if (failed)
+                return fallback();
+            stored = cast_to(value, slot->ty);
+        } else {
+            std::string op = node->text;
+            if (op.empty() || op.back() != '=') {
+                error("not in this phase");
+                return fallback();
+            }
+            op.pop_back();
+            RValue left;
+            left.v = load_slot(*slot);
+            left.ty = drop(slot->ty);
+            RValue right = emit_rvalue(node->b);
+            if (failed)
+                return fallback();
+            RValue combined = apply_op(op.c_str(), left, right);
+            if (failed)
+                return fallback();
+            stored = cast_to(combined, slot->ty);
+        }
+        store_slot(*slot, stored.v, false);
+        stored.ty = drop(slot->ty);
+        return stored;
+    }
+
+    RValue emit_conditional(const AstNode *node)
+    {
+        Ty left_ty = type_of(node->b);
+        Ty right_ty = type_of(node->c);
+        if (failed)
+            return fallback();
+        if (left_ty.is_void || right_ty.is_void) {
+            error("conditional operand is void");
+            return fallback();
+        }
+        Ty dest = usual(left_ty, right_ty);
+        llvm::Value *cond = emit_bool(node->a);
+        if (failed)
+            return fallback();
+        llvm::BasicBlock *then_block = new_block("cond.then");
+        llvm::BasicBlock *else_block = new_block("cond.else");
+        llvm::BasicBlock *end_block = new_block("cond.end");
+        builder.CreateCondBr(cond, then_block, else_block);
+        builder.SetInsertPoint(then_block);
+        RValue then_value = cast_to(emit_rvalue(node->b), dest);
+        if (failed)
+            return fallback();
+        llvm::BasicBlock *then_end = builder.GetInsertBlock();
+        builder.CreateBr(end_block);
+        builder.SetInsertPoint(else_block);
+        RValue else_value = cast_to(emit_rvalue(node->c), dest);
+        if (failed)
+            return fallback();
+        llvm::BasicBlock *else_end = builder.GetInsertBlock();
+        builder.CreateBr(end_block);
+        builder.SetInsertPoint(end_block);
+        llvm::PHINode *phi = builder.CreatePHI(dest.ir, 2);
+        phi->addIncoming(then_value.v, then_end);
+        phi->addIncoming(else_value.v, else_end);
+        return RValue{phi, drop(dest)};
+    }
+
+    void emit_statement(const AstNode *node)
+    {
+        if (failed || node == NULL)
+            return;
+        switch (node->kind) {
+        case AST_LABEL:
+            emit_label(node);
+            return;
+        case AST_CASE:
+            emit_case(node);
+            return;
+        case AST_DEFAULT:
+            emit_default(node);
+            return;
+        case AST_COMPOUND:
+            emit_compound(node);
+            return;
+        default:
+            break;
+        }
+        ensure_insert();
+        if (failed)
+            return;
+        switch (node->kind) {
+        case AST_EXPR_STMT:
+            if (node->a != NULL)
+                emit_rvalue(node->a);
+            break;
+        case AST_DECLARATION:
+            emit_declaration(node, false);
+            break;
+        case AST_IF:
+            emit_if(node);
+            break;
+        case AST_SWITCH:
+            emit_switch(node);
+            break;
+        case AST_WHILE:
+            emit_while(node);
+            break;
+        case AST_DO:
+            emit_do(node);
+            break;
+        case AST_FOR:
+            emit_for(node);
+            break;
+        case AST_GOTO:
+            emit_goto(node);
+            break;
+        case AST_CONTINUE:
+            emit_continue();
+            break;
+        case AST_BREAK:
+            emit_break();
+            break;
+        case AST_RETURN:
+            emit_return(node);
+            break;
+        case AST_USING:
+            error("namespaces are a later phase");
+            break;
+        default:
+            reject_node(node);
+            break;
+        }
+    }
+
+    void emit_items(const AstNode *item)
+    {
+        for (; item != NULL && !failed; item = item->next) {
+            if (item->kind == AST_DECLARATION)
+                emit_declaration(item, false);
+            else
+                emit_statement(item);
+        }
+    }
+
+    void emit_compound(const AstNode *node)
+    {
+        push_scope();
+        emit_items(node->a);
+        pop_scope();
+    }
+
+    void emit_if(const AstNode *node)
+    {
+        llvm::Value *cond = emit_bool(node->a);
+        if (failed)
+            return;
+        llvm::BasicBlock *then_block = new_block("if.then");
+        llvm::BasicBlock *else_block = new_block("if.else");
+        llvm::BasicBlock *merge_block = node->c != NULL ? new_block("if.end") : else_block;
+        builder.CreateCondBr(cond, then_block, else_block);
+        builder.SetInsertPoint(then_block);
+        emit_statement(node->b);
+        if (!failed && !terminated())
+            builder.CreateBr(merge_block);
+        if (node->c != NULL) {
+            builder.SetInsertPoint(else_block);
+            emit_statement(node->c);
+            if (!failed && !terminated())
+                builder.CreateBr(merge_block);
+        }
+        builder.SetInsertPoint(merge_block);
+    }
+
+    bool case_key(const AstNode *expr, const Ty &dest, uint64_t &key, llvm::ConstantInt *&iconst)
+    {
+        Const value = eval_const(expr);
+        if (!value.ok) {
+            if (!failed)
+                error("case is not constant");
+            return false;
+        }
+        if (value.ty.is_float || value.ty.is_void || dest.ir == NULL || !dest.ir->isIntegerTy()) {
+            error("case is not an integer");
+            return false;
+        }
+        llvm::Constant *casted = convert_const(value.v, value.ty, dest);
+        iconst = llvm::dyn_cast<llvm::ConstantInt>(casted);
+        if (iconst == NULL) {
+            error("case is not an integer");
+            return false;
+        }
+        key = iconst->getZExtValue();
+        return !failed;
+    }
+
+    void collect_cases(const AstNode *node)
+    {
+        for (const AstNode *item = node; item != NULL && !failed; item = item->next)
+            collect_one(item);
+    }
+
+    void collect_one(const AstNode *node)
+    {
+        if (node == NULL || failed || collecting == NULL)
+            return;
+        if (node->kind == AST_SWITCH)
+            return;
+        if (node->kind == AST_CASE) {
+            uint64_t key = 0;
+            llvm::ConstantInt *iconst = nullptr;
+            if (!case_key(node->a, collecting->ty, key, iconst))
+                return;
+            if (collecting->cases.count(key) != 0) {
+                error("duplicate case");
+                return;
+            }
+            collecting->cases[key] = CaseDest{iconst, nullptr};
+            collect_one(node->b);
+            return;
+        }
+        if (node->kind == AST_DEFAULT) {
+            if (collecting->saw_default) {
+                error("duplicate default");
+                return;
+            }
+            collecting->saw_default = true;
+            collect_one(node->a);
+            return;
+        }
+        collect_cases(node->a);
+        collect_cases(node->b);
+        collect_cases(node->c);
+        collect_cases(node->d);
+    }
+
+    void emit_switch(const AstNode *node)
+    {
+        RValue cond = emit_rvalue(node->a);
+        if (failed)
+            return;
+        if (cond.ty.is_float || cond.ty.is_void) {
+            error("switch condition is not an integer");
+            return;
+        }
+        Ty promoted = promote(cond.ty);
+        llvm::Value *value = convert(cond.v, cond.ty, promoted);
+        SwitchFrame frame;
+        frame.ty = promoted;
+        SwitchFrame *saved = collecting;
+        collecting = &frame;
+        collect_cases(node->b);
+        collecting = saved;
+        if (failed)
+            return;
+        llvm::BasicBlock *exit_block = new_block("switch.exit");
+        if (frame.saw_default)
+            frame.default_bb = new_block("switch.default");
+        for (auto &arm : frame.cases)
+            arm.second.block = new_block("switch.case");
+        llvm::SwitchInst *inst = builder.CreateSwitch(
+            value, frame.default_bb != NULL ? frame.default_bb : exit_block,
+            static_cast<unsigned>(frame.cases.size()));
+        for (auto &arm : frame.cases)
+            inst->addCase(arm.second.value, arm.second.block);
+        loops.push_back(LoopFrame{exit_block, nullptr});
+        switches.push_back(frame);
+        emit_statement(node->b);
+        if (!failed && !terminated())
+            builder.CreateBr(exit_block);
+        switches.pop_back();
+        loops.pop_back();
+        if (!failed)
+            builder.SetInsertPoint(exit_block);
+    }
+
+    void emit_case(const AstNode *node)
+    {
+        if (switches.empty()) {
+            error("case is outside a switch");
+            return;
+        }
+        uint64_t key = 0;
+        llvm::ConstantInt *iconst = nullptr;
+        if (!case_key(node->a, switches.back().ty, key, iconst))
+            return;
+        auto arm = switches.back().cases.find(key);
+        if (arm == switches.back().cases.end() || arm->second.block == NULL) {
+            error("case is not constant");
+            return;
+        }
+        if (!terminated())
+            builder.CreateBr(arm->second.block);
+        builder.SetInsertPoint(arm->second.block);
+        emit_statement(node->b);
+    }
+
+    void emit_default(const AstNode *node)
+    {
+        if (switches.empty() || switches.back().default_bb == NULL) {
+            error("default is outside a switch");
+            return;
+        }
+        llvm::BasicBlock *dest = switches.back().default_bb;
+        if (!terminated())
+            builder.CreateBr(dest);
+        builder.SetInsertPoint(dest);
+        emit_statement(node->a);
+    }
+
+    void emit_while(const AstNode *node)
+    {
+        llvm::BasicBlock *cond_block = new_block("while.cond");
+        llvm::BasicBlock *body_block = new_block("while.body");
+        llvm::BasicBlock *exit_block = new_block("while.exit");
+        builder.CreateBr(cond_block);
+        builder.SetInsertPoint(cond_block);
+        llvm::Value *cond = emit_bool(node->a);
+        if (failed)
+            return;
+        builder.CreateCondBr(cond, body_block, exit_block);
+        loops.push_back(LoopFrame{exit_block, cond_block});
+        builder.SetInsertPoint(body_block);
+        emit_statement(node->b);
+        if (!failed && !terminated())
+            builder.CreateBr(cond_block);
+        loops.pop_back();
+        if (!failed)
+            builder.SetInsertPoint(exit_block);
+    }
+
+    void emit_do(const AstNode *node)
+    {
+        llvm::BasicBlock *body_block = new_block("do.body");
+        llvm::BasicBlock *cond_block = new_block("do.cond");
+        llvm::BasicBlock *exit_block = new_block("do.exit");
+        builder.CreateBr(body_block);
+        loops.push_back(LoopFrame{exit_block, cond_block});
+        builder.SetInsertPoint(body_block);
+        emit_statement(node->a);
+        if (!failed && !terminated())
+            builder.CreateBr(cond_block);
+        loops.pop_back();
+        if (failed)
+            return;
+        builder.SetInsertPoint(cond_block);
+        llvm::Value *cond = emit_bool(node->b);
+        if (failed)
+            return;
+        builder.CreateCondBr(cond, body_block, exit_block);
+        builder.SetInsertPoint(exit_block);
+    }
+
+    void emit_for(const AstNode *node)
+    {
+        bool has_decl = node->a != NULL && node->a->kind == AST_DECLARATION;
+        if (has_decl)
+            push_scope();
+        if (node->a != NULL) {
+            if (has_decl)
+                emit_declaration(node->a, false);
+            else {
+                ensure_insert();
+                emit_rvalue(node->a);
+            }
+        }
+        if (failed) {
+            if (has_decl)
+                pop_scope();
+            return;
+        }
+        llvm::BasicBlock *cond_block = new_block("for.cond");
+        llvm::BasicBlock *body_block = new_block("for.body");
+        llvm::BasicBlock *step_block = new_block("for.step");
+        llvm::BasicBlock *exit_block = new_block("for.exit");
+        builder.CreateBr(cond_block);
+        builder.SetInsertPoint(cond_block);
+        if (node->b == NULL)
+            builder.CreateBr(body_block);
+        else {
+            llvm::Value *cond = emit_bool(node->b);
+            if (!failed)
+                builder.CreateCondBr(cond, body_block, exit_block);
+        }
+        if (failed) {
+            if (has_decl)
+                pop_scope();
+            return;
+        }
+        loops.push_back(LoopFrame{exit_block, step_block});
+        builder.SetInsertPoint(body_block);
+        emit_statement(node->d);
+        if (!failed && !terminated())
+            builder.CreateBr(step_block);
+        loops.pop_back();
+        if (!failed) {
+            builder.SetInsertPoint(step_block);
+            if (node->c != NULL)
+                emit_rvalue(node->c);
+            if (!failed && !terminated())
+                builder.CreateBr(cond_block);
+        }
+        if (has_decl)
+            pop_scope();
+        if (!failed)
+            builder.SetInsertPoint(exit_block);
+    }
+
+    void emit_label(const AstNode *node)
+    {
+        if (node->text == NULL) {
+            error("label has no name");
+            return;
+        }
+        LabelInfo &label = labels[node->text];
+        if (label.defined) {
+            error_name("duplicate label", node->text);
+            return;
+        }
+        if (label.bb == NULL)
+            label.bb = new_block(node->text);
+        label.defined = true;
+        if (!terminated())
+            builder.CreateBr(label.bb);
+        builder.SetInsertPoint(label.bb);
+        if (node->a != NULL)
+            emit_statement(node->a);
+    }
+
+    void emit_goto(const AstNode *node)
+    {
+        if (node->text == NULL) {
+            error("goto has no name");
+            return;
+        }
+        LabelInfo &label = labels[node->text];
+        if (label.bb == NULL)
+            label.bb = new_block(node->text);
+        builder.CreateBr(label.bb);
+    }
+
+    void emit_break()
+    {
+        if (loops.empty() || loops.back().break_bb == NULL) {
+            error("break is outside a loop or switch");
+            return;
+        }
+        builder.CreateBr(loops.back().break_bb);
+    }
+
+    void emit_continue()
+    {
+        for (auto frame = loops.rbegin(); frame != loops.rend(); ++frame) {
+            if (frame->continue_bb == NULL)
+                continue;
+            builder.CreateBr(frame->continue_bb);
+            return;
+        }
+        error("continue is outside a loop");
+    }
+
+    void emit_return(const AstNode *node)
+    {
+        if (ret_ty.is_void) {
+            if (node->a != NULL) {
+                RValue value = emit_rvalue(node->a);
+                if (!failed && !value.ty.is_void)
+                    error("void function returns a value");
+            }
+            if (!failed && !terminated())
+                builder.CreateRetVoid();
+            return;
+        }
+        if (node->a == NULL) {
+            error("return needs a value");
+            return;
+        }
+        RValue value = cast_to(emit_rvalue(node->a), ret_ty);
+        if (!failed && !terminated())
+            builder.CreateRet(value.v);
+    }
+
+    const AstNode *scalar_declarator(const AstNode *node, const AstNode *&init)
+    {
+        init = NULL;
+        const AstNode *declarator = node;
+        if (node != NULL && node->kind == AST_INIT) {
+            declarator = node->a;
+            init = node->b;
+            if (init != NULL && init->kind == AST_INIT) {
+                if (init->a == NULL || init->a->next != NULL || init->a->kind == AST_DESIGNATED) {
+                    error("aggregates are a later phase");
+                    return NULL;
+                }
+                init = init->a;
+            }
+        }
+        if (declarator == NULL || declarator->kind != AST_IDENT || declarator->text == NULL) {
+            reject_declarator(declarator);
+            return NULL;
+        }
+        return declarator;
+    }
+
+    void emit_declaration(const AstNode *node, bool file)
+    {
+        Ty ty = parse_specs(node->a, file ? Where::File : Where::Local);
+        if (failed)
+            return;
+        if (ty.is_void) {
+            error("void variable");
+            return;
+        }
+        for (const AstNode *item = node->b; item != NULL && !failed; item = item->next) {
+            const AstNode *init = NULL;
+            const AstNode *declarator = scalar_declarator(item, init);
+            if (declarator == NULL)
+                return;
+            std::string name = declarator->text;
+            if (file) {
+                if (scopes.front().count(name) != 0 || functions.count(name) != 0) {
+                    error_name("name is already defined", name.c_str());
+                    return;
+                }
+                auto *global = new llvm::GlobalVariable(
+                    module, ty.ir, ty.is_const, llvm::GlobalValue::ExternalLinkage,
+                    llvm::Constant::getNullValue(ty.ir), name);
+                bind(name, Slot{global, ty});
+                if (init != NULL) {
+                    Const value = eval_const(init);
+                    if (!value.ok) {
+                        if (!failed)
+                            error("file-scope initializer is not constant");
+                        return;
+                    }
+                    if (value.ty.is_void) {
+                        error("void initializer");
+                        return;
+                    }
+                    global->setInitializer(llvm::cast<llvm::Constant>(
+                        convert_const(value.v, value.ty, ty)));
+                }
+            } else {
+                if (init != NULL)
+                    ensure_insert();
+                llvm::AllocaInst *addr = alloca_entry(ty.ir, name);
+                Slot slot{addr, ty};
+                bind(name, slot);
+                if (init != NULL) {
+                    RValue value = cast_to(emit_rvalue(init), ty);
+                    if (!failed)
+                        store_slot(slot, value.v, true);
+                }
+            }
+        }
+    }
+
+    bool collect_params(const AstNode *list, std::vector<Param> &out)
+    {
+        if (list == NULL)
+            return true;
+        if (list->kind == AST_PARAMETER && list->next == NULL && list->b == NULL
+            && list->c == NULL) {
+            Ty ty = parse_specs(list->a, Where::Param);
+            if (failed)
+                return false;
+            if (ty.is_void && !ty.is_const && !ty.is_volatile)
+                return true;
+        }
+        for (const AstNode *node = list; node != NULL; node = node->next) {
+            if (node->kind == AST_ELLIPSIS) {
+                error("varargs are a later phase");
+                return false;
+            }
+            if (node->kind != AST_PARAMETER) {
+                error("not a parameter");
+                return false;
+            }
+            if (node->c != NULL) {
+                error("default arguments are a later phase");
+                return false;
+            }
+            Param param;
+            param.ty = parse_specs(node->a, Where::Param);
+            if (failed)
+                return false;
+            if (param.ty.is_void) {
+                error("void parameter");
+                return false;
+            }
+            if (node->b != NULL) {
+                if (node->b->kind != AST_IDENT || node->b->text == NULL) {
+                    reject_declarator(node->b);
+                    return false;
+                }
+                param.name = node->b->text;
+            }
+            out.push_back(param);
+        }
+        return !failed;
+    }
+
+    void emit_function(const AstNode *node)
+    {
+        scopes.resize(1);
+        labels.clear();
+        loops.clear();
+        switches.clear();
+        const AstNode *decl = node->b;
+        if (decl == NULL || decl->kind != AST_FUNCTION_DECL) {
+            if (decl != NULL && (decl->kind == AST_DECLARATOR || decl->kind == AST_POINTER))
+                error("pointers are a later phase");
+            else
+                error("not a function");
+            return;
+        }
+        if (decl->c != NULL) {
+            error("method qualifiers are a later phase");
+            return;
+        }
+        const AstNode *name = decl->a;
+        if (name == NULL || name->kind != AST_IDENT || name->text == NULL) {
+            if (name != NULL && name->kind == AST_QUALIFIED)
+                error("qualified names are a later phase");
+            else
+                error("the function has no name");
+            return;
+        }
+        if (scopes.front().count(name->text) != 0 || functions.count(name->text) != 0) {
+            error_name("name is already defined", name->text);
+            return;
+        }
+        if (node->c == NULL || node->c->kind != AST_COMPOUND) {
+            error("function has no body");
+            return;
+        }
+        ret_ty = parse_specs(node->a, Where::Return);
+        if (failed)
+            return;
+        std::vector<Param> params;
+        if (!collect_params(decl->b, params))
+            return;
+        std::vector<llvm::Type *> arg_types;
+        for (const Param &param : params)
+            arg_types.push_back(param.ty.ir);
+        auto *type = llvm::FunctionType::get(ret_ty.ir, arg_types, false);
+        function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name->text,
+                                          &module);
+        functions.insert(name->text);
+        entry = llvm::BasicBlock::Create(context, "entry", function);
+        builder.SetInsertPoint(entry);
+        push_scope();
+        auto argument = function->arg_begin();
+        for (const Param &param : params) {
+            if (!param.name.empty())
+                argument->setName(param.name);
+            llvm::AllocaInst *addr = alloca_entry(
+                param.ty.ir, param.name.empty() ? "param" : param.name);
+            Slot slot{addr, param.ty};
+            if (!param.name.empty())
+                bind(param.name, slot);
+            store_slot(slot, &*argument, true);
+            ++argument;
+        }
+        emit_items(node->c->a);
+        if (!failed) {
+            for (const auto &label : labels) {
+                if (!label.second.defined) {
+                    error_name("undefined label", label.first.c_str());
+                    break;
+                }
+            }
+        }
+        if (!failed) {
+            for (llvm::BasicBlock &block : *function) {
+                if (block.getTerminator() != NULL)
+                    continue;
+                builder.SetInsertPoint(&block);
+                if (ret_ty.is_void)
+                    builder.CreateRetVoid();
+                else
+                    builder.CreateUnreachable();
+            }
+        }
+        pop_scope();
+        scopes.resize(1);
+        function = nullptr;
+        entry = nullptr;
+    }
+};
 
 int compile_to_bitcode(const AstNode *root, const char *bitcode_path)
 {
-    const AstNode *method;
-    const AstNode *decl;
-    const AstNode *name;
-    int32_t value = 0;
     llvm::LLVMContext context;
-    std::unique_ptr<llvm::Module> module;
-    llvm::FunctionType *type;
-    llvm::Function *function;
-    llvm::BasicBlock *entry;
-    llvm::IRBuilder<> builder(context);
+    auto module = std::make_unique<llvm::Module>("smallcpp", context);
+    Codegen codegen(context, *module);
+    if (codegen.run(root) != 0)
+        return 1;
+
     std::string diagnostic;
     llvm::raw_string_ostream errors(diagnostic);
-    std::error_code error;
-
-    if (root == NULL || root->kind != AST_TRANSLATION_UNIT || root->a == NULL
-        || root->a->next != NULL || root->a->kind != AST_METHOD) {
-        std::fprintf(stderr, "this slice compiles one function\n");
-        return 1;
-    }
-    method = root->a;
-    if (!is_specifier(method->a, "int")) {
-        std::fprintf(stderr, "this slice compiles a function that returns int\n");
-        return 1;
-    }
-    decl = method->b;
-    if (decl == NULL || decl->kind != AST_FUNCTION_DECL || decl->c != NULL
-        || !no_parameters(decl->b)) {
-        std::fprintf(stderr, "this slice compiles a function with no parameters\n");
-        return 1;
-    }
-    name = decl->a;
-    if (name == NULL || name->kind != AST_IDENT || name->text == NULL) {
-        std::fprintf(stderr, "the function has no name\n");
-        return 1;
-    }
-    if (return_literal(method->c, &value) == NULL) {
-        std::fprintf(stderr, "this slice compiles a return of an integer literal\n");
-        return 1;
-    }
-
-    module = std::make_unique<llvm::Module>("smallcpp", context);
-    type = llvm::FunctionType::get(llvm::Type::getInt32Ty(context), false);
-    function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name->text,
-                                      module.get());
-    entry = llvm::BasicBlock::Create(context, "entry", function);
-    builder.SetInsertPoint(entry);
-    builder.CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),
-                                              static_cast<uint64_t>(value), true));
-
     if (llvm::verifyModule(*module, &errors)) {
         errors.flush();
         std::fprintf(stderr, "module failed verification: %s\n", diagnostic.c_str());
         return 1;
     }
 
+    std::error_code error;
     llvm::raw_fd_ostream out(bitcode_path, error, llvm::sys::fs::OF_None);
     if (error) {
         std::fprintf(stderr, "%s: %s\n", bitcode_path, error.message().c_str());
