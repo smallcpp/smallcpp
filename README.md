@@ -7,6 +7,7 @@ Initial C++ CMake scaffold. The `shell` target is a hello-world program.
 ```sh
 cmake -S . -B build
 cmake --build build
+(cd build && ctest --output-on-failure)
 ./bin/shell
 ./bin/parse_test tests/examples/accept.scpp
 ```
