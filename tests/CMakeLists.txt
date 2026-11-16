@@ -53,6 +53,16 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
         -DCOMPILER=$<TARGET_FILE:shell>
         -DVERIFY=$<TARGET_FILE:verify_module>
+        -DMODE=return
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
         -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/answer.bc
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/CompileReturn.cmake)
+add_test(
+    NAME compile_scalars
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:shell>
+        -DVERIFY=$<TARGET_FILE:verify_module>
+        -DMODE=scalars
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/scalars.scpp
+        -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/scalars.bc
         -P ${CMAKE_CURRENT_SOURCE_DIR}/CompileReturn.cmake)
