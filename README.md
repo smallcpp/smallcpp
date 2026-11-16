@@ -7,15 +7,18 @@ Initial C++ CMake scaffold. The `shell` target is a hello-world program.
 ```sh
 cmake -S . -B build
 cmake --build build
-./build/shell
+./bin/shell
+./bin/parse_test tests/examples/accept.small
 ```
+
+Binaries are written to `bin/` and libraries to `lib/`.
 
 ## Layout
 
 - `src/shell` — shell executable
-- `src/compiler` — source directory for a later target
+- `src/compiler` — Bison grammar and Flex scanner
 - `src/preprocessor` — source directory for a later target
-- `docs` — documentation
+- `docs` — documentation (`docs/smallcpp.y` links to the grammar)
 - `scripts` — helper scripts
-- `tests` — tests
-- `tests/examples` — example inputs
+- `tests` — `parse_test` driver
+- `tests/examples` — parser inputs
