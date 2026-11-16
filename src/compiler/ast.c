@@ -51,6 +51,22 @@ AstNode *ast_catch_all(AstNode *body)
     return ast_make(AST_CATCH, strdup("..."), NULL, body, NULL, NULL);
 }
 
+AstNode *ast_null(const char *spelling)
+{
+    return ast_named(AST_NULL, spelling != NULL ? spelling : "nullptr");
+}
+
+AstNode *ast_new_expr(AstNode *type, AstNode *args)
+{
+    AstNode *pointer = ast_make(AST_POINTER, NULL, type, NULL, NULL, NULL);
+    return ast_make(AST_NEW, NULL, pointer, args, NULL, NULL);
+}
+
+AstNode *ast_delete_noop(AstNode *operand)
+{
+    return ast_make(AST_DELETE, strdup("noop"), operand, NULL, NULL, NULL);
+}
+
 void ast_append(AstNode *head, AstNode *item)
 {
     if (head == NULL || item == NULL)
@@ -444,6 +460,8 @@ const char *ast_kind_name(AstKind kind)
     case AST_SIZEOF: return "sizeof";
     case AST_PRINT: return "print";
     case AST_FORMAT: return "format";
+    case AST_NULL: return "null";
+    case AST_DELETE: return "delete";
     }
     return "unknown";
 }

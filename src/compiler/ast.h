@@ -57,7 +57,9 @@ typedef enum AstKind {
     AST_CAST,
     AST_SIZEOF,
     AST_PRINT,
-    AST_FORMAT
+    AST_FORMAT,
+    AST_NULL,
+    AST_DELETE
 } AstKind;
 
 typedef struct AstNode {
@@ -79,6 +81,12 @@ AstNode *ast_unary(const char *op, AstNode *expr);
 AstNode *ast_assign(AstNode *lhs, const char *op, AstNode *rhs);
 /* Catch every exception type. The node text is "...". There is no parameter. */
 AstNode *ast_catch_all(AstNode *body);
+/* nullptr and NULL are the same kind of node. spelling is the keyword used. */
+AstNode *ast_null(const char *spelling);
+/* new creates a pointer to type. args are constructor arguments, or NULL. */
+AstNode *ast_new_expr(AstNode *type, AstNode *args);
+/* delete is a no-op. The text is "noop". The operand is still required. */
+AstNode *ast_delete_noop(AstNode *operand);
 void ast_append(AstNode *head, AstNode *item);
 void ast_add(AstNode *parent, AstNode *child);
 void ast_free(AstNode *node);

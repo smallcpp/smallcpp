@@ -26,8 +26,10 @@ static int ends_with(const char *path, const char *suffix)
 {
     size_t path_len = strlen(path);
     size_t suffix_len = strlen(suffix);
-    return path_len >= suffix_len
-        && strcmp(path + path_len - suffix_len, suffix) == 0;
+
+    if (path_len < suffix_len || strcmp(path + path_len - suffix_len, suffix) != 0)
+        return 0;
+    return path_len == suffix_len || path[path_len - suffix_len - 1] == '/';
 }
 
 static int require_kind(const AstNode *root, AstKind kind)
@@ -188,6 +190,82 @@ static int catch_forms_ok(const AstNode *root)
     return ok;
 }
 
+static void find_nulls(const AstNode *node, int *saw_nullptr, int *saw_null,
+                       AstKind *kind_nullptr, AstKind *kind_null)
+{
+    if (node == NULL)
+        return;
+    if (node->text != NULL && strcmp(node->text, "nullptr") == 0) {
+        *saw_nullptr = 1;
+        *kind_nullptr = node->kind;
+    }
+    if (node->text != NULL && strcmp(node->text, "NULL") == 0) {
+        *saw_null = 1;
+        *kind_null = node->kind;
+    }
+    find_nulls(node->a, saw_nullptr, saw_null, kind_nullptr, kind_null);
+    find_nulls(node->b, saw_nullptr, saw_null, kind_nullptr, kind_null);
+    find_nulls(node->c, saw_nullptr, saw_null, kind_nullptr, kind_null);
+    find_nulls(node->d, saw_nullptr, saw_null, kind_nullptr, kind_null);
+    find_nulls(node->next, saw_nullptr, saw_null, kind_nullptr, kind_null);
+}
+
+static int nulls_match(const AstNode *root)
+{
+    int saw_nullptr = 0;
+    int saw_null = 0;
+    AstKind kind_nullptr = AST_TRANSLATION_UNIT;
+    AstKind kind_null = AST_TRANSLATION_UNIT;
+    int ok = require_kind(root, AST_NULL);
+
+    find_nulls(root, &saw_nullptr, &saw_null, &kind_nullptr, &kind_null);
+    if (!saw_nullptr || !saw_null) {
+        fprintf(stderr, "syntax tree is missing nullptr or NULL\n");
+        return 0;
+    }
+    if (kind_nullptr != AST_NULL || kind_null != AST_NULL || kind_nullptr != kind_null) {
+        fprintf(stderr, "nullptr and NULL are not the same kind of node\n");
+        ok = 0;
+    }
+    return ok;
+}
+
+static int new_is_pointer(const AstNode *node)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_NEW && node->a != NULL && node->a->kind == AST_POINTER)
+        return 1;
+    return new_is_pointer(node->a) || new_is_pointer(node->b) || new_is_pointer(node->c)
+        || new_is_pointer(node->d) || new_is_pointer(node->next);
+}
+
+static int delete_is_noop(const AstNode *node)
+{
+    if (node == NULL)
+        return 0;
+    if (node->kind == AST_DELETE && node->text != NULL && strcmp(node->text, "noop") == 0
+        && node->a != NULL)
+        return 1;
+    return delete_is_noop(node->a) || delete_is_noop(node->b) || delete_is_noop(node->c)
+        || delete_is_noop(node->d) || delete_is_noop(node->next);
+}
+
+static int delete_tree_ok(const AstNode *root)
+{
+    int ok = require_kind(root, AST_NEW) && require_kind(root, AST_DELETE);
+
+    if (!new_is_pointer(root)) {
+        fprintf(stderr, "new does not create a pointer\n");
+        ok = 0;
+    }
+    if (!delete_is_noop(root)) {
+        fprintf(stderr, "delete is not a no-op with an operand\n");
+        ok = 0;
+    }
+    return ok;
+}
+
 static int tree_is_complete(const char *path, const AstNode *root)
 {
     static const AstKind namespace_kinds[] = { AST_NAMESPACE };
@@ -219,6 +297,10 @@ static int tree_is_complete(const char *path, const AstNode *root)
         return require_kinds(root, variadic_kinds, 2) && ok;
     if (ends_with(path, "print-format.scpp"))
         return require_kinds(root, print_kinds, 2) && ok;
+    if (ends_with(path, "null.scpp"))
+        return nulls_match(root) && ok;
+    if (ends_with(path, "delete.scpp"))
+        return delete_tree_ok(root) && ok;
     if (ends_with(path, "accept.scpp"))
         return require_kinds(root, accept_kinds, 7) && ok;
     return ok;

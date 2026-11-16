@@ -1,0 +1,8 @@
+int main(void) {
+    int *p;
+
+    p = new int;
+    delete p;
+    delete nullptr;
+    return 0;
+}
