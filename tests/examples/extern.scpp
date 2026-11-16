@@ -1,0 +1,5 @@
+extern int extra(int n);
+
+int answer(void) {
+    return extra(2);
+}

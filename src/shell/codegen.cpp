@@ -6,6 +6,7 @@ extern "C" {
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -26,10 +27,10 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -43,8 +44,17 @@ struct Ty {
     bool is_void = false;
     bool is_const = false;
     bool is_volatile = false;
+    bool is_pointer = false;
     int rank = 0;
     int fp_rank = 0;
+};
+
+struct Storage {
+    bool is_typedef = false;
+    bool is_extern = false;
+    bool is_static = false;
+    bool is_inline = false;
+    bool is_register = false;
 };
 
 struct Slot {
@@ -88,6 +98,20 @@ struct LabelInfo {
 struct Param {
     std::string name;
     Ty ty;
+    llvm::Constant *fallback = nullptr;
+};
+
+struct Func {
+    std::string source;
+    llvm::Function *fn = nullptr;
+    std::vector<Ty> params;
+    std::vector<llvm::Constant *> defaults;
+    std::vector<std::string> names;
+    bool vararg = false;
+    Ty ret;
+    const AstNode *body = nullptr;
+    bool is_static = false;
+    bool is_inline = false;
 };
 
 class Codegen {
@@ -108,13 +132,22 @@ public:
         }
         for (const AstNode *item = root->a; item != NULL; item = item->next) {
             if (item->kind == AST_METHOD)
-                emit_function(item);
+                declare_function(item->a, item->b, item->c);
             else if (item->kind == AST_DECLARATION)
                 emit_declaration(item, true);
             else
                 reject_node(item);
             if (failed)
                 return 1;
+        }
+        for (auto &group : overloads) {
+            for (Func &fn : group.second) {
+                if (fn.body == NULL)
+                    continue;
+                emit_body(fn);
+                if (failed)
+                    return 1;
+            }
         }
         return 0;
     }
@@ -128,7 +161,8 @@ private:
     Ty ret_ty;
     bool failed = false;
     std::vector<std::map<std::string, Slot>> scopes;
-    std::set<std::string> functions;
+    std::map<std::string, std::vector<Func>> overloads;
+    std::map<std::string, Ty> aliases;
     std::vector<LoopFrame> loops;
     std::vector<SwitchFrame> switches;
     SwitchFrame *collecting = nullptr;
@@ -146,6 +180,19 @@ private:
         if (!failed)
             std::fprintf(stderr, "%s: %s\n", message, name != NULL ? name : "");
         failed = true;
+    }
+
+    void note_storage(Storage *storage, bool already, bool *flag, const char *name)
+    {
+        if (storage == NULL || flag == NULL) {
+            error("storage class is not allowed here");
+            return;
+        }
+        if (already) {
+            error_name("duplicate storage class", name);
+            return;
+        }
+        *flag = true;
     }
 
     Ty drop(Ty ty)
@@ -223,7 +270,7 @@ private:
         }
         switch (node->kind) {
         case AST_CALL:
-            error("calls are a later phase");
+            error("call is not allowed here");
             break;
         case AST_ARRAY:
         case AST_INDEX:
@@ -272,14 +319,15 @@ private:
             error("print and format are a later phase");
             break;
         case AST_TYPE_NAME:
-            error("typedef is a later phase");
+            error("type name is not a value");
             break;
         case AST_ELLIPSIS:
-            error("varargs are a later phase");
+            error("ellipsis is not allowed here");
             break;
         default:
-            if (node->kind == AST_LITERAL && node->text != NULL && node->text[0] == '"')
-                error("string literals are a later phase");
+            if (node->kind == AST_LITERAL && node->text != NULL
+                && (node->text[0] == '"' || (node->text[0] == 'L' && node->text[1] == '"')))
+                error("string is not allowed here");
             else
                 error("not in this phase");
             break;
@@ -295,7 +343,7 @@ private:
         else if (node->kind == AST_POINTER || node->kind == AST_DECLARATOR)
             error("pointers are a later phase");
         else if (node->kind == AST_FUNCTION_DECL)
-            error("calls are a later phase");
+            error("not a scalar");
         else if (node->kind == AST_QUALIFIED)
             error("qualified names are a later phase");
         else if (node->kind == AST_BITFIELD)
@@ -304,7 +352,7 @@ private:
             error("not a scalar");
     }
 
-    Ty parse_specs(const AstNode *list, Where where)
+    Ty parse_specs(const AstNode *list, Where where, Storage *storage = nullptr)
     {
         int longs = 0;
         int shorts = 0;
@@ -313,9 +361,24 @@ private:
         bool saw_int = false;
         bool is_const = false;
         bool is_volatile = false;
-        enum Base { Missing, Void, Bool, Char, Int, Float, Double } base = Missing;
+        enum Base { Missing, Void, Bool, Char, Int, Float, Double, Alias } base = Missing;
+        Ty alias_ty;
 
         for (const AstNode *node = list; node != NULL; node = node->next) {
+            if (node->kind == AST_TYPE_NAME) {
+                auto found = node->text == NULL ? aliases.end() : aliases.find(node->text);
+                if (found == aliases.end()) {
+                    error_name("unknown type", node->text);
+                    return int_ty();
+                }
+                if (base != Missing || shorts || longs || saw_signed || saw_unsigned || saw_int)
+                    error("invalid type");
+                base = Alias;
+                alias_ty = found->second;
+                if (failed)
+                    return int_ty();
+                continue;
+            }
             if (node->kind != AST_SPECIFIER || node->text == NULL) {
                 reject_node(node);
                 return int_ty();
@@ -330,17 +393,22 @@ private:
                     error("duplicate volatile");
                 is_volatile = true;
             } else if (std::strcmp(text, "typedef") == 0)
-                error("typedef is a later phase");
+                note_storage(storage, storage == NULL ? false : storage->is_typedef,
+                             storage == NULL ? nullptr : &storage->is_typedef, "typedef");
             else if (std::strcmp(text, "extern") == 0)
-                error("extern is a later phase");
+                note_storage(storage, storage == NULL ? false : storage->is_extern,
+                             storage == NULL ? nullptr : &storage->is_extern, "extern");
             else if (std::strcmp(text, "static") == 0)
-                error("static is a later phase");
+                note_storage(storage, storage == NULL ? false : storage->is_static,
+                             storage == NULL ? nullptr : &storage->is_static, "static");
             else if (std::strcmp(text, "inline") == 0)
-                error("inline is a later phase");
+                note_storage(storage, storage == NULL ? false : storage->is_inline,
+                             storage == NULL ? nullptr : &storage->is_inline, "inline");
             else if (std::strcmp(text, "virtual") == 0)
                 error("classes are a later phase");
             else if (std::strcmp(text, "register") == 0)
-                error("register is a later phase");
+                note_storage(storage, storage == NULL ? false : storage->is_register,
+                             storage == NULL ? nullptr : &storage->is_register, "register");
             else if (std::strcmp(text, "auto") == 0) {
                 if (where != Where::Local)
                     error("auto is not allowed here");
@@ -412,6 +480,20 @@ private:
             error("invalid type");
         if (failed)
             return int_ty();
+        if (base == Alias) {
+            if (shorts || longs || saw_signed || saw_unsigned || saw_int)
+                error("invalid type");
+            if (failed)
+                return int_ty();
+            Ty ty = alias_ty;
+            if (is_const)
+                ty.is_const = true;
+            if (is_volatile)
+                ty.is_volatile = true;
+            if (where == Where::Return)
+                ty = drop(ty);
+            return ty;
+        }
         if (base == Missing && !shorts && !longs && !saw_signed && !saw_unsigned && !saw_int) {
             error("declaration has no type");
             return int_ty();
@@ -462,6 +544,8 @@ private:
         }
         if (node != NULL && node->kind == AST_SPECIFIER)
             return parse_specs(node, Where::Param);
+        if (node != NULL && node->kind == AST_TYPE_NAME)
+            return parse_specs(node, Where::Param);
         reject_node(node);
         return int_ty();
     }
@@ -469,6 +553,10 @@ private:
     Ty promote(Ty ty)
     {
         ty = drop(ty);
+        if (ty.is_pointer) {
+            error("pointers are a later phase");
+            return ty;
+        }
         if (ty.is_float || ty.is_void)
             return ty;
         if (!ty.is_bool && ty.rank >= 3)
@@ -478,6 +566,10 @@ private:
 
     Ty usual(Ty left, Ty right)
     {
+        if (left.is_pointer || right.is_pointer) {
+            error("pointers are a later phase");
+            return int_ty();
+        }
         if (left.is_void || right.is_void) {
             error("void operand");
             return int_ty();
@@ -779,6 +871,10 @@ private:
     {
         if (failed)
             return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
+        if (from.is_pointer || to.is_pointer) {
+            error("pointers are a later phase");
+            return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
+        }
         if (to.is_void || from.is_void) {
             if (!(to.is_void && from.is_void))
                 error("cannot convert void");
@@ -922,6 +1018,8 @@ private:
         if (failed || node == NULL)
             return int_ty();
         if (node->kind == AST_LITERAL) {
+            if (is_string(node))
+                return string_ty();
             Ty ty;
             llvm::Constant *value = nullptr;
             if (!decode_literal(node->text, ty, value)) {
@@ -964,6 +1062,8 @@ private:
             }
             return usual(left, right);
         }
+        if (node->kind == AST_CALL)
+            return type_call(node);
         reject_node(node);
         return int_ty();
     }
@@ -1059,6 +1159,14 @@ private:
         if (node->kind == AST_IDENT) {
             if (!lookup(node->text))
                 error_name("unknown name", node->text);
+            return none;
+        }
+        if (is_string(node)) {
+            error("string is not a scalar constant");
+            return none;
+        }
+        if (node->kind == AST_CALL) {
+            error("call is not constant");
             return none;
         }
         if (node->kind == AST_ASSIGN)
@@ -1321,11 +1429,8 @@ private:
         if (failed || node == NULL)
             return fallback();
         if (node->kind == AST_LITERAL) {
-            if (node->text != NULL
-                && (node->text[0] == '"' || (node->text[0] == 'L' && node->text[1] == '"'))) {
-                error("string literals are a later phase");
-                return fallback();
-            }
+            if (is_string(node))
+                return emit_string(node->text);
             RValue out;
             llvm::Constant *constant = nullptr;
             if (!decode_literal(node->text, out.ty, constant)) {
@@ -1366,6 +1471,8 @@ private:
             return emit_assign(node);
         if (node->kind == AST_CONDITIONAL)
             return emit_conditional(node);
+        if (node->kind == AST_CALL)
+            return emit_call(node);
         reject_node(node);
         return fallback();
     }
@@ -1463,6 +1570,10 @@ private:
         RValue value = emit_rvalue(node);
         if (failed)
             return llvm::ConstantInt::getFalse(context);
+        if (value.ty.is_pointer) {
+            error("pointers are a later phase");
+            return llvm::ConstantInt::getFalse(context);
+        }
         if (value.ty.is_void) {
             error("void is not a condition");
             return llvm::ConstantInt::getFalse(context);
@@ -2162,29 +2273,438 @@ private:
         return declarator;
     }
 
+    bool is_string(const AstNode *node)
+    {
+        return node != NULL && node->kind == AST_LITERAL && node->text != NULL
+            && (node->text[0] == '"' || (node->text[0] == 'L' && node->text[1] == '"'));
+    }
+
+    Ty string_ty()
+    {
+        Ty ty;
+        ty.ir = llvm::PointerType::get(context, 0);
+        ty.is_pointer = true;
+        return ty;
+    }
+
+    bool decode_string(const char *text, std::string &bytes)
+    {
+        if (text == NULL)
+            return false;
+        if (text[0] == 'L') {
+            error("wide strings are not in this phase");
+            return false;
+        }
+        if (text[0] != '"')
+            return false;
+        bytes.clear();
+        for (std::size_t i = 1; text[i] != '\0' && text[i] != '"'; i++) {
+            if (text[i] != '\\') {
+                bytes.push_back(text[i]);
+                continue;
+            }
+            char escaped = text[++i];
+            if (escaped == 'n')
+                bytes.push_back('\n');
+            else if (escaped == 't')
+                bytes.push_back('\t');
+            else if (escaped == 'r')
+                bytes.push_back('\r');
+            else if (escaped == '0')
+                bytes.push_back('\0');
+            else if (escaped == '\\' || escaped == '"' || escaped == '\'')
+                bytes.push_back(escaped);
+            else {
+                error("bad string escape");
+                return false;
+            }
+        }
+        return !failed;
+    }
+
+    RValue emit_string(const char *text)
+    {
+        std::string bytes;
+        if (!decode_string(text, bytes)) {
+            if (!failed)
+                error("bad string");
+            return fallback();
+        }
+        llvm::Constant *init = llvm::ConstantDataArray::getString(context, bytes, true);
+        auto *global = new llvm::GlobalVariable(
+            module, init->getType(), true, llvm::GlobalValue::PrivateLinkage, init, ".str");
+        llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0);
+        RValue out;
+        out.ty = string_ty();
+        out.v = builder.CreateInBoundsGEP(init->getType(), global, {zero, zero}, "str");
+        return out;
+    }
+
+    bool same_value_type(Ty left, Ty right)
+    {
+        left = drop(left);
+        right = drop(right);
+        return left.ir == right.ir && left.is_signed == right.is_signed
+            && left.is_float == right.is_float && left.is_bool == right.is_bool
+            && left.is_void == right.is_void && left.is_pointer == right.is_pointer;
+    }
+
+    bool storage_conflict(const Storage &storage)
+    {
+        int classes = static_cast<int>(storage.is_typedef) + static_cast<int>(storage.is_extern)
+            + static_cast<int>(storage.is_static) + static_cast<int>(storage.is_register);
+        if (classes > 1)
+            return true;
+        return storage.is_inline && (storage.is_typedef || storage.is_register);
+    }
+
+    std::string type_tag(const Ty &ty)
+    {
+        if (ty.is_void)
+            return "void";
+        if (ty.is_bool)
+            return "bool";
+        if (ty.is_pointer)
+            return "ptr";
+        if (ty.is_float)
+            return ty.fp_rank >= 2 ? "double" : "float";
+        return std::string("i") + std::to_string(ty.ir->getIntegerBitWidth())
+            + (ty.is_signed ? "s" : "u");
+    }
+
+    std::string sig_text(const Func &fn)
+    {
+        std::string text = fn.source + "(";
+        for (std::size_t i = 0; i < fn.params.size(); i++) {
+            if (i != 0)
+                text += ",";
+            text += type_tag(fn.params[i]);
+        }
+        if (fn.vararg) {
+            if (!fn.params.empty())
+                text += ",";
+            text += "...";
+        }
+        text += ")";
+        return text;
+    }
+
+    void rename_group(std::vector<Func> &group)
+    {
+        for (Func &fn : group)
+            fn.fn->setName(sig_text(fn));
+    }
+
+    bool same_signature(const Func &left, const Func &right)
+    {
+        if (left.vararg != right.vararg || left.params.size() != right.params.size())
+            return false;
+        for (std::size_t i = 0; i < left.params.size(); i++) {
+            if (!same_value_type(left.params[i], right.params[i]))
+                return false;
+        }
+        return true;
+    }
+
+    void install(Func incoming)
+    {
+        if (scopes.front().count(incoming.source) != 0 || aliases.count(incoming.source) != 0) {
+            error_name("name is already defined", incoming.source.c_str());
+            return;
+        }
+        auto &group = overloads[incoming.source];
+        for (Func &existing : group) {
+            if (!same_signature(existing, incoming))
+                continue;
+            if (!same_value_type(existing.ret, incoming.ret)) {
+                error_name("incompatible return type", incoming.source.c_str());
+                return;
+            }
+            if (existing.is_static != incoming.is_static) {
+                error_name("incompatible linkage", incoming.source.c_str());
+                return;
+            }
+            if (existing.body != NULL && incoming.body != NULL) {
+                error_name("name is already defined", incoming.source.c_str());
+                return;
+            }
+            if (incoming.body != NULL) {
+                existing.body = incoming.body;
+                existing.names = incoming.names;
+            }
+            if (incoming.is_inline && !existing.is_inline) {
+                existing.is_inline = true;
+                existing.fn->addFnAttr(llvm::Attribute::InlineHint);
+            }
+            for (std::size_t i = 0; i < existing.defaults.size(); i++) {
+                if (existing.defaults[i] == NULL && incoming.defaults[i] != NULL)
+                    existing.defaults[i] = incoming.defaults[i];
+            }
+            return;
+        }
+        std::vector<llvm::Type *> arg_types;
+        for (const Ty &ty : incoming.params)
+            arg_types.push_back(ty.ir);
+        auto *type = llvm::FunctionType::get(incoming.ret.ir, arg_types, incoming.vararg);
+        std::string ir_name = group.empty() ? incoming.source : sig_text(incoming);
+        auto linkage = incoming.is_static ? llvm::GlobalValue::InternalLinkage
+                                          : llvm::GlobalValue::ExternalLinkage;
+        incoming.fn = llvm::Function::Create(type, linkage, ir_name, &module);
+        if (incoming.is_inline)
+            incoming.fn->addFnAttr(llvm::Attribute::InlineHint);
+        group.push_back(std::move(incoming));
+        if (group.size() > 1)
+            rename_group(group);
+    }
+
+    Func *resolve(const char *name, const std::vector<Ty> &args)
+    {
+        if (name == NULL) {
+            error("the call has no name");
+            return NULL;
+        }
+        if (lookup(name)) {
+            error_name("not a function", name);
+            return NULL;
+        }
+        auto found = overloads.find(name);
+        if (found == overloads.end()) {
+            error_name("unknown function", name);
+            return NULL;
+        }
+        Func *best = NULL;
+        int best_rank = -1;
+        int best_filled = 0;
+        int ties = 0;
+        for (Func &fn : found->second) {
+            unsigned required = 0;
+            while (required < fn.params.size() && fn.defaults[required] == NULL)
+                required++;
+            if (args.size() < required)
+                continue;
+            if (!fn.vararg && args.size() > fn.params.size())
+                continue;
+            int rank = 0;
+            bool viable = true;
+            unsigned limit = static_cast<unsigned>(std::min(args.size(), fn.params.size()));
+            for (unsigned i = 0; i < limit; i++) {
+                if (args[i].is_void || args[i].is_pointer) {
+                    viable = false;
+                    break;
+                }
+                rank += same_value_type(args[i], fn.params[i]) ? 2 : 1;
+            }
+            if (!viable)
+                continue;
+            int filled = args.size() < fn.params.size()
+                ? static_cast<int>(fn.params.size() - args.size()) : 0;
+            if (best == NULL || rank > best_rank || (rank == best_rank && filled < best_filled)) {
+                best = &fn;
+                best_rank = rank;
+                best_filled = filled;
+                ties = 1;
+            } else if (rank == best_rank && filled == best_filled)
+                ties++;
+        }
+        if (best == NULL) {
+            error_name("no matching function", name);
+            return NULL;
+        }
+        if (ties != 1) {
+            error_name("ambiguous call", name);
+            return NULL;
+        }
+        return best;
+    }
+
+    Ty vararg_ty(Ty ty)
+    {
+        if (ty.is_float && ty.fp_rank < 2)
+            return floating(true);
+        return promote(ty);
+    }
+
+    const AstNode *function_declarator(const AstNode *node)
+    {
+        if (node != NULL && node->kind == AST_INIT)
+            node = node->a;
+        if (node != NULL && node->kind == AST_FUNCTION_DECL)
+            return node;
+        return NULL;
+    }
+
+    Ty type_call(const AstNode *node)
+    {
+        if (node->a == NULL || node->a->kind != AST_IDENT || node->a->text == NULL) {
+            error("calls of that form are a later phase");
+            return int_ty();
+        }
+        std::vector<Ty> args;
+        for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
+            args.push_back(drop(type_of(arg)));
+        if (failed)
+            return int_ty();
+        Func *fn = resolve(node->a->text, args);
+        if (fn == NULL)
+            return int_ty();
+        return drop(fn->ret);
+    }
+
+    RValue emit_call(const AstNode *node)
+    {
+        if (node->a == NULL || node->a->kind != AST_IDENT || node->a->text == NULL) {
+            error("calls of that form are a later phase");
+            return fallback();
+        }
+        std::vector<RValue> args;
+        for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
+            args.push_back(emit_rvalue(arg));
+        if (failed)
+            return fallback();
+        for (const RValue &arg : args) {
+            if (arg.ty.is_pointer) {
+                error("pointers are a later phase");
+                return fallback();
+            }
+        }
+        std::vector<Ty> types;
+        for (const RValue &arg : args)
+            types.push_back(arg.ty);
+        Func *target = resolve(node->a->text, types);
+        if (target == NULL || failed)
+            return fallback();
+        std::vector<llvm::Value *> values;
+        unsigned fixed = static_cast<unsigned>(target->params.size());
+        unsigned provided = static_cast<unsigned>(args.size());
+        unsigned limit = provided < fixed ? provided : fixed;
+        for (unsigned i = 0; i < limit; i++)
+            values.push_back(convert(args[i].v, args[i].ty, target->params[i]));
+        for (unsigned i = limit; i < fixed; i++)
+            values.push_back(target->defaults[i]);
+        if (target->vararg) {
+            for (unsigned i = fixed; i < provided; i++) {
+                Ty widened = vararg_ty(args[i].ty);
+                values.push_back(convert(args[i].v, args[i].ty, widened));
+            }
+        }
+        if (failed)
+            return fallback();
+        llvm::Value *call = builder.CreateCall(target->fn->getFunctionType(), target->fn, values);
+        RValue out;
+        out.ty = drop(target->ret);
+        out.v = out.ty.is_void ? nullptr : call;
+        return out;
+    }
+
+    void record_alias(const std::string &name, Ty ty)
+    {
+        if (scopes.front().count(name) != 0 || overloads.count(name) != 0) {
+            error_name("name is already defined", name.c_str());
+            return;
+        }
+        auto found = aliases.find(name);
+        if (found != aliases.end()) {
+            Ty previous = found->second;
+            if (!same_value_type(previous, ty) || previous.is_const != ty.is_const
+                || previous.is_volatile != ty.is_volatile)
+                error_name("incompatible typedef", name.c_str());
+            return;
+        }
+        aliases[name] = ty;
+    }
+
     void emit_declaration(const AstNode *node, bool file)
     {
-        Ty ty = parse_specs(node->a, file ? Where::File : Where::Local);
+        Storage storage;
+        Ty ty = parse_specs(node->a, file ? Where::File : Where::Local, &storage);
         if (failed)
             return;
-        if (ty.is_void) {
-            error("void variable");
+        if (storage_conflict(storage)) {
+            error("invalid storage class");
+            return;
+        }
+        if (file && storage.is_register) {
+            error("register is not allowed here");
+            return;
+        }
+        if (storage.is_typedef) {
+            if (!file) {
+                error("typedef is not allowed here");
+                return;
+            }
+            if (node->b == NULL) {
+                error("typedef has no name");
+                return;
+            }
+            for (const AstNode *item = node->b; item != NULL && !failed; item = item->next) {
+                if (function_declarator(item) != NULL) {
+                    error("not a scalar");
+                    return;
+                }
+                const AstNode *init = NULL;
+                const AstNode *declarator = scalar_declarator(item, init);
+                if (declarator == NULL)
+                    return;
+                if (init != NULL) {
+                    error("typedef has an initializer");
+                    return;
+                }
+                record_alias(declarator->text, ty);
+            }
+            return;
+        }
+        if (node->b == NULL) {
+            error("declaration has no name");
             return;
         }
         for (const AstNode *item = node->b; item != NULL && !failed; item = item->next) {
+            if (item->kind == AST_INIT && function_declarator(item) != NULL) {
+                error("function has an initializer");
+                return;
+            }
+            const AstNode *decl = function_declarator(item);
+            if (decl != NULL) {
+                if (!file && !storage.is_extern) {
+                    error("a nested function is not allowed");
+                    return;
+                }
+                if (!file && storage.is_static) {
+                    error("static is not allowed here");
+                    return;
+                }
+                declare_function(node->a, decl, NULL);
+                continue;
+            }
+            if (storage.is_inline) {
+                error("inline variable");
+                return;
+            }
+            if (!file && (storage.is_extern || storage.is_static)) {
+                error("storage class is not allowed here");
+                return;
+            }
+            if (ty.is_void) {
+                error("void variable");
+                return;
+            }
             const AstNode *init = NULL;
             const AstNode *declarator = scalar_declarator(item, init);
             if (declarator == NULL)
                 return;
             std::string name = declarator->text;
             if (file) {
-                if (scopes.front().count(name) != 0 || functions.count(name) != 0) {
+                if (scopes.front().count(name) != 0 || overloads.count(name) != 0
+                    || aliases.count(name) != 0) {
                     error_name("name is already defined", name.c_str());
                     return;
                 }
+                bool declaration = storage.is_extern && init == NULL;
+                auto linkage = storage.is_static ? llvm::GlobalValue::InternalLinkage
+                                                 : llvm::GlobalValue::ExternalLinkage;
+                llvm::Constant *initializer = declaration ? nullptr
+                                                          : llvm::Constant::getNullValue(ty.ir);
                 auto *global = new llvm::GlobalVariable(
-                    module, ty.ir, ty.is_const, llvm::GlobalValue::ExternalLinkage,
-                    llvm::Constant::getNullValue(ty.ir), name);
+                    module, ty.ir, ty.is_const, linkage, initializer, name);
                 bind(name, Slot{global, ty});
                 if (init != NULL) {
                     Const value = eval_const(init);
@@ -2215,35 +2735,47 @@ private:
         }
     }
 
-    bool collect_params(const AstNode *list, std::vector<Param> &out)
+    bool collect_params(const AstNode *list, std::vector<Param> &out, bool &vararg)
     {
+        vararg = false;
         if (list == NULL)
             return true;
         if (list->kind == AST_PARAMETER && list->next == NULL && list->b == NULL
             && list->c == NULL) {
-            Ty ty = parse_specs(list->a, Where::Param);
+            Storage storage;
+            Ty ty = parse_specs(list->a, Where::Param, &storage);
             if (failed)
                 return false;
+            if (storage.is_typedef || storage.is_extern || storage.is_static || storage.is_inline) {
+                error("storage class is not allowed here");
+                return false;
+            }
             if (ty.is_void && !ty.is_const && !ty.is_volatile)
                 return true;
         }
+        bool saw_default = false;
         for (const AstNode *node = list; node != NULL; node = node->next) {
             if (node->kind == AST_ELLIPSIS) {
-                error("varargs are a later phase");
-                return false;
+                if (node->next != NULL) {
+                    error("ellipsis must be last");
+                    return false;
+                }
+                vararg = true;
+                break;
             }
             if (node->kind != AST_PARAMETER) {
                 error("not a parameter");
                 return false;
             }
-            if (node->c != NULL) {
-                error("default arguments are a later phase");
-                return false;
-            }
+            Storage storage;
             Param param;
-            param.ty = parse_specs(node->a, Where::Param);
+            param.ty = parse_specs(node->a, Where::Param, &storage);
             if (failed)
                 return false;
+            if (storage.is_typedef || storage.is_extern || storage.is_static || storage.is_inline) {
+                error("storage class is not allowed here");
+                return false;
+            }
             if (param.ty.is_void) {
                 error("void parameter");
                 return false;
@@ -2255,18 +2787,27 @@ private:
                 }
                 param.name = node->b->text;
             }
+            if (node->c != NULL) {
+                Const value = eval_const(node->c);
+                if (!value.ok) {
+                    if (!failed)
+                        error("default argument is not constant");
+                    return false;
+                }
+                param.fallback = llvm::cast<llvm::Constant>(
+                    convert_const(value.v, value.ty, param.ty));
+                saw_default = true;
+            } else if (saw_default) {
+                error("default arguments must be trailing");
+                return false;
+            }
             out.push_back(param);
         }
         return !failed;
     }
 
-    void emit_function(const AstNode *node)
+    void declare_function(const AstNode *specs, const AstNode *decl, const AstNode *body)
     {
-        scopes.resize(1);
-        labels.clear();
-        loops.clear();
-        switches.clear();
-        const AstNode *decl = node->b;
         if (decl == NULL || decl->kind != AST_FUNCTION_DECL) {
             if (decl != NULL && (decl->kind == AST_DECLARATOR || decl->kind == AST_POINTER))
                 error("pointers are a later phase");
@@ -2278,6 +2819,10 @@ private:
             error("method qualifiers are a later phase");
             return;
         }
+        if (body != NULL && body->kind != AST_COMPOUND) {
+            error("function has no body");
+            return;
+        }
         const AstNode *name = decl->a;
         if (name == NULL || name->kind != AST_IDENT || name->text == NULL) {
             if (name != NULL && name->kind == AST_QUALIFIED)
@@ -2286,43 +2831,57 @@ private:
                 error("the function has no name");
             return;
         }
-        if (scopes.front().count(name->text) != 0 || functions.count(name->text) != 0) {
-            error_name("name is already defined", name->text);
-            return;
-        }
-        if (node->c == NULL || node->c->kind != AST_COMPOUND) {
-            error("function has no body");
-            return;
-        }
-        ret_ty = parse_specs(node->a, Where::Return);
+        Storage storage;
+        Ty ret = parse_specs(specs, Where::Return, &storage);
         if (failed)
             return;
-        std::vector<Param> params;
-        if (!collect_params(decl->b, params))
+        if (storage_conflict(storage) || storage.is_typedef || storage.is_register) {
+            error("storage class is not allowed here");
             return;
-        std::vector<llvm::Type *> arg_types;
-        for (const Param &param : params)
-            arg_types.push_back(param.ty.ir);
-        auto *type = llvm::FunctionType::get(ret_ty.ir, arg_types, false);
-        function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name->text,
-                                          &module);
-        functions.insert(name->text);
+        }
+        std::vector<Param> params;
+        bool vararg = false;
+        if (!collect_params(decl->b, params, vararg))
+            return;
+        Func incoming;
+        incoming.source = name->text;
+        incoming.ret = ret;
+        incoming.vararg = vararg;
+        incoming.body = body;
+        incoming.is_static = storage.is_static;
+        incoming.is_inline = storage.is_inline;
+        for (const Param &param : params) {
+            incoming.params.push_back(param.ty);
+            incoming.defaults.push_back(param.fallback);
+            incoming.names.push_back(param.name);
+        }
+        install(std::move(incoming));
+    }
+
+    void emit_body(Func &fn)
+    {
+        scopes.resize(1);
+        labels.clear();
+        loops.clear();
+        switches.clear();
+        function = fn.fn;
+        ret_ty = fn.ret;
         entry = llvm::BasicBlock::Create(context, "entry", function);
         builder.SetInsertPoint(entry);
         push_scope();
         auto argument = function->arg_begin();
-        for (const Param &param : params) {
-            if (!param.name.empty())
-                argument->setName(param.name);
-            llvm::AllocaInst *addr = alloca_entry(
-                param.ty.ir, param.name.empty() ? "param" : param.name);
-            Slot slot{addr, param.ty};
-            if (!param.name.empty())
-                bind(param.name, slot);
+        for (std::size_t i = 0; i < fn.params.size(); i++) {
+            const std::string &name = fn.names[i];
+            if (!name.empty())
+                argument->setName(name);
+            llvm::AllocaInst *addr = alloca_entry(fn.params[i].ir, name.empty() ? "param" : name);
+            Slot slot{addr, fn.params[i]};
+            if (!name.empty())
+                bind(name, slot);
             store_slot(slot, &*argument, true);
             ++argument;
         }
-        emit_items(node->c->a);
+        emit_items(fn.body->a);
         if (!failed) {
             for (const auto &label : labels) {
                 if (!label.second.defined) {

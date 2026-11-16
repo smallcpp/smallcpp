@@ -7,4 +7,4 @@ The shell parses one `.scpp` file, lowers the syntax tree to an LLVM module, ver
 ./bin/shell tests/examples/if.scpp if.bc
 ```
 
-This slice lowers scalar functions: scalar types, parameters, locals, file-scope scalars, operators, and control flow. `const` and `volatile` are qualifiers. Calls, aggregates, namespaces, and classes are rejected. `print` and `format` stay builtins for a later C runtime. The IR is not printed as text, and no executable is linked.
+This slice lowers scalar functions and calls: scalar types, parameters, locals, file-scope scalars, operators, control flow, calls, overloads, default arguments, varargs, `extern`, `static`, `inline`, `typedef`, `register`, and string literals. `const` and `volatile` are qualifiers. Aggregates, namespaces, and classes are rejected. `print` and `format` stay builtins for a later C runtime. The IR is not printed as text, and no executable is linked.

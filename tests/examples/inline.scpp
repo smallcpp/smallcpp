@@ -1,0 +1,7 @@
+inline int twice(int n) {
+    return n + n;
+}
+
+int answer(void) {
+    return twice(3);
+}

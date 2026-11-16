@@ -1,0 +1,5 @@
+typedef int number;
+
+number answer(void) {
+    return 6;
+}
