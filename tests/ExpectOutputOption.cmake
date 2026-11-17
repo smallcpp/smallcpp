@@ -3,7 +3,7 @@ if(NOT DEFINED COMPILER OR NOT DEFINED VERIFY OR NOT DEFINED SOURCE OR NOT DEFIN
 endif()
 
 execute_process(
-    COMMAND "${COMPILER}" -o "${BITCODE}" "${SOURCE}"
+    COMMAND "${COMPILER}" --emit-llvm -o "${BITCODE}" "${SOURCE}"
     RESULT_VARIABLE compile_status
     ERROR_VARIABLE compile_error)
 if(NOT compile_status EQUAL 0)

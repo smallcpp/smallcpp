@@ -73,7 +73,12 @@ static int write_object(llvm::Module &module, const std::string &path)
     return 0;
 }
 
-int emit_and_link(llvm::Module &module, const char *executable)
+int write_object_file(llvm::Module &module, const char *path)
+{
+    return write_object(module, path);
+}
+
+int emit_and_link(llvm::Module &module, const char *executable, int debug)
 {
     std::string object = std::string(executable) + ".o";
     llvm::StringRef clang = SMALLCPP_CLANGXX;
@@ -88,6 +93,8 @@ int emit_and_link(llvm::Module &module, const char *executable)
     }
     args.push_back(clang);
     args.push_back("-no-pie");
+    if (debug)
+        args.push_back("-g");
     args.push_back("-o");
     args.push_back(executable);
     args.push_back(object);

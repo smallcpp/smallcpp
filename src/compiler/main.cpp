@@ -60,9 +60,28 @@ static smallcpp::CommandLine make_command_line()
     output.short_name = 'o';
     output.long_name = "output";
     output.name = "output";
-    output.description = "Write bitcode to FILE when it ends in .bc, otherwise an executable";
+    output.description = "Write LLVM IR with --emit-llvm or a .bc path, an object with -c, "
+                         "otherwise an executable";
     output.value_type = smallcpp::CommandLineValueType::String;
     command_line.add_option(output);
+
+    smallcpp::CommandLineOption compile_only;
+    compile_only.short_name = 'c';
+    compile_only.name = "compile";
+    compile_only.description = "Compile and assemble, and do not link";
+    command_line.add_option(compile_only);
+
+    smallcpp::CommandLineOption debug;
+    debug.short_name = 'g';
+    debug.name = "debug";
+    debug.description = "Pass -g when this program links an executable";
+    command_line.add_option(debug);
+
+    smallcpp::CommandLineOption emit_llvm;
+    emit_llvm.long_name = "emit-llvm";
+    emit_llvm.name = "emit-llvm";
+    emit_llvm.description = "Write LLVM IR and stop before the native link";
+    command_line.add_option(emit_llvm);
 
     smallcpp::CommandLineOption ast_text;
     ast_text.long_name = "ast-text";
@@ -143,6 +162,11 @@ int main(int argc, char **argv)
     const std::string output = command_line.value("output").value_or("");
     const std::string text_path = command_line.value("ast-text").value_or("");
     const std::string dot_path = command_line.value("ast-dot").value_or("");
+    const bool compile_only = command_line.switch_value("compile");
+    const bool emit_llvm = command_line.switch_value("emit-llvm");
+    const bool debug = command_line.switch_value("debug");
+    if (compile_only && emit_llvm)
+        return usage_error(command_line, "-c and --emit-llvm cannot be combined");
     if (output.empty() && text_path.empty() && dot_path.empty())
         return usage_error(command_line, "name an output with -o, --ast-text, or --ast-dot");
 
@@ -155,10 +179,13 @@ int main(int argc, char **argv)
         status = ast_write_dot(smallcpp_ast, dot_path.c_str());
     if (status == 0 && !output.empty()) {
         const std::size_t length = output.size();
-        if (length >= 3 && output.compare(length - 3, 3, ".bc") == 0)
+        const bool bitcode_path = length >= 3 && output.compare(length - 3, 3, ".bc") == 0;
+        if (emit_llvm || (bitcode_path && !compile_only))
             status = smallcpp_emit_bitcode(smallcpp_ast, output.c_str());
+        else if (compile_only)
+            status = smallcpp_emit_object(smallcpp_ast, output.c_str());
         else
-            status = smallcpp_emit_executable(smallcpp_ast, output.c_str());
+            status = smallcpp_emit_executable(smallcpp_ast, output.c_str(), debug ? 1 : 0);
     }
     ast_free(smallcpp_ast);
     smallcpp_ast = NULL;

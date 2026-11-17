@@ -80,11 +80,20 @@ int smallcpp_emit_bitcode(const AstNode *root, const char *bitcode_path)
     return 0;
 }
 
-int smallcpp_emit_executable(const AstNode *root, const char *path)
+int smallcpp_emit_object(const AstNode *root, const char *path)
 {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module;
     if (lower_verified(root, context, module) != 0)
         return 1;
-    return emit_and_link(*module, path);
+    return write_object_file(*module, path);
+}
+
+int smallcpp_emit_executable(const AstNode *root, const char *path, int debug)
+{
+    llvm::LLVMContext context;
+    std::unique_ptr<llvm::Module> module;
+    if (lower_verified(root, context, module) != 0)
+        return 1;
+    return emit_and_link(*module, path, debug);
 }
