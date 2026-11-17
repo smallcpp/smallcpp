@@ -1,0 +1,11 @@
+#ifndef SMALLCPP_EXCEPTIONS
+#define SMALLCPP_EXCEPTIONS
+
+class exception {
+public:
+    const char *message;
+    exception();
+    exception(const char *text);
+};
+
+#endif

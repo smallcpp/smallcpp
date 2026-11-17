@@ -3,7 +3,8 @@
  *
  * The personality is the Clang runtime's __gxx_personality_v0. A thrown
  * value is stored in memory from __cxa_allocate_exception and passed to
- * __cxa_throw with a type_info the personality can match. A handler calls
+ * __cxa_throw with a type_info the personality can match. The thrown
+ * object is noted so an uncaught exception can report it. A handler calls
  * __cxa_begin_catch and __cxa_end_catch. A bare throw is __cxa_rethrow.
  */
 #include "lower.hpp"
@@ -36,6 +37,13 @@ llvm::Function *Codegen::rethrow_fn()
 {
     auto *type = llvm::FunctionType::get(llvm::Type::getVoidTy(context), false);
     return declare_runtime("__cxa_rethrow", type);
+}
+
+llvm::Function *Codegen::note_throw_fn()
+{
+    auto *ptr = llvm::PointerType::get(context, 0);
+    auto *type = llvm::FunctionType::get(llvm::Type::getVoidTy(context), {ptr}, false);
+    return declare_runtime("smallcpp_note_throw", type);
 }
 
 llvm::Function *Codegen::allocate_exception()
@@ -144,6 +152,8 @@ void Codegen::emit_throw(const AstNode *node)
         args.push_back(slot);
         args.push_back(type_info(value.ty));
         args.push_back(null_dtor);
+        llvm::Function *note = note_throw_fn();
+        builder.CreateCall(note->getFunctionType(), note, {slot});
     }
     if (!handlers.empty()) {
         llvm::BasicBlock *normal = new_block("throw.cont");
