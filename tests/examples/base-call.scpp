@@ -1,0 +1,20 @@
+class A {
+public:
+    int value(void) {
+        return 1;
+    }
+};
+
+class B : public A {
+public:
+    int value(void) {
+        return 2;
+    }
+    int read(void) {
+        return A::value();
+    }
+};
+
+int answer(B *b) {
+    return b->read();
+}

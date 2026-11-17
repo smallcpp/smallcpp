@@ -1,6 +1,6 @@
 # smallcpp
 
-Initial C++ CMake scaffold. The `shell` target parses one `.scpp` file and lowers scalar functions, calls, aggregates, and namespaces to a verified LLVM bitcode module. It does not print IR as text and does not link an executable.
+Initial C++ CMake scaffold. The `shell` target parses one `.scpp` file and lowers scalar functions, calls, aggregates, namespaces, and classes to a verified LLVM bitcode module. It does not print IR as text and does not link an executable.
 
 ## Build
 

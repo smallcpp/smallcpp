@@ -1,0 +1,11 @@
+class Pair {
+    int x;
+    int y;
+public:
+    Pair(int ax, int ay) : x(ax), y(ay) {
+    }
+};
+
+int answer(void) {
+    return 0;
+}

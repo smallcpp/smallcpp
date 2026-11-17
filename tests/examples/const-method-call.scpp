@@ -1,0 +1,11 @@
+class Box {
+    int value;
+public:
+    int read(void) const {
+        return this->value;
+    }
+};
+
+int answer(void) {
+    return 0;
+}

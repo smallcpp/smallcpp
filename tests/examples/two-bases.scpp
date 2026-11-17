@@ -1,0 +1,23 @@
+class A {
+    int a;
+public:
+    A(int v) : a(v) {
+    }
+};
+
+class B {
+    int b;
+public:
+    B(int v) : b(v) {
+    }
+};
+
+class C : public A, public B {
+public:
+    C(int v) : A(v), B(v) {
+    }
+};
+
+int answer(void) {
+    return 0;
+}
