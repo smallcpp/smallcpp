@@ -8,4 +8,4 @@
 ./bin/scpp -c -o answer.o tests/examples/return-zero.scpp
 ```
 
-`-D` and `-I` go to `preproc`. `-i` and `--ignore-environment` go to `preproc` and import no environment macros. `-o` names the file written by the last phase: the object file with `-c`, the IR file with `--emit-llvm`, and the executable otherwise. A path ending in `.bc` is LLVM IR. `-g` goes to `scpp_cc` and to the Clang link. `-L` goes to the Clang link. `preproc` deletes nothing, and `scpp` leaves the intermediate files in place.
+`-D` and `-I` go to `preproc`. `-i` and `--ignore-environment` go to `preproc` and import no environment macros. `-o` names the file written by the last phase: the object file with `-c`, the IR file with `--emit-llvm`, and the executable otherwise. A path ending in `.bc` is LLVM IR. `-g` asks `scpp_cc` to record the source file, line numbers, functions, and types, and the Clang link keeps that information. `-L` goes to the Clang link. `preproc` deletes nothing, and `scpp` leaves the intermediate files in place.

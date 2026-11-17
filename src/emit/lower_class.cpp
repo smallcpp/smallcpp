@@ -123,6 +123,8 @@ void Codegen::install_method(const std::string &key, MethodDecl decl, Ty ret, st
     incoming.lookup = live_chain();
     incoming.ret = ret;
     incoming.body = body;
+    incoming.debug_name = decl.name;
+    incoming.line = body != NULL && body->line > 0 ? body->line : 1;
     incoming.klass = key;
     incoming.method_const = decl.is_const;
     incoming.is_ctor = decl.is_ctor;
@@ -832,6 +834,7 @@ void Codegen::emit_pure_stub(Func &fn)
     if (fn.fn == NULL)
         return;
     auto *block = llvm::BasicBlock::Create(context, "entry", fn.fn);
+    builder.SetCurrentDebugLocation(llvm::DebugLoc());
     builder.SetInsertPoint(block);
     builder.CreateUnreachable();
 }
@@ -865,7 +868,7 @@ void Codegen::emit_virtual_bases(llvm::Value *self, const std::string &key, cons
 
 Ty Codegen::make_class(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     const char *plain = node_name(node->a);
     if (plain == NULL || plain[0] == '\0') {
         error("anonymous class");

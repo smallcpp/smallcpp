@@ -110,7 +110,7 @@ bool Codegen::is_integer(const Ty &ty)
 
 void Codegen::reject_node(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (node == NULL) {
         error("not in this phase");
         return;
@@ -183,7 +183,7 @@ void Codegen::reject_node(const AstNode *node)
 
 void Codegen::reject_declarator(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (node == NULL)
         error("declaration has no name");
     else if (node->kind == AST_QUALIFIED)
@@ -313,7 +313,7 @@ int Codegen::const_i64(const AstNode *node, int64_t &out)
 
 Ty Codegen::walk_declarator(Ty base, const AstNode *node, Declared &out)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (failed)
         return base;
     if (node == NULL)
@@ -390,7 +390,7 @@ Declared Codegen::declare_one(Ty base, const AstNode *node)
 
 Ty Codegen::parse_specs(const AstNode *list, Where where, Storage *storage)
 {
-    SourceNote here(focus, list);
+    SourceNote here(*this, list);
     int longs = 0;
     int shorts = 0;
     bool saw_signed = false;
@@ -586,7 +586,7 @@ bool Codegen::is_type_form(const AstNode *node)
 
 Ty Codegen::type_from_name(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (node != NULL && node->kind == AST_DECLARATOR) {
         Ty base = parse_specs(node->a, Where::Param);
         if (failed)
@@ -1090,7 +1090,7 @@ RValue Codegen::read_slot(const Slot &slot)
 
 Ty Codegen::object_type(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (failed || node == NULL) {
         error("assignment target is not a scalar");
         return int_ty();
@@ -1284,7 +1284,7 @@ std::optional<Slot> Codegen::lvalue(const AstNode *node)
 
 Ty Codegen::type_of(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (failed || node == NULL)
         return int_ty();
     if (node->kind == AST_THIS) {
@@ -1392,7 +1392,7 @@ Ty Codegen::type_of(const AstNode *node)
 
 Ty Codegen::type_unary(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (op_is(node, "&")) {
         Ty object = object_type(node->a);
         if (failed)
@@ -1414,7 +1414,7 @@ Ty Codegen::type_unary(const AstNode *node)
 
 Ty Codegen::type_binary(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (op_is(node, "&&") || op_is(node, "||"))
         return bool_ty();
     if (op_is(node, ",")) {
@@ -1769,7 +1769,7 @@ Const Codegen::eval_conditional(const AstNode *node)
 
 RValue Codegen::emit_rvalue(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (failed || node == NULL)
         return fallback();
     if (node->kind == AST_NULL) {
@@ -2211,7 +2211,7 @@ RValue Codegen::apply_op(const char *op, RValue left, RValue right)
 
 RValue Codegen::emit_assign(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     std::optional<Slot> slot = lvalue(node->a);
     if (!slot || failed)
         return fallback();
@@ -2291,7 +2291,7 @@ RValue Codegen::emit_conditional(const AstNode *node)
 
 void Codegen::emit_statement(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     if (failed || node == NULL)
         return;
     switch (node->kind) {
@@ -2753,7 +2753,7 @@ void Codegen::place_value(const std::string &name, Ty ty, llvm::Value *addr)
 
 void Codegen::emit_declaration(const AstNode *node, bool file)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     Storage storage;
     Ty ty = parse_specs(node->a, file ? Where::File : Where::Local, &storage);
     if (failed)
@@ -2879,6 +2879,7 @@ void Codegen::emit_declaration(const AstNode *node, bool file)
             if (object.is_union)
                 addr->setAlignment(llvm::Align(record_align(object)));
             bind(name, slot);
+            declare_local(addr, declared.name->text, object);
             if (declared.init != NULL)
                 store_initializer(slot, declared.init);
         }
@@ -2907,6 +2908,7 @@ void Codegen::emit_body(Func &fn)
     function = fn.fn;
     ret_ty = fn.ret;
     entry = llvm::BasicBlock::Create(context, "entry", function);
+    begin_function_debug(fn);
     builder.SetInsertPoint(entry);
     push_scope();
     auto argument = function->arg_begin();
@@ -2918,6 +2920,8 @@ void Codegen::emit_body(Func &fn)
         Slot slot{addr, fn.params[i]};
         if (!name.empty())
             bind(name, slot);
+        declare_param(addr, name, fn.params[i], static_cast<unsigned>(i + 1),
+                      fn.line > 0 ? static_cast<unsigned>(fn.line) : 1);
         store_slot(slot, &*argument, true);
         ++argument;
     }
@@ -2946,6 +2950,8 @@ void Codegen::emit_body(Func &fn)
         }
     }
     if (!failed) {
+        if (di != nullptr)
+            set_focus(fn.body);
         for (llvm::BasicBlock &block : *function) {
             if (block.getTerminator() != NULL)
                 continue;
@@ -2956,6 +2962,7 @@ void Codegen::emit_body(Func &fn)
                 builder.CreateUnreachable();
         }
     }
+    builder.SetCurrentDebugLocation(llvm::DebugLoc());
     pop_scope();
     scopes.resize(1);
     blocks.clear();

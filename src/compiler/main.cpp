@@ -74,8 +74,15 @@ static smallcpp::CommandLine make_command_line()
     smallcpp::CommandLineOption debug;
     debug.short_name = 'g';
     debug.name = "debug";
-    debug.description = "Pass -g when this program links an executable";
+    debug.description = "Record the source file, line numbers, functions, and types";
     command_line.add_option(debug);
+
+    smallcpp::CommandLineOption debug_file;
+    debug_file.long_name = "debug-file";
+    debug_file.name = "debug-file";
+    debug_file.description = "Name the source file recorded by -g. The default is the input file";
+    debug_file.value_type = smallcpp::CommandLineValueType::String;
+    command_line.add_option(debug_file);
 
     smallcpp::CommandLineOption emit_llvm;
     emit_llvm.long_name = "emit-llvm";
@@ -180,12 +187,17 @@ int main(int argc, char **argv)
     if (status == 0 && !output.empty()) {
         const std::size_t length = output.size();
         const bool bitcode_path = length >= 3 && output.compare(length - 3, 3, ".bc") == 0;
+        const std::string named = command_line.value("debug-file").value_or("");
+        const char *source = nullptr;
+        if (debug)
+            source = named.empty() ? input.c_str() : named.c_str();
+        const int debug_flag = debug ? 1 : 0;
         if (emit_llvm || (bitcode_path && !compile_only))
-            status = smallcpp_emit_bitcode(smallcpp_ast, output.c_str());
+            status = smallcpp_emit_bitcode(smallcpp_ast, output.c_str(), debug_flag, source);
         else if (compile_only)
-            status = smallcpp_emit_object(smallcpp_ast, output.c_str());
+            status = smallcpp_emit_object(smallcpp_ast, output.c_str(), debug_flag, source);
         else
-            status = smallcpp_emit_executable(smallcpp_ast, output.c_str(), debug ? 1 : 0);
+            status = smallcpp_emit_executable(smallcpp_ast, output.c_str(), debug_flag, source);
     }
     ast_free(smallcpp_ast);
     smallcpp_ast = NULL;

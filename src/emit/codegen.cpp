@@ -41,11 +41,16 @@ int Codegen::run(const AstNode *root)
 }
 
 static int lower_verified(const AstNode *root, llvm::LLVMContext &context,
-                           std::unique_ptr<llvm::Module> &module)
+                           std::unique_ptr<llvm::Module> &module, int debug, const char *source)
 {
     module = std::make_unique<llvm::Module>("smallcpp", context);
     Codegen codegen(context, *module);
-    if (codegen.run(root) != 0)
+    if (debug)
+        codegen.enable_debug(source);
+    const int status = codegen.run(root);
+    if (debug)
+        codegen.finish_debug();
+    if (status != 0)
         return 1;
 
     std::string diagnostic;
@@ -58,11 +63,12 @@ static int lower_verified(const AstNode *root, llvm::LLVMContext &context,
     return 0;
 }
 
-int smallcpp_emit_bitcode(const AstNode *root, const char *bitcode_path)
+int smallcpp_emit_bitcode(const AstNode *root, const char *bitcode_path, int debug,
+                           const char *source)
 {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module;
-    if (lower_verified(root, context, module) != 0)
+    if (lower_verified(root, context, module, debug, source) != 0)
         return 1;
 
     std::error_code error;
@@ -80,20 +86,20 @@ int smallcpp_emit_bitcode(const AstNode *root, const char *bitcode_path)
     return 0;
 }
 
-int smallcpp_emit_object(const AstNode *root, const char *path)
+int smallcpp_emit_object(const AstNode *root, const char *path, int debug, const char *source)
 {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module;
-    if (lower_verified(root, context, module) != 0)
+    if (lower_verified(root, context, module, debug, source) != 0)
         return 1;
     return write_object_file(*module, path);
 }
 
-int smallcpp_emit_executable(const AstNode *root, const char *path, int debug)
+int smallcpp_emit_executable(const AstNode *root, const char *path, int debug, const char *source)
 {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module;
-    if (lower_verified(root, context, module) != 0)
+    if (lower_verified(root, context, module, debug, source) != 0)
         return 1;
     return emit_and_link(*module, path, debug);
 }
