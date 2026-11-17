@@ -1,0 +1,5 @@
+using missing::name;
+
+int answer(void) {
+    return 0;
+}

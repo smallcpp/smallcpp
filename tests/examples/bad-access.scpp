@@ -1,0 +1,12 @@
+class Box {
+    int x;
+public:
+    Box() {
+    }
+};
+
+int answer(void) {
+    Box *b;
+    b = new Box();
+    return b->x;
+}

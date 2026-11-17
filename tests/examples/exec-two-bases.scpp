@@ -1,0 +1,34 @@
+class A {
+    int a;
+public:
+    A(int v) : a(v) {
+    }
+    int aval(void) {
+        return a;
+    }
+};
+
+class B {
+    int b;
+public:
+    B(int v) : b(v) {
+    }
+    int bval(void) {
+        return b;
+    }
+};
+
+class C : public A, public B {
+public:
+    C(int v) : A(v), B(v) {
+    }
+    int read(void) {
+        return aval() + bval();
+    }
+};
+
+int answer(void) {
+    C *c;
+    c = new C(3);
+    return c->read();
+}

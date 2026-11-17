@@ -1,0 +1,9 @@
+int f(int n);
+
+void f(int n) {
+    return;
+}
+
+int answer(void) {
+    return 0;
+}

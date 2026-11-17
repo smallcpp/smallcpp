@@ -1,0 +1,7 @@
+int answer(void) {
+    bool flag;
+    flag = true;
+    if (flag)
+        return 1;
+    return 0;
+}

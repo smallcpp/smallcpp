@@ -1,0 +1,5 @@
+const int n = 1 / 0;
+
+int answer(void) {
+    return n;
+}

@@ -1,0 +1,5 @@
+int answer(void) {
+    if (1)
+        return 2;
+    return 0;
+}

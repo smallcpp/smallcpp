@@ -1,0 +1,16 @@
+class Pair {
+    int x;
+    int y;
+public:
+    Pair(int ax, int ay) : x(ax), y(ay) {
+    }
+    int sum(void) {
+        return x + y;
+    }
+};
+
+int answer(void) {
+    Pair *p;
+    p = new Pair(2, 5);
+    return p->sum();
+}

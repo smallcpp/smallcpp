@@ -1,0 +1,7 @@
+int answer(void) {
+    int *p;
+    p = new int;
+    *p = 9;
+    delete p;
+    return *p;
+}

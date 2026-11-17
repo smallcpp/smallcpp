@@ -1,0 +1,4 @@
+int answer(void) {
+    /* hello
+    return 0;
+}

@@ -1,0 +1,5 @@
+int answer(void) {
+    int x = ;
+    int y = ;
+    return 0;
+}

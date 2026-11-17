@@ -1,0 +1,7 @@
+void f(void) {
+    return;
+}
+
+int answer(void) {
+    return f();
+}

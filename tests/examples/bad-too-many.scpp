@@ -1,0 +1,8 @@
+struct Pair {
+    int x;
+};
+
+int answer(void) {
+    struct Pair p = { 1, 2 };
+    return p.x;
+}

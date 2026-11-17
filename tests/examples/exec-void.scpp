@@ -1,0 +1,10 @@
+int n;
+
+void set(void) {
+    n = 4;
+}
+
+int answer(void) {
+    set();
+    return n;
+}

@@ -1,0 +1,7 @@
+namespace audio {
+    int n;
+}
+
+int answer(void) {
+    return audio;
+}

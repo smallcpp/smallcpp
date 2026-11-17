@@ -1,0 +1,4 @@
+int answer(void) {
+    throw;
+    return 0;
+}

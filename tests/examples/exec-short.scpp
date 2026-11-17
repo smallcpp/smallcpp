@@ -1,0 +1,5 @@
+int answer(void) {
+    short n;
+    n = 12;
+    return n;
+}

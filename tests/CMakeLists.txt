@@ -185,6 +185,8 @@ add_run_example(return return-zero.scpp status)
 add_run_example(print print-literal.scpp print)
 add_run_example(format format-value.scpp status)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/Evidence.cmake)
+
 add_test(
     NAME collect_live_root
     COMMAND ${CMAKE_COMMAND}

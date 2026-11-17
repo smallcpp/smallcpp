@@ -1,0 +1,6 @@
+int answer(void) {
+    int n;
+    n = 9;
+    n -= 4;
+    return n;
+}

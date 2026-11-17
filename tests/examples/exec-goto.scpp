@@ -1,0 +1,8 @@
+int answer(void) {
+    int n;
+    n = 0;
+    goto done;
+    n = 9;
+done:
+    return 5;
+}

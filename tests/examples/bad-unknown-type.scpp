@@ -1,0 +1,6 @@
+struct Later;
+
+int answer(void) {
+    struct Later value;
+    return 0;
+}
