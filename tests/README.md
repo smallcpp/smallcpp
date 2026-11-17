@@ -12,6 +12,8 @@
 
 `pp_*` runs `preproc` on one short input. A passing test compares the preprocessed text. A failing test checks that `preproc` exits non-zero and that the diagnostic names the problem. Examples that are not about the process environment pass `-i`, so an environment name does not change their text. The environment examples check an imported value, `-D` replacing it, `-U` removing it, and both `-i` and `--ignore-environment`. `preproc` is a normal build target. `scpp` runs it before `scpp_cc`.
 
+`debug_answer` builds one executable with `-g` and one without. The `-g` executable names `answer`, its `int` return type, and `debug-answer.scpp`. `gdb`, or `lldb` when `gdb` is absent, stops in `answer` and shows `return 0`.
+
 `phase_*` checks that each driver option reaches only the program that uses it. `-D`, `-I`, `-i`, and `--ignore-environment` reach `preproc`. `--emit-llvm` and `-c` reach `scpp_cc`, and `-o` then names that phase's file. `-g` reaches `scpp_cc` and Clang. `-L` reaches Clang. A program does not receive an option that belongs to another phase.
 
 `exec_*` runs one short program. The program prints one line, and the test checks that line and the exit status. `diag_*` feeds `scpp` a bad snippet. The compiler must exit non-zero, and the diagnostic must name the problem. `diag_bad-recover` requires the syntax error twice.

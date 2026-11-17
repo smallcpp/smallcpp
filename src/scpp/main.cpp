@@ -97,7 +97,7 @@ static smallcpp::CommandLine make_command_line()
     smallcpp::CommandLineOption debug;
     debug.short_name = 'g';
     debug.name = "debug";
-    debug.description = "Pass -g to scpp_cc and to the Clang link";
+    debug.description = "Ask scpp_cc for source locations, functions, and types, and keep them in the Clang link";
     command_line.add_option(debug);
 
     smallcpp::CommandLineOption library_path;
@@ -225,8 +225,11 @@ static int compile_file(const smallcpp::CommandLine &command_line, const std::st
         return status;
 
     std::vector<std::string> frontend;
-    if (debug)
+    if (debug) {
         frontend.push_back("-g");
+        frontend.push_back("--debug-file");
+        frontend.push_back(input);
+    }
     if (emit_llvm)
         frontend.push_back("--emit-llvm");
     else

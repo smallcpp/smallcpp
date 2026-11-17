@@ -410,6 +410,15 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
 
 add_test(
+    NAME debug_answer
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/driver/debug-answer.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/debug-answer
+        -DPLAIN=${CMAKE_CURRENT_BINARY_DIR}/debug-answer-plain
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectDebug.cmake)
+
+add_test(
     NAME build_test_programs
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
             --target command_line_test parse_test verify_module)
