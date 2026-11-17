@@ -1102,6 +1102,149 @@ static int reject_namespace_value(const char *mode, llvm::Module &module)
     return 0;
 }
 
+static int pointer_this(const char *mode, llvm::Function *fn)
+{
+    if (fn == NULL || fn->empty() || fn->arg_size() < 1 || !fn->getArg(0)->getType()->isPointerTy())
+        return fail(mode, "the method has no pointer parameter");
+    return 0;
+}
+
+static int check_method(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *read = module.getFunction("Point::read");
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+
+    if (pointer_this("method", read) != 0)
+        return 1;
+    if (call == NULL || call->getCalledFunction() != read)
+        return fail("method", "the call is not direct");
+    return 0;
+}
+
+static int check_const_method(llvm::Module &module)
+{
+    return pointer_this("const-method-call", module.getFunction("Box::read"));
+}
+
+static int check_ctor(llvm::Module &module)
+{
+    llvm::Function *ctor = module.getFunction("Point::Point");
+
+    if (pointer_this("ctor", ctor) != 0)
+        return 1;
+    if (ctor->arg_size() != 2 || !ctor->getArg(1)->getType()->isIntegerTy(32))
+        return fail("ctor", "the constructor parameters are wrong");
+    for (llvm::Instruction &inst : llvm::instructions(*ctor)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && store->getValueOperand()->getType()->isIntegerTy(32))
+            return 0;
+    }
+    return fail("ctor", "the constructor does not store the argument");
+}
+
+static int check_dtor(llvm::Module &module)
+{
+    llvm::Function *dtor = module.getFunction("Point::~Point");
+    llvm::Function *fn = answer(module);
+
+    if (pointer_this("dtor", dtor) != 0)
+        return 1;
+    if (fn == NULL)
+        return fail("dtor", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        if (llvm::isa<llvm::CallInst>(inst))
+            return fail("dtor", "delete calls the destructor");
+    }
+    return 0;
+}
+
+static bool stores_field(llvm::Function &fn, uint64_t index)
+{
+    for (llvm::Instruction &inst : llvm::instructions(fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store == NULL)
+            continue;
+        auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(store->getPointerOperand());
+        if (gep == NULL || gep->getNumIndices() < 2)
+            continue;
+        auto *field = llvm::dyn_cast<llvm::ConstantInt>(gep->getOperand(gep->getNumOperands() - 1));
+        if (field != NULL && field->equalsInt(index))
+            return true;
+    }
+    return false;
+}
+
+static int check_init_list(llvm::Module &module)
+{
+    llvm::Function *ctor = module.getFunction("Pair::Pair");
+
+    if (pointer_this("init-list", ctor) != 0)
+        return 1;
+    if (!stores_field(*ctor, 0) || !stores_field(*ctor, 1))
+        return fail("init-list", "the initializer list does not store both members");
+    return 0;
+}
+
+static bool calls_direct(llvm::Function &fn, llvm::Function *target)
+{
+    if (target == NULL)
+        return false;
+    for (llvm::Instruction &inst : llvm::instructions(fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (call != NULL && call->getCalledFunction() == target)
+            return true;
+    }
+    return false;
+}
+
+static int check_two_bases(llvm::Module &module)
+{
+    llvm::Function *ctor = module.getFunction("C::C");
+    llvm::StructType *type = named_struct(module, "class.C");
+
+    if (pointer_this("two-bases", ctor) != 0)
+        return 1;
+    if (type == NULL || type->getNumElements() != 2)
+        return fail("two-bases", "the class does not contain both bases");
+    if (!calls_direct(*ctor, module.getFunction("A::A"))
+        || !calls_direct(*ctor, module.getFunction("B::B")))
+        return fail("two-bases", "the constructor does not initialize both bases");
+    return 0;
+}
+
+static int check_virtual_call(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::StructType *type = named_struct(module, "class.Point");
+    bool indirect = false;
+
+    if (fn == NULL)
+        return fail("virtual-call", "no function answer");
+    if (type == NULL || type->getNumElements() < 1 || !type->getElementType(0)->isPointerTy())
+        return fail("virtual-call", "the object has no pointer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (call != NULL && call->getCalledFunction() == NULL)
+            indirect = true;
+    }
+    if (!indirect)
+        return fail("virtual-call", "the virtual call is not indirect");
+    return 0;
+}
+
+static int check_base_call(llvm::Module &module)
+{
+    llvm::Function *read = module.getFunction("B::read");
+    llvm::Function *value = module.getFunction("A::value");
+
+    if (pointer_this("base-call", read) != 0)
+        return 1;
+    if (!calls_direct(*read, value))
+        return fail("base-call", "Base::method is not a direct call");
+    return 0;
+}
+
 static int check_namespace_fn(llvm::Module &module)
 {
     llvm::Function *level = module.getFunction("audio::level");
@@ -1332,6 +1475,22 @@ int main(int argc, char **argv)
         return check_named_call("using-name", *module, "audio::gain");
     if (strcmp(mode, "using-namespace") == 0)
         return check_named_call("using-namespace", *module, "audio::gain");
+    if (strcmp(mode, "method") == 0)
+        return check_method(*module);
+    if (strcmp(mode, "const-method-call") == 0)
+        return check_const_method(*module);
+    if (strcmp(mode, "ctor") == 0)
+        return check_ctor(*module);
+    if (strcmp(mode, "dtor") == 0)
+        return check_dtor(*module);
+    if (strcmp(mode, "init-list") == 0)
+        return check_init_list(*module);
+    if (strcmp(mode, "two-bases") == 0)
+        return check_two_bases(*module);
+    if (strcmp(mode, "virtual-call") == 0)
+        return check_virtual_call(*module);
+    if (strcmp(mode, "base-call") == 0)
+        return check_base_call(*module);
 
     fprintf(stderr, "unknown mode %s\n", mode);
     return 2;

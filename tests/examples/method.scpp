@@ -1,0 +1,11 @@
+class Point {
+public:
+    int x;
+    int read(void) {
+        return x;
+    }
+};
+
+int answer(Point *p) {
+    return p->read();
+}

@@ -1,0 +1,9 @@
+class Point {
+public:
+    ~Point() {
+    }
+};
+
+int answer(void) {
+    return 0;
+}

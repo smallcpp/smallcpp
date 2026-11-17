@@ -1,0 +1,10 @@
+class Point {
+public:
+    virtual int move(int dx) {
+        return dx;
+    }
+};
+
+int answer(Point *p) {
+    return p->move(1);
+}
