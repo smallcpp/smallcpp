@@ -27,8 +27,11 @@ int Codegen::run(const AstNode *root)
     }
     for (auto &group : overloads) {
         for (Func &fn : group.second) {
-            if (fn.body == NULL)
+            if (fn.body == NULL) {
+                if (fn.is_pure)
+                    emit_pure_stub(fn);
                 continue;
+            }
             emit_body(fn);
             if (failed)
                 return 1;

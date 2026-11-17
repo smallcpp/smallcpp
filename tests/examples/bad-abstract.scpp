@@ -1,0 +1,10 @@
+class Base {
+public:
+    virtual int id(void) = 0;
+};
+
+int answer(void) {
+    Base *p;
+    p = new Base();
+    return 0;
+}

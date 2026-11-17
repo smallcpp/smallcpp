@@ -1,0 +1,26 @@
+int hits;
+
+class Base {
+public:
+    virtual ~Base() {
+    }
+};
+
+class Derived : public Base {
+public:
+    ~Derived() {
+        hits = hits + 1;
+    }
+};
+
+int answer(void) {
+    Base *p;
+    int *q;
+    p = new Derived();
+    if (hits != 0)
+        return 2;
+    p = nullptr;
+    q = nullptr;
+    q = new int;
+    return hits == 1 ? 9 : hits;
+}

@@ -1,0 +1,41 @@
+class V {
+public:
+    int x;
+    V() : x(0) {
+    }
+};
+
+class L : public virtual V {
+public:
+    L() {
+    }
+    void set(int v) {
+        x = v;
+    }
+};
+
+class R : public virtual V {
+public:
+    R() {
+    }
+    int get(void) {
+        return x;
+    }
+};
+
+class D : public L, public R {
+public:
+    D() {
+    }
+};
+
+int answer(void) {
+    D *object;
+    L *left;
+    R *right;
+    object = new D();
+    left = object;
+    right = object;
+    left->set(5);
+    return right->get();
+}
