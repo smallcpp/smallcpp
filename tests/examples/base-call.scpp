@@ -15,6 +15,6 @@ public:
     }
 };
 
-int answer(B *b) {
+int main(B *b) {
     return b->read();
 }

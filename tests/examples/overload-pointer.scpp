@@ -6,7 +6,7 @@ int kind(int *p) {
     return 2;
 }
 
-int answer(void) {
+int main(void) {
     int n;
     n = 0;
     print("overload-pointer {} {}\n", kind(4), kind(&n));

@@ -2,7 +2,7 @@ int first(int items[]) {
     return items[0];
 }
 
-int answer(void) {
+int main(void) {
     int items[2];
     items[0] = 6;
     { int shown; shown = (int)(first(items)); print("{:s} {}\n", "array-param", shown); return shown; }

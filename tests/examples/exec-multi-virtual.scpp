@@ -28,7 +28,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Both *object;
     Left *left;
     Right *right;

@@ -3,7 +3,7 @@ struct Flags {
     unsigned code : 7;
 };
 
-int answer(void) {
+int main(void) {
     struct Flags f;
     f.code = 3;
     return f.code;

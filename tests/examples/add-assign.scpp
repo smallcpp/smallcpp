@@ -1,4 +1,4 @@
-int answer(int n) {
+int main(int n) {
     n += 3;
     return n;
 }

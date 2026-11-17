@@ -4,7 +4,7 @@ void set(void) {
     n = 4;
 }
 
-int answer(void) {
+int main(void) {
     set();
     { int shown; shown = (int)(n); print("{:s} {}\n", "exec-void", shown); return shown; }
 }

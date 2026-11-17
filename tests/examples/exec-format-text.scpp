@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     const char *line;
     line = format("{:s}", "ok");
     if (line[0] == 'o' && line[1] == 'k' && line[2] == 0)

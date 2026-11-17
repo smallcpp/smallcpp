@@ -1,4 +1,4 @@
-int answer(int n) {
+int main(int n) {
     int i;
     int t;
     t = 0;

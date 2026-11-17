@@ -2,7 +2,7 @@
 
 `parse_test` runs the scanner and parser on one `.scpp` file and, when the parse succeeds, checks that the syntax tree was built. A normal build does not build `parse_test`. The `test` target does, and that build parses `examples/accept.scpp`. CTest runs that accept example, which must pass.
 
-`compile_return` runs `scpp` on `examples/return-zero.scpp`, then checks that the written bitcode module verifies and defines `int answer`. Each other `compile_*` test runs `scpp` on one short example and checks that one feature in the bitcode.
+`compile_return` runs `scpp` on `examples/return-zero.scpp`, then checks that the written bitcode module verifies and defines `int main`. Each other `compile_*` test runs `scpp` on one short example and checks that one feature in the bitcode.
 
 `cc_ast_text` runs `scpp_cc --ast-text` and checks the structured text. `cc_ast_dot` runs `scpp_cc --ast-dot` and checks the Graphviz file. `cc_ast_both` requests the text, the DOT file, and bitcode together.
 
@@ -12,7 +12,7 @@
 
 `pp_*` runs `preproc` on one short input. A passing test compares the preprocessed text. A failing test checks that `preproc` exits non-zero and that the diagnostic names the problem. Examples that are not about the process environment pass `-i`, so an environment name does not change their text. The environment examples check an imported value, `-D` replacing it, `-U` removing it, and both `-i` and `--ignore-environment`. `preproc` is a normal build target. `scpp` runs it before `scpp_cc`.
 
-`debug_answer` builds one executable with `-g` and one without. The `-g` executable names `answer`, its `int` return type, and `debug-answer.scpp`. `gdb`, or `lldb` when `gdb` is absent, stops in `answer` and shows `return 0`.
+`debug_answer` builds one executable with `-g` and one without. The `-g` executable names `main`, its `int` return type, and `debug-answer.scpp`. `gdb`, or `lldb` when `gdb` is absent, stops in `main` and shows `return 0`. `diag_no_main` compiles a translation unit that has no `main`, then requires `scpp` to reject the executable.
 
 `phase_*` checks that each driver option reaches only the program that uses it. `-D`, `-I`, `-i`, and `--ignore-environment` reach `preproc`. `--emit-llvm` and `-c` reach `scpp_cc`, and `-o` then names that phase's file. `-g` reaches `scpp_cc` and Clang. `-L` reaches Clang. A program does not receive an option that belongs to another phase.
 

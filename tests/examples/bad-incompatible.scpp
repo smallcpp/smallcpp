@@ -4,6 +4,6 @@ void f(int n) {
     return;
 }
 
-int answer(void) {
+int main(void) {
     return 0;
 }

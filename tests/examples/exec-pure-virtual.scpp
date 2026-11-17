@@ -10,7 +10,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Derived *object;
     Base *base;
     object = new Derived();

@@ -1,4 +1,4 @@
-int answer(int n) {
+int main(int n) {
     switch (n) {
     case 1:
         return 1;

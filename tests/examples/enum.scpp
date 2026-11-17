@@ -3,6 +3,6 @@ enum Color {
     Green = 4
 };
 
-int answer(void) {
+int main(void) {
     return Green;
 }

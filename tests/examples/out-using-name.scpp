@@ -6,6 +6,6 @@ namespace audio {
 
 using audio::gain;
 
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(gain(1)); print("{:s} {}\n", "using-name", shown); return shown; }
 }

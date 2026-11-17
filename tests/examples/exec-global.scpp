@@ -1,6 +1,6 @@
 int n;
 
-int answer(void) {
+int main(void) {
     n = 6;
     { int shown; shown = (int)(n); print("{:s} {}\n", "exec-global", shown); return shown; }
 }

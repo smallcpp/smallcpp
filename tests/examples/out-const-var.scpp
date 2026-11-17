@@ -1,5 +1,5 @@
 const int n = 3;
 
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(n); print("{:s} {}\n", "const-var", shown); return shown; }
 }

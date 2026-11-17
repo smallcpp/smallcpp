@@ -8,7 +8,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Point *p;
     p = new Point(4);
     { int shown; shown = (int)(p->read()); print("{:s} {}\n", "exec-ctor", shown); return shown; }

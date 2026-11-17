@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     const const int n = 1;
     return n;
 }

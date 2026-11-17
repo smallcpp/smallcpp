@@ -1,9 +1,11 @@
-int answer(void) {
+extern int smallcpp_live_root_status(int result);
+
+int main(void) {
     int *kept;
     int *next;
     kept = new int;
     next = new int;
     *kept = 1;
     *next = 2;
-    return *kept;
+    return smallcpp_live_root_status(*kept);
 }

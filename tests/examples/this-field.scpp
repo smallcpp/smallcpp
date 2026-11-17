@@ -8,7 +8,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Box *box;
     box = new Box();
     print("this-field {}\n", box->read());

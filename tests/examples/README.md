@@ -27,7 +27,7 @@ Inputs for `parse_test`. Source files use the `.scpp` extension.
 - `empty-params.scpp` parses `()` as no parameters, and `(void)` still parses. The test fails if either form is missing.
 - A compound literal, `(type){ ... }`, does not parse. `(int[]){1, 2}` is rejected.
 - `brace-init.scpp` parses a brace initializer for a struct and for an array. The test fails if either list is missing.
-- `return-zero.scpp` is `int answer(void) { return 0; }`. `scpp` lowers it to a verified LLVM module. `compile_return` fails if that module does not verify or `answer` is not an `int` function.
+- `return-zero.scpp` is `int main(void) { return 0; }`. `scpp` lowers it to a verified LLVM module. `compile_return` fails if that module does not verify or `main` is not an `int` function.
 - Each other `*.scpp` file named for one scalar or call feature (`if`, `while`, `call`, `string`, and the rest listed in `docs/CHANGELOG.md`) is a short working snippet. Its CTest loads that file's bitcode, runs `verifyModule`, and checks that one feature.
 - `reject-class.scpp` does not parse.
 - `reject-errors.scpp` has more than one error. `parse_test` prints more than one diagnostic and exits non-zero.

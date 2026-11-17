@@ -2,6 +2,6 @@ inline int twice(int n) {
     return n + n;
 }
 
-int answer(void) {
+int main(void) {
     return twice(3);
 }

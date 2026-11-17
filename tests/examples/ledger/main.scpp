@@ -2,7 +2,7 @@
 #include "report.scpp"
 #undef LEDGER_AS_HEADER
 
-int answer(void) {
+int main(void) {
     Book *book;
     Checking *checking;
     Savings *savings;

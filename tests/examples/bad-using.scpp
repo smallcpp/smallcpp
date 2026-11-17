@@ -1,5 +1,5 @@
 using missing::name;
 
-int answer(void) {
+int main(void) {
     return 0;
 }

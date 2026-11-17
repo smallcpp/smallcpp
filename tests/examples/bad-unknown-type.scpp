@@ -1,6 +1,6 @@
 struct Later;
 
-int answer(void) {
+int main(void) {
     struct Later value;
     return 0;
 }

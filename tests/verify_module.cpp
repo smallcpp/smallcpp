@@ -31,9 +31,9 @@ static int fail(const char *mode, const char *why)
     return 1;
 }
 
-static llvm::Function *answer(llvm::Module &module)
+static llvm::Function *entry(llvm::Module &module)
 {
-    llvm::Function *fn = module.getFunction("answer");
+    llvm::Function *fn = module.getFunction("main");
 
     if (fn == NULL || fn->empty())
         return NULL;
@@ -67,10 +67,10 @@ static llvm::ConstantInt *ret_int(llvm::Function &fn)
 static int expect_sig(const char *mode, llvm::Module &module,
                       llvm::Type *ret, unsigned nargs, llvm::Type *arg)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail(mode, "no function answer");
+        return fail(mode, "no function main");
     if (fn->getReturnType() != ret)
         return fail(mode, "wrong return type");
     if (fn->arg_size() != nargs)
@@ -88,12 +88,12 @@ static int identity(const char *mode, llvm::Module &module, llvm::Type *ty)
 {
     if (expect_sig(mode, module, ty, 1, ty) != 0)
         return 1;
-    llvm::ReturnInst *ret = only_ret(*answer(module));
+    llvm::ReturnInst *ret = only_ret(*entry(module));
     auto *load = ret == NULL ? NULL
                              : llvm::dyn_cast<llvm::LoadInst>(ret->getReturnValue());
 
     if (load == NULL || load->getType() != ty)
-        return fail(mode, "answer does not return its parameter");
+        return fail(mode, "main does not return its parameter");
     return 0;
 }
 
@@ -120,7 +120,7 @@ static int ret_bin(const char *mode, llvm::Module &module,
 
     if (expect_sig(mode, module, i32, 1, i32) != 0)
         return 1;
-    auto *bin = llvm::dyn_cast_or_null<llvm::BinaryOperator>(ret_op(*answer(module)));
+    auto *bin = llvm::dyn_cast_or_null<llvm::BinaryOperator>(ret_op(*entry(module)));
 
     if (bin == NULL || bin->getOpcode() != op)
         return fail(mode, "return is not that operation");
@@ -218,22 +218,22 @@ static bool has_store(llvm::BasicBlock *bb)
 
 static int check_return(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
 
     if (fn == NULL)
-        return fail("return", "no function answer");
+        return fail("return", "no function main");
     if (fn->getReturnType() != i32 || fn->arg_size() != 0)
-        return fail("return", "answer is not int(void)");
+        return fail("return", "main is not int(void)");
     return 0;
 }
 
 static int check_if(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("if", "no function answer");
+        return fail("if", "no function main");
     for (llvm::BasicBlock &bb : *fn) {
         auto *br = llvm::dyn_cast<llvm::BranchInst>(bb.getTerminator());
         if (br != NULL && br->isConditional())
@@ -244,10 +244,10 @@ static int check_if(llvm::Module &module)
 
 static int check_else(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("else", "no function answer");
+        return fail("else", "no function main");
     for (llvm::BasicBlock &bb : *fn) {
         auto *br = llvm::dyn_cast<llvm::BranchInst>(bb.getTerminator());
         if (br == NULL || !br->isConditional())
@@ -264,10 +264,10 @@ static int check_else(llvm::Module &module)
 
 static int check_while(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("while", "no function answer");
+        return fail("while", "no function main");
     Loop loop = loop_of(*fn);
     if (!loop.ok || loop.into != loop.latch || !uncond(loop.latch))
         return fail("while", "not a while loop");
@@ -276,10 +276,10 @@ static int check_while(llvm::Module &module)
 
 static int check_do(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("do", "no function answer");
+        return fail("do", "no function main");
     Back back = one_back(*fn);
 
     if (!back.ok || !uncond(back.to))
@@ -292,10 +292,10 @@ static int check_do(llvm::Module &module)
 
 static int check_for(const char *mode, llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail(mode, "no function answer");
+        return fail(mode, "no function main");
     Loop loop = loop_of(*fn);
 
     if (!loop.ok || direct_succ(loop.header, loop.latch) || !uncond(loop.latch))
@@ -307,10 +307,10 @@ static int check_for(const char *mode, llvm::Module &module)
 
 static int check_switch(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("switch", "no function answer");
+        return fail("switch", "no function main");
     for (llvm::BasicBlock &bb : *fn) {
         auto *sw = llvm::dyn_cast<llvm::SwitchInst>(bb.getTerminator());
         if (sw == NULL || sw->getNumCases() < 1)
@@ -329,10 +329,10 @@ static int check_switch(llvm::Module &module)
 
 static int check_break(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("break", "no function answer");
+        return fail("break", "no function main");
     Loop loop = loop_of(*fn);
 
     if (!loop.ok || loop.into == loop.latch)
@@ -350,10 +350,10 @@ static int check_break(llvm::Module &module)
 
 static int check_continue(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("continue", "no function answer");
+        return fail("continue", "no function main");
     Loop loop = loop_of(*fn);
     auto *inner = loop.ok ? llvm::dyn_cast<llvm::BranchInst>(loop.into->getTerminator()) : NULL;
 
@@ -368,10 +368,10 @@ static int check_continue(llvm::Module &module)
 
 static int check_goto(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("goto", "no function answer");
+        return fail("goto", "no function main");
     for (llvm::BasicBlock &bb : *fn) {
         if (llvm::pred_size(&bb) != 2)
             continue;
@@ -391,12 +391,12 @@ static int check_goto(llvm::Module &module)
 
 static int check_void(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("void", "no function answer");
+        return fail("void", "no function main");
     if (!fn->getReturnType()->isVoidTy() || fn->arg_size() != 0)
-        return fail("void", "answer is not void(void)");
+        return fail("void", "main is not void(void)");
     llvm::ReturnInst *ret = only_ret(*fn);
     if (ret == NULL || ret->getReturnValue() != NULL)
         return fail("void", "missing bare return");
@@ -409,7 +409,7 @@ static int check_empty(llvm::Module &module)
 
     if (expect_sig("empty-list", module, i32, 0, NULL) != 0)
         return 1;
-    llvm::ConstantInt *value = ret_int(*answer(module));
+    llvm::ConstantInt *value = ret_int(*entry(module));
     if (value == NULL || !value->equalsInt(1))
         return fail("empty-list", "empty () does not return 1");
     return 0;
@@ -428,7 +428,7 @@ static int check_local(llvm::Module &module)
 
     if (expect_sig("local", module, i32, 0, NULL) != 0)
         return 1;
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::ReturnInst *ret = only_ret(*fn);
     auto *load = ret == NULL ? NULL
                              : llvm::dyn_cast<llvm::LoadInst>(ret->getReturnValue());
@@ -480,12 +480,12 @@ static int check_const(llvm::Module &module)
 
 static int check_volatile(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool load = false;
     bool store = false;
 
     if (fn == NULL)
-        return fail("volatile", "no function answer");
+        return fail("volatile", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         if (auto *op = llvm::dyn_cast<llvm::LoadInst>(&inst))
             load = load || op->isVolatile();
@@ -503,7 +503,7 @@ static int check_bool_const(const char *mode, llvm::Module &module, uint64_t bit
 
     if (expect_sig(mode, module, i1, 0, NULL) != 0)
         return 1;
-    llvm::ConstantInt *value = ret_int(*answer(module));
+    llvm::ConstantInt *value = ret_int(*entry(module));
     if (value == NULL || !value->equalsInt(bit))
         return fail(mode, "wrong bool constant");
     return 0;
@@ -515,7 +515,7 @@ static int check_literal(llvm::Module &module)
 
     if (expect_sig("literal", module, i32, 0, NULL) != 0)
         return 1;
-    llvm::ConstantInt *value = ret_int(*answer(module));
+    llvm::ConstantInt *value = ret_int(*entry(module));
     if (value == NULL || !value->equalsInt(42))
         return fail("literal", "does not return 42");
     return 0;
@@ -523,7 +523,7 @@ static int check_literal(llvm::Module &module)
 
 static int check_cast(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
 
     if (expect_sig("cast", module, i32, 1, i32) != 0)
@@ -538,7 +538,7 @@ static int check_cast(llvm::Module &module)
 
 static int check_sizeof(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
 
     if (expect_sig("sizeof", module, i32, 0, NULL) != 0)
@@ -562,7 +562,7 @@ static int check_comma(llvm::Module &module)
 
     if (expect_sig("comma", module, i32, 0, NULL) != 0)
         return 1;
-    llvm::ConstantInt *value = ret_int(*answer(module));
+    llvm::ConstantInt *value = ret_int(*entry(module));
     if (value == NULL || !value->equalsInt(2))
         return fail("comma", "comma did not yield the right operand");
     return 0;
@@ -570,7 +570,7 @@ static int check_comma(llvm::Module &module)
 
 static int check_conditional(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     auto *phi = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::PHINode>(ret_op(*fn));
     bool one = false;
     bool two = false;
@@ -590,7 +590,7 @@ static int check_compare(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
     auto *ext = llvm::dyn_cast_or_null<llvm::ZExtInst>(
-        answer(module) == NULL ? NULL : ret_op(*answer(module)));
+        entry(module) == NULL ? NULL : ret_op(*entry(module)));
 
     if (expect_sig("compare", module, i32, 1, i32) != 0)
         return 1;
@@ -603,7 +603,7 @@ static int check_complement(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
     auto *bin = llvm::dyn_cast_or_null<llvm::BinaryOperator>(
-        answer(module) == NULL ? NULL : ret_op(*answer(module)));
+        entry(module) == NULL ? NULL : ret_op(*entry(module)));
 
     if (expect_sig("complement", module, i32, 1, i32) != 0)
         return 1;
@@ -619,7 +619,7 @@ static int check_not(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
     auto *ext = llvm::dyn_cast_or_null<llvm::ZExtInst>(
-        answer(module) == NULL ? NULL : ret_op(*answer(module)));
+        entry(module) == NULL ? NULL : ret_op(*entry(module)));
     auto *bin = ext == NULL ? NULL
                             : llvm::dyn_cast<llvm::BinaryOperator>(ext->getOperand(0));
 
@@ -634,7 +634,7 @@ static int check_not(llvm::Module &module)
 static int check_logic(const char *mode, llvm::Module &module, bool want_true)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     auto *ext = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::ZExtInst>(ret_op(*fn));
     auto *phi = ext == NULL ? NULL : llvm::dyn_cast<llvm::PHINode>(ext->getOperand(0));
     bool saw = false;
@@ -661,7 +661,7 @@ static int check_logic(const char *mode, llvm::Module &module, bool want_true)
 static int check_assign(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool stored = false;
 
     if (expect_sig("assign", module, i32, 1, i32) != 0)
@@ -679,7 +679,7 @@ static int check_assign(llvm::Module &module)
 static int check_add_assign(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (expect_sig("add-assign", module, i32, 1, i32) != 0)
         return 1;
@@ -697,7 +697,7 @@ static int check_add_assign(llvm::Module &module)
 static int check_post(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     auto *load = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::LoadInst>(ret_op(*fn));
     bool added = false;
 
@@ -718,7 +718,7 @@ static int check_post(llvm::Module &module)
 static int check_pre(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     auto *add = fn == NULL ? NULL : llvm::dyn_cast_or_null<llvm::BinaryOperator>(ret_op(*fn));
     bool stored = false;
 
@@ -759,12 +759,12 @@ static llvm::CallInst *direct_call(llvm::Function &fn)
 
 static int check_call(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *inc = module.getFunction("inc");
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
 
     if (call == NULL || inc == NULL || call->getCalledFunction() != inc)
-        return fail("call", "answer does not call inc");
+        return fail("call", "main does not call inc");
     if (call->arg_size() != 1 || !const_eq(call->getArgOperand(0), 1))
         return fail("call", "inc is not called with 1");
     return 0;
@@ -772,7 +772,7 @@ static int check_call(llvm::Module &module)
 
 static int check_overload(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
     llvm::Function *chosen = call == NULL ? NULL : call->getCalledFunction();
     bool one = false;
@@ -795,7 +795,7 @@ static int check_overload(llvm::Module &module)
 
 static int check_default(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
     llvm::Function *callee = call == NULL ? NULL : call->getCalledFunction();
 
@@ -809,7 +809,7 @@ static int check_default(llvm::Module &module)
 
 static int check_varargs(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
     llvm::Function *callee = call == NULL ? NULL : call->getCalledFunction();
 
@@ -823,40 +823,40 @@ static int check_varargs(llvm::Module &module)
 static int check_static(llvm::Module &module)
 {
     llvm::Function *hidden = module.getFunction("hidden");
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
 
     if (hidden == NULL || !hidden->hasInternalLinkage())
         return fail("static", "hidden does not have internal linkage");
     if (call == NULL || call->getCalledFunction() != hidden)
-        return fail("static", "answer does not call hidden");
+        return fail("static", "main does not call hidden");
     return 0;
 }
 
 static int check_extern(llvm::Module &module)
 {
     llvm::Function *extra = module.getFunction("extra");
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
 
     if (extra == NULL || !extra->isDeclaration() || !extra->hasExternalLinkage())
         return fail("extern", "extra is not an external declaration");
     if (call == NULL || call->getCalledFunction() != extra
         || call->arg_size() != 1 || !const_eq(call->getArgOperand(0), 2))
-        return fail("extern", "answer does not call extra(2)");
+        return fail("extern", "main does not call extra(2)");
     return 0;
 }
 
 static int check_inline(llvm::Module &module)
 {
     llvm::Function *twice = module.getFunction("twice");
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
 
     if (twice == NULL || !twice->hasFnAttribute(llvm::Attribute::InlineHint))
         return fail("inline", "twice is not inline");
     if (call == NULL || call->getCalledFunction() != twice)
-        return fail("inline", "answer does not call twice");
+        return fail("inline", "main does not call twice");
     return 0;
 }
 
@@ -868,7 +868,7 @@ static int check_typedef(llvm::Module &module)
         return 1;
     if (module.getGlobalVariable("number", true) != NULL || module.getFunction("number") != NULL)
         return fail("typedef", "the alias added a value");
-    llvm::ConstantInt *value = ret_int(*answer(module));
+    llvm::ConstantInt *value = ret_int(*entry(module));
     if (value == NULL || !value->equalsInt(6))
         return fail("typedef", "number did not lower to int");
     return 0;
@@ -898,7 +898,7 @@ static llvm::StructType *named_struct(llvm::Module &module, const char *name)
 static int check_struct(llvm::Module &module)
 {
     llvm::StructType *point = named_struct(module, "struct.Point");
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
     bool stored = false;
 
@@ -907,7 +907,7 @@ static int check_struct(llvm::Module &module)
     if (point->elements()[0] != i32 || point->elements()[1] != i32)
         return fail("struct", "struct.Point fields are not i32");
     if (fn == NULL)
-        return fail("struct", "no function answer");
+        return fail("struct", "no function main");
     if (only_ret(*fn) == NULL || !llvm::isa<llvm::LoadInst>(only_ret(*fn)->getReturnValue()))
         return fail("struct", "return is not a load");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
@@ -922,7 +922,7 @@ static int check_struct(llvm::Module &module)
 
 static int check_union(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool named = false;
     bool stored = false;
 
@@ -933,7 +933,7 @@ static int check_union(llvm::Module &module)
     if (!named)
         return fail("union", "no union type");
     if (fn == NULL)
-        return fail("union", "no function answer");
+        return fail("union", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
         if (store != NULL && const_eq(store->getValueOperand(), 3)
@@ -947,7 +947,7 @@ static int check_union(llvm::Module &module)
 
 static int check_enum(llvm::Module &module)
 {
-    llvm::ConstantInt *value = answer(module) == NULL ? NULL : ret_int(*answer(module));
+    llvm::ConstantInt *value = entry(module) == NULL ? NULL : ret_int(*entry(module));
 
     if (value == NULL || !value->equalsInt(4))
         return fail("enum", "Green did not lower to 4");
@@ -958,13 +958,13 @@ static int check_enum(llvm::Module &module)
 
 static int check_array(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
     bool slot = false;
     bool stored = false;
 
     if (fn == NULL)
-        return fail("array", "no function answer");
+        return fail("array", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(&inst);
         if (alloca != NULL) {
@@ -983,11 +983,11 @@ static int check_array(llvm::Module &module)
 
 static int check_pointer(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool stored = false;
 
     if (fn == NULL)
-        return fail("pointer", "no function answer");
+        return fail("pointer", "no function main");
     llvm::ReturnInst *ret = only_ret(*fn);
     auto *outer = ret == NULL ? NULL : llvm::dyn_cast<llvm::LoadInst>(ret->getReturnValue());
     auto *inner = outer == NULL ? NULL : llvm::dyn_cast<llvm::LoadInst>(outer->getPointerOperand());
@@ -1005,7 +1005,7 @@ static int check_pointer(llvm::Module &module)
 
 static int check_array_param(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *first = module.getFunction("first");
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
 
@@ -1015,13 +1015,13 @@ static int check_array_param(llvm::Module &module)
         || first->getFunctionType()->getParamType(0)->isArrayTy())
         return fail("array-param", "empty brackets did not lower to a pointer");
     if (call == NULL || call->getCalledFunction() != first)
-        return fail("array-param", "answer does not call first");
+        return fail("array-param", "main does not call first");
     return 0;
 }
 
 static int check_bitfield(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool width = false;
     bool stored = false;
 
@@ -1034,7 +1034,7 @@ static int check_bitfield(llvm::Module &module)
     if (!width)
         return fail("bitfield", "no field of width 7");
     if (fn == NULL)
-        return fail("bitfield", "no function answer");
+        return fail("bitfield", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
         if (store != NULL && store->getValueOperand()->getType()->isIntegerTy(7))
@@ -1061,10 +1061,10 @@ static bool gep_has_index(const llvm::Value *ptr, uint64_t want)
 
 static int check_designated(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (fn == NULL)
-        return fail("designated-init", "no function answer");
+        return fail("designated-init", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
         if (store != NULL && const_eq(store->getValueOperand(), 2)
@@ -1076,12 +1076,12 @@ static int check_designated(llvm::Module &module)
 
 static int check_brace(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool one = false;
     bool two = false;
 
     if (fn == NULL)
-        return fail("brace", "no function answer");
+        return fail("brace", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
         if (store == NULL)
@@ -1112,7 +1112,7 @@ static int pointer_this(const char *mode, llvm::Function *fn)
 
 static int check_method(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *read = module.getFunction("Point::read");
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
 
@@ -1147,12 +1147,12 @@ static int check_ctor(llvm::Module &module)
 static int check_dtor(llvm::Module &module)
 {
     llvm::Function *dtor = module.getFunction("Point::~Point");
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
 
     if (pointer_this("dtor", dtor) != 0)
         return 1;
     if (fn == NULL)
-        return fail("dtor", "no function answer");
+        return fail("dtor", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         if (llvm::isa<llvm::CallInst>(inst))
             return fail("dtor", "delete calls the destructor");
@@ -1216,12 +1216,12 @@ static int check_two_bases(llvm::Module &module)
 
 static int check_virtual_call(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::StructType *type = named_struct(module, "class.Point");
     bool indirect = false;
 
     if (fn == NULL)
-        return fail("virtual-call", "no function answer");
+        return fail("virtual-call", "no function main");
     if (type == NULL || type->getNumElements() < 1 || !type->getElementType(0)->isPointerTy())
         return fail("virtual-call", "the object has no pointer");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
@@ -1266,7 +1266,7 @@ static llvm::CallInst *find_call(llvm::Function &fn, llvm::Intrinsic::ID id)
 
 static int check_alloc(const char *mode, llvm::Module &module, uint64_t count, bool constructor)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *alloc = module.getFunction("smallcpp_alloc");
     llvm::CallInst *state = fn == NULL ? NULL : find_call(*fn, llvm::Intrinsic::experimental_gc_statepoint);
     llvm::CallInst *result = fn == NULL ? NULL : find_call(*fn, llvm::Intrinsic::experimental_gc_result);
@@ -1323,11 +1323,11 @@ static int check_new_pointer(llvm::Module &module)
 
 static int check_delete(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool loaded = false;
 
     if (fn == NULL)
-        return fail("delete-ptr", "no function answer");
+        return fail("delete-ptr", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         if (llvm::isa<llvm::CallInst>(inst))
             return fail("delete-ptr", "delete emits a call");
@@ -1341,11 +1341,11 @@ static int check_delete(llvm::Module &module)
 
 static int check_nullptr(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     int nulls = 0;
 
     if (fn == NULL)
-        return fail("nullptr", "no function answer");
+        return fail("nullptr", "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
         if (store != NULL && llvm::isa<llvm::ConstantPointerNull>(store->getValueOperand()))
@@ -1366,7 +1366,7 @@ static llvm::Function *personality(llvm::Module &module)
 
 static int check_throw(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *target = module.getFunction("__cxa_throw");
     bool stored = false;
     bool threw = false;
@@ -1395,7 +1395,7 @@ static int check_throw(llvm::Module &module)
 
 static int check_rethrow(llvm::Module &module)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *target = module.getFunction("__cxa_rethrow");
 
     if (fn == NULL || target == NULL || !target->isDeclaration())
@@ -1410,7 +1410,7 @@ static int check_rethrow(llvm::Module &module)
 
 static int check_handler(const char *mode, llvm::Module &module, bool catch_all)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     bool invoke = false;
     bool pad = false;
 
@@ -1435,14 +1435,14 @@ static int check_handler(const char *mode, llvm::Module &module, bool catch_all)
 
 static int check_runtime_call(const char *mode, llvm::Module &module, const char *name, bool formatted)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *target = module.getFunction(name);
     llvm::CallInst *found = NULL;
 
     if (target == NULL || !target->isDeclaration())
         return fail(mode, "the runtime function is not a declaration");
     if (fn == NULL)
-        return fail(mode, "no function answer");
+        return fail(mode, "no function main");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
         auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
         if (call != NULL && call->getCalledFunction() == target)
@@ -1478,7 +1478,7 @@ static int check_namespace_fn(llvm::Module &module)
 
 static int check_named_call(const char *mode, llvm::Module &module, const char *callee)
 {
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     llvm::Function *target = module.getFunction(callee);
     llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
 
@@ -1492,7 +1492,7 @@ static int check_named_call(const char *mode, llvm::Module &module, const char *
 static int check_register(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
-    llvm::Function *fn = answer(module);
+    llvm::Function *fn = entry(module);
     unsigned count = 0;
     bool stored = false;
     bool slot = false;

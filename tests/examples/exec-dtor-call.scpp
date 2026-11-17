@@ -7,7 +7,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Box *p;
     int *q;
     p = new Box;

@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     float x;
     x = 1.0;
     return x << 1;

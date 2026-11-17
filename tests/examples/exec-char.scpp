@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     char c;
     c = 'A';
     { int shown; shown = (int)(c); print("{:s} {}\n", "exec-char", shown); return shown; }

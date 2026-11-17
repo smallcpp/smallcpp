@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     int n;
     n = 0;
     { int shown; shown = (int)(n ? 1 : 2); print("{:s} {}\n", "exec-conditional", shown); return shown; }

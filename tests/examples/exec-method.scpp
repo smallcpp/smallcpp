@@ -8,7 +8,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Point *p;
     p = new Point(6);
     { int shown; shown = (int)(p->read()); print("{:s} {}\n", "exec-method", shown); return shown; }

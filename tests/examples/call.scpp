@@ -2,6 +2,6 @@ int inc(int n) {
     return n + 1;
 }
 
-int answer(void) {
+int main(void) {
     return inc(1);
 }

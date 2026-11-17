@@ -1,3 +1,3 @@
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(1 | 2); print("{:s} {}\n", "exec-bit-or", shown); return shown; }
 }

@@ -25,11 +25,11 @@ endif()
 get_filename_component(source_name "${SOURCE}" NAME)
 
 execute_process(
-    COMMAND "${DWARFDUMP}" --name answer "${PROGRAM}"
+    COMMAND "${DWARFDUMP}" --name main "${PROGRAM}"
     OUTPUT_VARIABLE debug_dump
     ERROR_VARIABLE debug_error)
-if(NOT debug_dump MATCHES "DW_AT_name" OR NOT debug_dump MATCHES "answer")
-    message(FATAL_ERROR "debug info does not name answer\n${debug_dump}${debug_error}")
+if(NOT debug_dump MATCHES "DW_AT_name" OR NOT debug_dump MATCHES "main")
+    message(FATAL_ERROR "debug info does not name main\n${debug_dump}${debug_error}")
 endif()
 if(NOT debug_dump MATCHES "${source_name}")
     message(FATAL_ERROR "debug info does not name ${source_name}\n${debug_dump}")
@@ -39,7 +39,7 @@ if(NOT debug_dump MATCHES "\"int\"")
 endif()
 
 execute_process(
-    COMMAND "${DWARFDUMP}" --name answer "${PLAIN}"
+    COMMAND "${DWARFDUMP}" --name main "${PLAIN}"
     OUTPUT_VARIABLE plain_dump)
 if(plain_dump MATCHES "${source_name}")
     message(FATAL_ERROR "an executable built without -g names ${source_name}\n${plain_dump}")
@@ -60,7 +60,7 @@ if(debugger_name STREQUAL "gdb")
         COMMAND "${DEBUGGER}" -batch -nx -q
             -ex "set pagination off"
             -ex "set confirm off"
-            -ex "break answer"
+            -ex "break main"
             -ex run
             -ex frame
             -ex list
@@ -71,7 +71,7 @@ if(debugger_name STREQUAL "gdb")
 else()
     execute_process(
         COMMAND "${DEBUGGER}" --batch
-            -o "breakpoint set --name answer"
+            -o "breakpoint set --name main"
             -o run
             -o "frame info"
             -o "source list"
@@ -84,7 +84,7 @@ set(shown "${session}${session_error}")
 if(NOT session_status EQUAL 0)
     message(FATAL_ERROR "${debugger_name} status ${session_status}\n${shown}")
 endif()
-if(NOT shown MATCHES "${source_name}" OR NOT shown MATCHES "answer" OR NOT shown MATCHES "return 0")
+if(NOT shown MATCHES "${source_name}" OR NOT shown MATCHES "main" OR NOT shown MATCHES "return 0")
     message(FATAL_ERROR "${debugger_name} did not name the source line\n${shown}")
 endif()
 message(STATUS "debugger ${debugger_name}")

@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     short n;
     n = 12;
     { int shown; shown = (int)(n); print("{:s} {}\n", "exec-short", shown); return shown; }

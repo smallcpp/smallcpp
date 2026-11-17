@@ -16,7 +16,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Derived *p;
     p = new Derived();
     { int shown; shown = (int)(p->id()); print("{:s} {}\n", "exec-override", shown); return shown; }

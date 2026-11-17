@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     int n;
     n = 9;
     n -= 4;

@@ -1,7 +1,9 @@
 #include "smallcpp/CommandLine.hpp"
 
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <fcntl.h>
 #include <spawn.h>
 #include <stdexcept>
@@ -192,6 +194,107 @@ static std::string ignore_spelling(const std::vector<std::string> &arguments)
     return "-i";
 }
 
+static bool read_u16(const std::vector<unsigned char> &bytes, std::size_t at, std::uint16_t &out)
+{
+    if (at + 2 > bytes.size())
+        return false;
+    out = static_cast<std::uint16_t>(bytes[at] | (bytes[at + 1] << 8));
+    return true;
+}
+
+static bool read_u32(const std::vector<unsigned char> &bytes, std::size_t at, std::uint32_t &out)
+{
+    if (at + 4 > bytes.size())
+        return false;
+    out = static_cast<std::uint32_t>(bytes[at])
+        | (static_cast<std::uint32_t>(bytes[at + 1]) << 8)
+        | (static_cast<std::uint32_t>(bytes[at + 2]) << 16)
+        | (static_cast<std::uint32_t>(bytes[at + 3]) << 24);
+    return true;
+}
+
+static bool read_u64(const std::vector<unsigned char> &bytes, std::size_t at, std::uint64_t &out)
+{
+    std::uint32_t lo = 0;
+    std::uint32_t hi = 0;
+    if (!read_u32(bytes, at, lo) || !read_u32(bytes, at + 4, hi))
+        return false;
+    out = static_cast<std::uint64_t>(lo) | (static_cast<std::uint64_t>(hi) << 32);
+    return true;
+}
+
+static bool defines_main(const std::string &path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return false;
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(in)),
+                                     std::istreambuf_iterator<char>());
+    if (bytes.size() < 64 || bytes[0] != 0x7f || bytes[1] != 'E' || bytes[2] != 'L' || bytes[3] != 'F')
+        return false;
+    if (bytes[4] != 2 || bytes[5] != 1)
+        return false;
+    std::uint64_t shoff = 0;
+    std::uint16_t shentsize = 0;
+    std::uint16_t shnum = 0;
+    if (!read_u64(bytes, 40, shoff) || !read_u16(bytes, 58, shentsize) || !read_u16(bytes, 60, shnum))
+        return false;
+    if (shentsize < 64)
+        return false;
+    for (std::uint16_t section = 0; section < shnum; ++section) {
+        const std::size_t header = static_cast<std::size_t>(shoff) + static_cast<std::size_t>(section) * shentsize;
+        std::uint32_t type = 0;
+        std::uint64_t offset = 0;
+        std::uint64_t size = 0;
+        std::uint32_t link = 0;
+        std::uint64_t entsize = 0;
+        if (!read_u32(bytes, header + 4, type))
+            return false;
+        if (type != 2)
+            continue;
+        if (!read_u64(bytes, header + 24, offset) || !read_u64(bytes, header + 32, size)
+            || !read_u32(bytes, header + 40, link) || !read_u64(bytes, header + 56, entsize))
+            return false;
+        if (entsize < 24 || link >= shnum)
+            return false;
+        const std::size_t strings = static_cast<std::size_t>(shoff) + static_cast<std::size_t>(link) * shentsize;
+        std::uint64_t name_offset = 0;
+        std::uint64_t name_size = 0;
+        if (!read_u64(bytes, strings + 24, name_offset) || !read_u64(bytes, strings + 32, name_size))
+            return false;
+        if (name_offset + name_size > bytes.size())
+            return false;
+        const std::size_t count = static_cast<std::size_t>(size / entsize);
+        for (std::size_t index = 0; index < count; ++index) {
+            const std::size_t sym = static_cast<std::size_t>(offset) + index * static_cast<std::size_t>(entsize);
+            std::uint32_t name = 0;
+            std::uint16_t shndx = 0;
+            if (sym + 8 > bytes.size() || !read_u32(bytes, sym, name) || !read_u16(bytes, sym + 6, shndx))
+                return false;
+            const unsigned bind = bytes[sym + 4] >> 4;
+            if (shndx == 0 || shndx >= 0xff00 || (bind != 1 && bind != 2))
+                continue;
+            if (static_cast<std::uint64_t>(name) + 5 > name_size)
+                continue;
+            const std::size_t text = static_cast<std::size_t>(name_offset) + name;
+            const char *symbol = reinterpret_cast<const char *>(&bytes[text]);
+            if (std::char_traits<char>::compare(symbol, "main", 4) == 0 && symbol[4] == '\0')
+                return true;
+        }
+    }
+    return false;
+}
+
+static int require_main(const std::vector<std::string> &objects)
+{
+    for (const std::string &object : objects) {
+        if (defines_main(object))
+            return 0;
+    }
+    std::fputs("program has no main\n", stderr);
+    return 1;
+}
+
 static int compile_file(const smallcpp::CommandLine &command_line, const std::string &input,
                         const std::string &output, const std::string &ignore)
 {
@@ -239,6 +342,9 @@ static int compile_file(const smallcpp::CommandLine &command_line, const std::st
     frontend.push_back(preprocessed);
     status = run_program(cc, frontend, "");
     if (status != 0 || emit_llvm || compile_only)
+        return status;
+    status = require_main({object});
+    if (status != 0)
         return status;
 
     std::vector<std::string> link;
@@ -308,6 +414,10 @@ static int compile_sources(const smallcpp::CommandLine &command_line,
             return status;
         objects.push_back(object);
     }
+
+    int ready = require_main(objects);
+    if (ready != 0)
+        return ready;
 
     std::vector<std::string> link;
     link.push_back("-no-pie");

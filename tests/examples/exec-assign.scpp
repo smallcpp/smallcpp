@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     int n;
     n = 6;
     { int shown; shown = (int)(n); print("{:s} {}\n", "exec-assign", shown); return shown; }

@@ -6,6 +6,6 @@ namespace audio {
 
 using namespace audio;
 
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(gain(1)); print("{:s} {}\n", "using-namespace", shown); return shown; }
 }

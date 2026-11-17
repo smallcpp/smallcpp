@@ -4,6 +4,6 @@ namespace audio {
     }
 }
 
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(audio::gain(1)); print("{:s} {}\n", "qualified-call", shown); return shown; }
 }

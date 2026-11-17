@@ -1,5 +1,5 @@
 typedef int number;
 
-number answer(void) {
+number main(void) {
     { int shown; shown = (int)(6); print("{:s} {}\n", "typedef", shown); return shown; }
 }

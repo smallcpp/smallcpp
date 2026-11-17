@@ -7,7 +7,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Point *p;
     p = new Point();
     { int shown; shown = (int)(p->move(3)); print("{:s} {}\n", "exec-virtual", shown); return shown; }

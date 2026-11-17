@@ -3,7 +3,7 @@ struct Point {
     int y;
 };
 
-int answer(void) {
+int main(void) {
     struct Point p = { .y = 2 };
     { int shown; shown = (int)(p.y); print("{:s} {}\n", "designated-init", shown); return shown; }
 }

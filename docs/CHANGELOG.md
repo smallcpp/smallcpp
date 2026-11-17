@@ -6,6 +6,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Changed
 
+- A program starts at `int main`. The runtime no longer supplies a `main` that calls `answer`. `scpp` reports `program has no main` when an executable's objects do not define `main`. `-c` and `--emit-llvm` still compile one translation unit that does not define `main`. The examples, including `tests/examples/ledger/main.scpp`, define `main`.
 - `scpp` compiles and links more than one source file. With `-o`, every positional path is an input. Without `-o`, the last positional path is the output and the earlier ones are inputs. Two positional paths and no `-o` are still one input and its output. One input still writes `output.i` and `output.o`. Several inputs write `output.0.i` and `output.0.o`, then the same pair for each later file, and one Clang link of those objects. `-c`, `--emit-llvm`, and a path ending in `.bc` still accept one source, because one output file cannot hold several translation units. The intermediate files stay in place.
 - `scpp -g` asks `scpp_cc` to emit LLVM debug info for the source file, line numbers, functions, and types, and the Clang link keeps it. The debug info names the `.scpp` file. Without `-g`, the executable is unchanged. `gdb` or `lldb` can stop in that function and name the source line.
 - An environment value that is not a token sequence is not imported. `MAKEFLAGS` from a build is one of those values.

@@ -1,5 +1,5 @@
-int n = answer();
+int n = main();
 
-int answer(void) {
+int main(void) {
     return n;
 }

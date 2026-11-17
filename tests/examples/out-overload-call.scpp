@@ -6,6 +6,6 @@ int sum(int a, int b) {
     return a + b;
 }
 
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(sum(1, 2)); print("{:s} {}\n", "overload-call", shown); return shown; }
 }

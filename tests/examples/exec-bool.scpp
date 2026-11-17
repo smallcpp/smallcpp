@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     bool flag;
     flag = true;
     if (flag)

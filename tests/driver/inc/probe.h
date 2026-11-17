@@ -1,1 +1,1 @@
-int answer(void) { return FOO; }
+int main(void) { return FOO; }

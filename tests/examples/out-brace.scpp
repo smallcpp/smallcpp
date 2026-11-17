@@ -3,7 +3,7 @@ struct Pair {
     int y;
 };
 
-int answer(void) {
+int main(void) {
     struct Pair p = { 1, 2 };
     { int shown; shown = (int)(p.x); print("{:s} {}\n", "brace", shown); return shown; }
 }

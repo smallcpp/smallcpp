@@ -5,6 +5,6 @@ public:
     }
 };
 
-int answer(Point *p) {
+int main(Point *p) {
     return p->move(1);
 }
