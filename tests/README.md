@@ -14,6 +14,6 @@
 
 `debug_answer` builds one executable with `-g` and one without. The `-g` executable names `main`, its `int` return type, and `debug-answer.scpp`. `gdb`, or `lldb` when `gdb` is absent, stops in `main` and shows `return 0`. `diag_no_main` compiles a translation unit that has no `main`, then requires `scpp` to reject the executable.
 
-`phase_*` checks that each driver option reaches only the program that uses it. `-D`, `-I`, `-i`, and `--ignore-environment` reach `preproc`. `--emit-llvm` and `-c` reach `scpp_cc`, and `-o` then names that phase's file. `-g` reaches `scpp_cc` and Clang. `-L` reaches Clang. A program does not receive an option that belongs to another phase.
+`phase_*` checks that each driver option reaches only the program that uses it. `-D`, `-I`, `-i`, and `--ignore-environment` reach `preproc`. `--emit-llvm` and `-c` reach `scpp_cc`, and `-o` then names that phase's file. `-g` reaches `scpp_cc` and Clang. `-L` reaches Clang. A program does not receive an option that belongs to another phase. `driver_default`, `driver_keep`, `driver_preprocess`, `driver_emit-llvm`, `driver_library`, `driver_include`, and `driver_library-order` check the default executable name, `-k` and `--keep`, `-E`, `--emit-llvm` for two files, `-l`, and a colon-separated `-I` or `-L` list.
 
 `exec_*` runs one short program. The program prints one line, and the test checks that line and the exit status. `diag_*` feeds `scpp` a bad snippet. The compiler must exit non-zero, and the diagnostic must name the problem. `diag_bad-recover` requires the syntax error twice.

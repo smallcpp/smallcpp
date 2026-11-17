@@ -285,7 +285,6 @@ add_test(
         -DCC_LACKS=-D|-I|-i|-L|-c|FOO=0|${phase_include}
         -DCLANG_ABSENT=1
         -DMAGIC=bc
-        -DKEEP_I=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
 add_test(
     NAME phase_object
@@ -304,7 +303,6 @@ add_test(
         -DCC_LACKS=-L|--emit-llvm|-D|-I|-i
         -DCLANG_ABSENT=1
         -DMAGIC=elf
-        -DKEEP_I=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
 add_test(
     NAME phase_link
@@ -325,8 +323,6 @@ add_test(
         -DCLANG_HAS=-g|-L|${phase_include}|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-link
         -DCLANG_LACKS=-D|-I|-c|--emit-llvm|-i|NAME=1
         -DMAGIC=elf
-        -DKEEP_I=1
-        -DKEEP_O=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
 add_test(
     NAME phase_ignore_short
@@ -390,7 +386,6 @@ add_test(
         -DCC_LACKS=-i|--ignore-environment|-D|-I|-L|-g
         -DCLANG_ABSENT=1
         -DMAGIC=bc
-        -DKEEP_I=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
 add_test(
     NAME phase_conflict
@@ -433,6 +428,19 @@ add_test(
         -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/bad-no-main.o
         -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/bad-no-main
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectNoMain.cmake)
+
+foreach(check default keep preprocess emit-llvm library include library-order)
+    add_test(
+        NAME driver_${check}
+        COMMAND ${CMAKE_COMMAND}
+            -DCHECK=${check}
+            -DCOMPILER=$<TARGET_FILE:scpp>
+            -DCLANG=${SMALLCPP_CLANGXX}
+            -DWORK=${CMAKE_CURRENT_BINARY_DIR}/driver-${check}
+            -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/driver
+            -DRETURN_ZERO=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectDriver.cmake)
+endforeach()
 
 add_test(
     NAME build_test_programs

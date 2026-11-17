@@ -1,0 +1,5 @@
+extern int scpp_lib_a(int n);
+
+int main(void) {
+    return scpp_lib_a(0);
+}

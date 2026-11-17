@@ -34,7 +34,8 @@ static smallcpp::CommandLine make_command_line()
 {
     smallcpp::CommandLine command_line(
         "scpp",
-        "Compile smallcpp source files and link them. Each option is passed only to the phase that uses it.",
+        "Compile smallcpp source files and link them. Each option is passed only to the phase that uses it. "
+        "preproc deletes nothing. Without -k, scpp deletes intermediate files after a successful build.",
         SMALLCPP_VERSION);
 
     smallcpp::CommandLineOption help;
@@ -57,8 +58,9 @@ static smallcpp::CommandLine make_command_line()
     output.short_name = 'o';
     output.long_name = "output";
     output.name = "output";
-    output.description = "Name the final result. With -c this is the object file. "
-                         "With --emit-llvm this is LLVM IR. Otherwise this is the executable. "
+    output.description = "Name the result. The default executable is a.out. "
+                         "With -c this is the object file. "
+                         "With one --emit-llvm or -E input, this names that file. "
                          "A path ending in .bc is LLVM IR";
     output.value_type = smallcpp::CommandLineValueType::String;
     command_line.add_option(output);
@@ -77,10 +79,11 @@ static smallcpp::CommandLine make_command_line()
     include.short_name = 'I';
     include.long_name = "include-dir";
     include.name = "include-dir";
-    include.description = "Pass DIR to preproc as an include directory";
+    include.description = "Pass DIR to preproc. Repeat -I, or separate several directories with ':'. "
+                          "They are searched in order";
     include.value_type = smallcpp::CommandLineValueType::String;
     include.list = true;
-    include.list_separator = '\n';
+    include.list_separator = ':';
     command_line.add_option(include);
 
     smallcpp::CommandLineOption ignore_environment;
@@ -96,6 +99,21 @@ static smallcpp::CommandLine make_command_line()
     compile_only.description = "Compile and assemble, and do not link. -o names the object file";
     command_line.add_option(compile_only);
 
+    smallcpp::CommandLineOption preprocess_only;
+    preprocess_only.short_name = 'E';
+    preprocess_only.name = "preprocess";
+    preprocess_only.description = "Write preprocessor output for each input and stop. "
+                                  "The output base name is the input base name";
+    command_line.add_option(preprocess_only);
+
+    smallcpp::CommandLineOption keep;
+    keep.short_name = 'k';
+    keep.long_name = "keep";
+    keep.name = "keep";
+    keep.description = "Keep every generated file. Without -k, scpp deletes intermediate files "
+                       "after a successful build";
+    command_line.add_option(keep);
+
     smallcpp::CommandLineOption debug;
     debug.short_name = 'g';
     debug.name = "debug";
@@ -106,20 +124,35 @@ static smallcpp::CommandLine make_command_line()
     library_path.short_name = 'L';
     library_path.long_name = "library-path";
     library_path.name = "library-path";
-    library_path.description = "Pass DIR to the Clang link as a library search path";
+    library_path.description = "Pass DIR to the Clang link. Repeat -L, or separate several directories with ':'. "
+                               "They are searched in order";
     library_path.value_type = smallcpp::CommandLineValueType::String;
     library_path.list = true;
-    library_path.list_separator = '\n';
+    library_path.list_separator = ':';
     command_line.add_option(library_path);
+
+    smallcpp::CommandLineOption library;
+    library.short_name = 'l';
+    library.long_name = "library";
+    library.name = "library";
+    library.description = "Link the named library into the executable. Repeat -l for another library";
+    library.value_type = smallcpp::CommandLineValueType::String;
+    library.list = true;
+    library.list_separator = '\n';
+    command_line.add_option(library);
 
     smallcpp::CommandLineOption emit_llvm;
     emit_llvm.long_name = "emit-llvm";
     emit_llvm.name = "emit-llvm";
-    emit_llvm.description = "Ask scpp_cc to write LLVM IR and stop before the native link";
+    emit_llvm.description = "Write LLVM IR for each input and stop before assembling or linking. "
+                            "The output base name is the input base name";
     command_line.add_option(emit_llvm);
 
     command_line.add_positional(
-        {"file", "One or more input.scpp files. Without -o, the last path is the output", true, true});
+        {"file",
+         "One or more input.scpp files. Without -o, two or more paths use the last path as the output. "
+         "One path writes a.out, unless -E or --emit-llvm names each file from its base name",
+         true, true});
     return command_line;
 }
 
@@ -295,147 +328,102 @@ static int require_main(const std::vector<std::string> &objects)
     return 1;
 }
 
-static int compile_file(const smallcpp::CommandLine &command_line, const std::string &input,
-                        const std::string &output, const std::string &ignore)
+enum class Stop { Link, Object, Ir, Preprocess };
+
+struct Unit {
+    std::string input;
+    std::string preprocessed;
+    std::string product;
+};
+
+static std::string base_name(const std::string &path)
 {
-    const bool compile_only = command_line.switch_value("compile");
-    bool emit_llvm = command_line.switch_value("emit-llvm");
-    const bool debug = command_line.switch_value("debug");
-    if (!emit_llvm && !compile_only && ends_with(output, ".bc"))
-        emit_llvm = true;
-
-    const std::string preprocessed = output + ".i";
-    const std::string object = compile_only || emit_llvm ? output : output + ".o";
-    const std::string preproc = tool_path("SMALLCPP_PREPROC", SMALLCPP_PREPROC);
-    const std::string cc = tool_path("SMALLCPP_CC", SMALLCPP_CC);
-    const std::string clang = tool_path("SMALLCPP_CLANGXX", SMALLCPP_CLANGXX);
-
-    std::vector<std::string> preprocess;
-    for (const smallcpp::CommandLineEvent &event : command_line.events()) {
-        if (event.name == "define") {
-            preprocess.push_back("-D");
-            preprocess.push_back(event.value);
-        } else if (event.name == "include-dir") {
-            preprocess.push_back("-I");
-            preprocess.push_back(event.value);
-        } else if (event.name == "ignore-environment") {
-            preprocess.push_back(ignore);
-        }
-    }
-    preprocess.push_back(input);
-    int status = run_program(preproc, preprocess, preprocessed);
-    if (status != 0)
-        return status;
-
-    std::vector<std::string> frontend;
-    if (debug) {
-        frontend.push_back("-g");
-        frontend.push_back("--debug-file");
-        frontend.push_back(input);
-    }
-    if (emit_llvm)
-        frontend.push_back("--emit-llvm");
-    else
-        frontend.push_back("-c");
-    frontend.push_back("-o");
-    frontend.push_back(object);
-    frontend.push_back(preprocessed);
-    status = run_program(cc, frontend, "");
-    if (status != 0 || emit_llvm || compile_only)
-        return status;
-    status = require_main({object});
-    if (status != 0)
-        return status;
-
-    std::vector<std::string> link;
-    link.push_back("-no-pie");
-    if (debug)
-        link.push_back("-g");
-    for (const smallcpp::CommandLineEvent &event : command_line.events()) {
-        if (event.name == "library-path") {
-            link.push_back("-L");
-            link.push_back(event.value);
-        }
-    }
-    link.push_back("-o");
-    link.push_back(output);
-    link.push_back(object);
-    link.push_back(SMALLCPP_RUNTIME);
-    link.push_back("-ldl");
-    return run_program(clang, link, "");
+    const auto slash = path.find_last_of('/');
+    std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+    const auto dot = name.find_last_of('.');
+    if (dot != std::string::npos && dot != 0)
+        name.resize(dot);
+    return name;
 }
 
-static int compile_sources(const smallcpp::CommandLine &command_line,
-                           const std::vector<std::string> &inputs, const std::string &output,
-                           const std::string &ignore)
+static std::vector<std::string> split_colon(const std::string &value)
 {
-    const bool compile_only = command_line.switch_value("compile");
-    bool emit_llvm = command_line.switch_value("emit-llvm");
-    const bool debug = command_line.switch_value("debug");
-    if (!emit_llvm && !compile_only && ends_with(output, ".bc"))
-        emit_llvm = true;
-    if (compile_only || emit_llvm)
-        return usage_error(command_line, "one output file cannot hold several translation units");
-
-    const std::string preproc = tool_path("SMALLCPP_PREPROC", SMALLCPP_PREPROC);
-    const std::string cc = tool_path("SMALLCPP_CC", SMALLCPP_CC);
-    const std::string clang = tool_path("SMALLCPP_CLANGXX", SMALLCPP_CLANGXX);
-    std::vector<std::string> objects;
-    for (std::size_t index = 0; index < inputs.size(); ++index) {
-        const std::string stem = output + "." + std::to_string(index);
-        const std::string preprocessed = stem + ".i";
-        const std::string object = stem + ".o";
-        std::vector<std::string> preprocess;
-        for (const smallcpp::CommandLineEvent &event : command_line.events()) {
-            if (event.name == "define") {
-                preprocess.push_back("-D");
-                preprocess.push_back(event.value);
-            } else if (event.name == "include-dir") {
-                preprocess.push_back("-I");
-                preprocess.push_back(event.value);
-            } else if (event.name == "ignore-environment") {
-                preprocess.push_back(ignore);
-            }
-        }
-        preprocess.push_back(inputs[index]);
-        int status = run_program(preproc, preprocess, preprocessed);
-        if (status != 0)
-            return status;
-
-        std::vector<std::string> frontend;
-        if (debug)
-            frontend.push_back("-g");
-        frontend.push_back("-c");
-        frontend.push_back("-o");
-        frontend.push_back(object);
-        frontend.push_back(preprocessed);
-        status = run_program(cc, frontend, "");
-        if (status != 0)
-            return status;
-        objects.push_back(object);
+    std::vector<std::string> items;
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const auto found = value.find(':', start);
+        const auto end = found == std::string::npos ? value.size() : found;
+        if (end > start)
+            items.push_back(value.substr(start, end - start));
+        if (found == std::string::npos)
+            break;
+        start = found + 1;
     }
+    return items;
+}
 
-    int ready = require_main(objects);
-    if (ready != 0)
-        return ready;
+static int remove_intermediates(const std::vector<std::string> &paths)
+{
+    for (const std::string &path : paths) {
+        if (unlink(path.c_str()) != 0 && errno != ENOENT) {
+            std::perror(path.c_str());
+            return 1;
+        }
+    }
+    return 0;
+}
 
-    std::vector<std::string> link;
-    link.push_back("-no-pie");
-    if (debug)
-        link.push_back("-g");
+static int finish(int status, bool keep, const std::vector<std::string> &intermediates)
+{
+    if (status != 0 || keep)
+        return status;
+    const int removed = remove_intermediates(intermediates);
+    return removed != 0 ? removed : status;
+}
+
+static void append_preprocess_args(std::vector<std::string> &args, const smallcpp::CommandLine &command_line,
+                                   const std::string &ignore)
+{
     for (const smallcpp::CommandLineEvent &event : command_line.events()) {
-        if (event.name == "library-path") {
-            link.push_back("-L");
-            link.push_back(event.value);
+        if (event.name == "define") {
+            args.push_back("-D");
+            args.push_back(event.value);
+        } else if (event.name == "include-dir") {
+            for (const std::string &dir : split_colon(event.value)) {
+                args.push_back("-I");
+                args.push_back(dir);
+            }
+        } else if (event.name == "ignore-environment") {
+            args.push_back(ignore);
         }
     }
-    link.push_back("-o");
-    link.push_back(output);
-    for (const std::string &object : objects)
-        link.push_back(object);
-    link.push_back(SMALLCPP_RUNTIME);
-    link.push_back("-ldl");
-    return run_program(clang, link, "");
+}
+
+static void append_library_paths(std::vector<std::string> &args, const smallcpp::CommandLine &command_line)
+{
+    for (const smallcpp::CommandLineEvent &event : command_line.events()) {
+        if (event.name != "library-path")
+            continue;
+        for (const std::string &dir : split_colon(event.value)) {
+            args.push_back("-L");
+            args.push_back(dir);
+        }
+    }
+}
+
+static void append_library_names(std::vector<std::string> &args, const smallcpp::CommandLine &command_line)
+{
+    for (const smallcpp::CommandLineEvent &event : command_line.events()) {
+        if (event.name != "library")
+            continue;
+        args.push_back("-l");
+        args.push_back(event.value);
+    }
+}
+
+static bool ir_output_name(const std::string &path)
+{
+    return ends_with(path, ".bc") || ends_with(path, ".ll");
 }
 
 int main(int argc, char **argv)
@@ -457,30 +445,161 @@ int main(int argc, char **argv)
         std::fputs(command_line.version_text().c_str(), stdout);
         return 0;
     }
-    if (command_line.switch_value("compile") && command_line.switch_value("emit-llvm"))
+
+    const bool compile_only = command_line.switch_value("compile");
+    const bool emit_flag = command_line.switch_value("emit-llvm");
+    const bool preprocess_only = command_line.switch_value("preprocess");
+    if (compile_only && emit_flag)
         return usage_error(command_line, "-c and --emit-llvm cannot be combined");
+    if (preprocess_only && (compile_only || emit_flag))
+        return usage_error(command_line, "-E cannot be combined with -c or --emit-llvm");
 
     const std::vector<std::string> &files = command_line.positional_values();
+    if (files.empty())
+        return usage_error(command_line, "required argument not found: file");
+
+    const bool have_output = command_line.was_provided("output");
     std::string output = command_line.value("output").value_or("");
     std::vector<std::string> inputs;
-    if (files.size() == 1) {
-        inputs.push_back(files[0]);
-    } else if (files.size() == 2 && !command_line.was_provided("output")) {
-        inputs.push_back(files[0]);
-        output = files[1];
-    } else if (files.size() >= 2 && command_line.was_provided("output")) {
+    bool per_input = false;
+    if (preprocess_only || emit_flag) {
+        if (have_output) {
+            if (files.size() != 1)
+                return usage_error(command_line, "one output file cannot hold several translation units");
+            inputs = files;
+        } else if (files.size() == 2
+                   && ((emit_flag && ir_output_name(files[1]))
+                       || (preprocess_only && ends_with(files[1], ".i")))) {
+            inputs.push_back(files[0]);
+            output = files[1];
+        } else {
+            inputs = files;
+            per_input = true;
+        }
+    } else if (have_output) {
         inputs = files;
-    } else if (files.size() > 2) {
+    } else if (files.size() >= 2) {
         inputs.assign(files.begin(), files.end() - 1);
         output = files.back();
     } else {
-        return usage_error(command_line, "required argument not found: file");
+        inputs = files;
+        output = compile_only ? base_name(files[0]) + ".o" : "a.out";
     }
-    if (output.empty())
+    if (!per_input && output.empty())
         return usage_error(command_line, "required argument not found: output");
 
+    Stop stop = Stop::Link;
+    if (preprocess_only)
+        stop = Stop::Preprocess;
+    else if (compile_only)
+        stop = Stop::Object;
+    else if (emit_flag || (!per_input && ends_with(output, ".bc")))
+        stop = Stop::Ir;
+    if (inputs.size() > 1 && !per_input && stop != Stop::Link)
+        return usage_error(command_line, "one output file cannot hold several translation units");
+
+    std::vector<Unit> units;
+    if (per_input) {
+        for (const std::string &input : inputs) {
+            Unit unit;
+            unit.input = input;
+            const std::string base = base_name(input);
+            if (stop == Stop::Preprocess)
+                unit.product = base + ".i";
+            else {
+                unit.preprocessed = base + ".i";
+                unit.product = base + ".bc";
+            }
+            units.push_back(unit);
+        }
+    } else if (inputs.size() == 1) {
+        Unit unit;
+        unit.input = inputs[0];
+        if (stop == Stop::Preprocess) {
+            unit.product = output;
+        } else if (stop == Stop::Link) {
+            unit.preprocessed = output + ".i";
+            unit.product = output + ".o";
+        } else {
+            unit.preprocessed = output + ".i";
+            unit.product = output;
+        }
+        units.push_back(unit);
+    } else {
+        for (std::size_t index = 0; index < inputs.size(); ++index) {
+            Unit unit;
+            unit.input = inputs[index];
+            const std::string stem = output + "." + std::to_string(index);
+            unit.preprocessed = stem + ".i";
+            unit.product = stem + ".o";
+            units.push_back(unit);
+        }
+    }
+
+    const std::string preproc = tool_path("SMALLCPP_PREPROC", SMALLCPP_PREPROC);
+    const std::string cc = tool_path("SMALLCPP_CC", SMALLCPP_CC);
+    const std::string clang = tool_path("SMALLCPP_CLANGXX", SMALLCPP_CLANGXX);
+    const bool debug = command_line.switch_value("debug");
+    const bool keep = command_line.switch_value("keep");
     const std::string ignore = ignore_spelling(arguments);
-    if (inputs.size() == 1)
-        return compile_file(command_line, inputs[0], output, ignore);
-    return compile_sources(command_line, inputs, output, ignore);
+    std::vector<std::string> intermediates;
+    std::vector<std::string> objects;
+
+    for (const Unit &unit : units) {
+        std::vector<std::string> preprocess;
+        append_preprocess_args(preprocess, command_line, ignore);
+        preprocess.push_back(unit.input);
+        if (stop == Stop::Preprocess) {
+            const int status = run_program(preproc, preprocess, unit.product);
+            if (status != 0)
+                return status;
+            continue;
+        }
+        int status = run_program(preproc, preprocess, unit.preprocessed);
+        if (status != 0)
+            return status;
+        intermediates.push_back(unit.preprocessed);
+
+        std::vector<std::string> frontend;
+        if (debug) {
+            frontend.push_back("-g");
+            frontend.push_back("--debug-file");
+            frontend.push_back(unit.input);
+        }
+        if (stop == Stop::Ir)
+            frontend.push_back("--emit-llvm");
+        else
+            frontend.push_back("-c");
+        frontend.push_back("-o");
+        frontend.push_back(unit.product);
+        frontend.push_back(unit.preprocessed);
+        status = run_program(cc, frontend, "");
+        if (status != 0)
+            return status;
+        if (stop == Stop::Link) {
+            objects.push_back(unit.product);
+            intermediates.push_back(unit.product);
+        }
+    }
+    if (stop != Stop::Link)
+        return finish(0, keep, intermediates);
+
+    const int ready = require_main(objects);
+    if (ready != 0)
+        return ready;
+
+    std::vector<std::string> link;
+    link.push_back("-no-pie");
+    if (debug)
+        link.push_back("-g");
+    append_library_paths(link, command_line);
+    link.push_back("-o");
+    link.push_back(output);
+    for (const std::string &object : objects)
+        link.push_back(object);
+    append_library_names(link, command_line);
+    link.push_back(SMALLCPP_RUNTIME);
+    link.push_back("-ldl");
+    const int status = run_program(clang, link, "");
+    return finish(status, keep, intermediates);
 }
