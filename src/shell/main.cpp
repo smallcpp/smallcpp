@@ -1,38 +1,21 @@
-#include "codegen.h"
 #include "smallcpp/CommandLine.hpp"
 
-#include <cstddef>
+#include <cerrno>
 #include <cstdio>
-#include <cstring>
+#include <spawn.h>
 #include <stdexcept>
 #include <string>
+#include <sys/wait.h>
 #include <vector>
 
-extern "C" {
-#include "diagnostic.h"
-}
-
-extern "C" {
-#include "smallcpp.tab.h"
-
-extern FILE *yyin;
-extern int yylineno;
-extern int yycolumn;
-
-static int error_count;
-
-void yyerror(const char *message)
-{
-    int line = yylloc.first_line > 0 ? yylloc.first_line : 1;
-    int column = yylloc.first_column > 0 ? yylloc.first_column : 1;
-
-    smallcpp_diag_report(line, column, message);
-    error_count++;
-}
-}
+extern char **environ;
 
 #ifndef SMALLCPP_VERSION
 #define SMALLCPP_VERSION "0.1"
+#endif
+
+#ifndef SMALLCPP_CC
+#define SMALLCPP_CC "scpp_cc"
 #endif
 
 static smallcpp::CommandLine make_command_line()
@@ -75,6 +58,33 @@ static int usage_error(const smallcpp::CommandLine &command_line, const char *me
     return 2;
 }
 
+/* Run the C frontend. scpp does not parse and does not emit IR. */
+static int run_frontend(const std::string &input, const std::string &output)
+{
+    const char *cc = SMALLCPP_CC;
+    char *argv[] = {
+        const_cast<char *>(cc),
+        const_cast<char *>("-o"),
+        const_cast<char *>(output.c_str()),
+        const_cast<char *>(input.c_str()),
+        nullptr};
+    pid_t pid = 0;
+    int status = posix_spawn(&pid, cc, nullptr, nullptr, argv, environ);
+    if (status != 0) {
+        errno = status;
+        std::perror(cc);
+        return 1;
+    }
+    int wait_status = 0;
+    if (waitpid(pid, &wait_status, 0) < 0) {
+        std::perror(cc);
+        return 1;
+    }
+    if (WIFEXITED(wait_status))
+        return WEXITSTATUS(wait_status);
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     smallcpp::CommandLine command_line = make_command_line();
@@ -110,35 +120,5 @@ int main(int argc, char **argv)
     }
     if (output.empty())
         return usage_error(command_line, "required argument not found: output");
-
-    int status;
-    smallcpp_ast = NULL;
-    error_count = 0;
-    yylineno = 1;
-    yycolumn = 1;
-    yylloc.first_line = 1;
-    yylloc.first_column = 1;
-    yylloc.last_line = 1;
-    yylloc.last_column = 1;
-    smallcpp_diag_load(input.c_str());
-    yyin = std::fopen(input.c_str(), "r");
-    if (yyin == NULL) {
-        std::perror(input.c_str());
-        return 2;
-    }
-    status = yyparse();
-    std::fclose(yyin);
-    if (status != 0 || error_count != 0 || smallcpp_ast == NULL) {
-        ast_free(smallcpp_ast);
-        smallcpp_ast = NULL;
-        return 1;
-    }
-    std::size_t length = output.size();
-    if (length >= 3 && output.compare(length - 3, 3, ".bc") == 0)
-        status = compile_to_bitcode(smallcpp_ast, output.c_str());
-    else
-        status = compile_to_executable(smallcpp_ast, output.c_str());
-    ast_free(smallcpp_ast);
-    smallcpp_ast = NULL;
-    return status;
+    return run_frontend(input, output);
 }

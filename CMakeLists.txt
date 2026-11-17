@@ -43,21 +43,6 @@ if(NOT LLVM_ENABLE_RTTI)
 endif()
 target_compile_definitions(preproc PRIVATE "SMALLCPP_VERSION=\"0.1\"")
 
-add_executable(scpp
-    src/shell/main.cpp
-    src/shell/codegen.cpp
-    src/shell/link.cpp
-    src/shell/lower_scalar.cpp
-    src/shell/lower_call.cpp
-    src/shell/lower_aggregate.cpp
-    src/shell/lower_namespace.cpp
-    src/shell/lower_class.cpp
-    src/shell/lower_alloc.cpp
-    src/shell/lower_except.cpp
-    src/shell/lower_print.cpp)
-target_link_libraries(scpp PRIVATE smallcpp_parse smallcpp_cli ${SMALLCPP_LLVM_LIBS})
-smallcpp_use_llvm(scpp)
-
 add_library(smallcpp_runtime STATIC
     src/runtime/heap.c
     src/runtime/trace.c
@@ -71,10 +56,46 @@ find_program(SMALLCPP_CLANGXX NAMES clang++ HINTS /usr/lib/llvm-22/bin)
 if(NOT SMALLCPP_CLANGXX)
     message(FATAL_ERROR "clang++ is required to link an executable")
 endif()
-target_compile_definitions(scpp PRIVATE
-    "SMALLCPP_VERSION=\"0.1\""
+
+add_library(smallcpp_emit STATIC
+    src/emit/codegen.cpp
+    src/emit/link.cpp
+    src/emit/lower_scalar.cpp
+    src/emit/lower_call.cpp
+    src/emit/lower_aggregate.cpp
+    src/emit/lower_namespace.cpp
+    src/emit/lower_class.cpp
+    src/emit/lower_alloc.cpp
+    src/emit/lower_except.cpp
+    src/emit/lower_print.cpp)
+target_include_directories(smallcpp_emit PUBLIC ${CMAKE_SOURCE_DIR}/src/emit)
+target_link_libraries(smallcpp_emit PUBLIC smallcpp_parse ${SMALLCPP_LLVM_LIBS})
+smallcpp_use_llvm(smallcpp_emit)
+target_compile_definitions(smallcpp_emit PRIVATE
     "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
     "SMALLCPP_RUNTIME_LIB=\"$<TARGET_FILE:smallcpp_runtime>\"")
-add_dependencies(scpp smallcpp_runtime)
+add_dependencies(smallcpp_emit smallcpp_runtime)
+
+add_executable(scpp_cc
+    src/compiler/main.cpp
+    src/compiler/dump.c)
+target_link_libraries(scpp_cc PRIVATE smallcpp_emit smallcpp_cli)
+target_compile_features(scpp_cc PRIVATE cxx_std_17)
+if(NOT LLVM_ENABLE_RTTI)
+    target_compile_options(scpp_cc PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+endif()
+target_compile_definitions(scpp_cc PRIVATE "SMALLCPP_VERSION=\"0.1\"")
+add_dependencies(scpp_cc smallcpp_runtime)
+
+add_executable(scpp src/shell/main.cpp)
+target_link_libraries(scpp PRIVATE smallcpp_cli)
+target_compile_features(scpp PRIVATE cxx_std_17)
+if(NOT LLVM_ENABLE_RTTI)
+    target_compile_options(scpp PRIVATE -fno-rtti)
+endif()
+target_compile_definitions(scpp PRIVATE
+    "SMALLCPP_VERSION=\"0.1\""
+    "SMALLCPP_CC=\"$<TARGET_FILE:scpp_cc>\"")
+add_dependencies(scpp scpp_cc)
 
 add_subdirectory(tests)

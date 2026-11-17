@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * Types shared by the shell's lowering. Each phase file defines
+ * Types shared by the IR emitter. Each phase file defines
  * the Codegen methods for that phase. codegen.cpp runs them.
  */
 extern "C" {

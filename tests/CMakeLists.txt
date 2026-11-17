@@ -242,6 +242,31 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/CollectLive.cmake)
 
 add_test(
+    NAME cc_ast_text
+    COMMAND ${CMAKE_COMMAND}
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DTEXT=${CMAKE_CURRENT_BINARY_DIR}/return-zero.txt
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectAst.cmake)
+add_test(
+    NAME cc_ast_dot
+    COMMAND ${CMAKE_COMMAND}
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DDOT=${CMAKE_CURRENT_BINARY_DIR}/return-zero.dot
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectAst.cmake)
+add_test(
+    NAME cc_ast_both
+    COMMAND ${CMAKE_COMMAND}
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DVERIFY=$<TARGET_FILE:verify_module>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DTEXT=${CMAKE_CURRENT_BINARY_DIR}/return-zero-both.txt
+        -DDOT=${CMAKE_CURRENT_BINARY_DIR}/return-zero-both.dot
+        -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/return-zero-both.bc
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectAst.cmake)
+
+add_test(
     NAME build_test_programs
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
             --target command_line_test parse_test verify_module)

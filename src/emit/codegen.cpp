@@ -1,7 +1,7 @@
 /*
  * Drive lowering, then verify the module and write bitcode.
  */
-#include "codegen.h"
+#include "emit.h"
 #include "link.hpp"
 #include "lower.hpp"
 
@@ -58,7 +58,7 @@ static int lower_verified(const AstNode *root, llvm::LLVMContext &context,
     return 0;
 }
 
-int compile_to_bitcode(const AstNode *root, const char *bitcode_path)
+int smallcpp_emit_bitcode(const AstNode *root, const char *bitcode_path)
 {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module;
@@ -80,7 +80,7 @@ int compile_to_bitcode(const AstNode *root, const char *bitcode_path)
     return 0;
 }
 
-int compile_to_executable(const AstNode *root, const char *path)
+int smallcpp_emit_executable(const AstNode *root, const char *path)
 {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module;
