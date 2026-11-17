@@ -1,0 +1,14 @@
+int take(int n, ...) {
+    return n;
+}
+
+int answer(void) {
+    int from_float;
+    int from_text;
+    int mixed;
+    from_float = take(7, 1.5);
+    from_text = take(8, "ok");
+    mixed = take(9, 1, 2.5, "z");
+    print("varargs-types {} {} {}\n", from_float, from_text, mixed);
+    return 0;
+}

@@ -6,5 +6,5 @@ int answer(void) {
             break;
         i = i + 1;
     }
-    return i;
+    { int shown; shown = (int)(i); print("{:s} {}\n", "exec-break", shown); return shown; }
 }

@@ -3,5 +3,5 @@ int answer(void) {
     p = new int;
     *p = 9;
     delete p;
-    return *p;
+    { int shown; shown = (int)(*p); print("{:s} {}\n", "exec-delete", shown); return shown; }
 }

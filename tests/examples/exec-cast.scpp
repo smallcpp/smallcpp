@@ -1,3 +1,3 @@
 int answer(void) {
-    return (int)(char)'A';
+    { int shown; shown = (int)((int)(char)'A'); print("{:s} {}\n", "exec-cast", shown); return shown; }
 }

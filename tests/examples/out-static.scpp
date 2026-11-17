@@ -1,0 +1,7 @@
+static int hidden(void) {
+    return 5;
+}
+
+int answer(void) {
+    { int shown; shown = (int)(hidden()); print("{:s} {}\n", "static", shown); return shown; }
+}

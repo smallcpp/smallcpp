@@ -1,6 +1,6 @@
 int answer(void) {
     if (0)
-        return 1;
+        { int shown; shown = (int)(1); print("{:s} {}\n", "exec-else", shown); return shown; }
     else
-        return 3;
+        { int shown; shown = (int)(3); print("{:s} {}\n", "exec-else", shown); return shown; }
 }

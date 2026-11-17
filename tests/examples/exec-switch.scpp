@@ -3,10 +3,10 @@ int answer(void) {
     n = 2;
     switch (n) {
     case 1:
-        return 1;
+        { int shown; shown = (int)(1); print("{:s} {}\n", "exec-switch", shown); return shown; }
     case 2:
-        return 7;
+        { int shown; shown = (int)(7); print("{:s} {}\n", "exec-switch", shown); return shown; }
     default:
-        return 0;
+        { int shown; shown = (int)(0); print("{:s} {}\n", "exec-switch", shown); return shown; }
     }
 }

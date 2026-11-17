@@ -3,5 +3,5 @@ int answer(void) {
     t = 0;
     for (int i = 1; i < 4; i = i + 1)
         t = t + i;
-    return t;
+    { int shown; shown = (int)(t); print("{:s} {}\n", "exec-for-decl", shown); return shown; }
 }

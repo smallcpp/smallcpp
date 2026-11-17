@@ -1,5 +1,6 @@
 # Runtime evidence. Each entry runs one short program.
 function(add_exec_status name source expect)
+    string(REGEX REPLACE "^out-" "" feature "${source}")
     add_test(
         NAME exec_${name}
         COMMAND ${CMAKE_COMMAND}
@@ -7,6 +8,21 @@ function(add_exec_status name source expect)
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${source}.scpp
             -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/exec-${name}
             -DEXPECT=${expect}
+            "-DEXPECT_OUT=${feature} ${expect}"
+            -DEXPECT_NL=1
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+endfunction()
+
+function(add_exec_line name source expect line)
+    add_test(
+        NAME exec_${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCOMPILER=$<TARGET_FILE:scpp>
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${source}.scpp
+            -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/exec-${name}
+            -DEXPECT=${expect}
+            "-DEXPECT_OUT=${line}"
+            -DEXPECT_NL=1
             -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 endfunction()
 
@@ -92,40 +108,55 @@ add_exec_status(exec-new-array exec-new-array 5)
 add_exec_status(exec-new-pointer exec-new-pointer 3)
 add_exec_status(exec-delete exec-delete 9)
 add_exec_status(exec-format-text exec-format-text 1)
-add_exec_status(call call 2)
-add_exec_status(overload-call overload-call 3)
-add_exec_status(default-call default-call 7)
-add_exec_status(varargs varargs 1)
-add_exec_status(static static 5)
-add_exec_status(inline inline 6)
-add_exec_status(typedef typedef 6)
-add_exec_status(register register 4)
-add_exec_status(volatile volatile 1)
-add_exec_status(const-var const-var 3)
-add_exec_status(local local 4)
-add_exec_status(global global 0)
-add_exec_status(comma comma 2)
-add_exec_status(array array 4)
-add_exec_status(pointer pointer 5)
-add_exec_status(array-param array-param 6)
-add_exec_status(bitfield bitfield 3)
-add_exec_status(designated-init designated-init 2)
-add_exec_status(brace brace 1)
-add_exec_status(enum enum 4)
-add_exec_status(union union 3)
-add_exec_status(using-name using-name 2)
-add_exec_status(using-namespace using-namespace 2)
-add_exec_status(qualified-call qualified-call 2)
-add_exec_status(nullptr nullptr 1)
-add_exec_status(struct struct 1)
-add_exec_status(sizeof sizeof 4)
-add_exec_status(empty-list empty-list 1)
+add_exec_status(call out-call 2)
+add_exec_status(overload-call out-overload-call 3)
+add_exec_status(default-call out-default-call 7)
+add_exec_status(varargs out-varargs 1)
+add_exec_status(static out-static 5)
+add_exec_status(inline out-inline 6)
+add_exec_status(typedef out-typedef 6)
+add_exec_status(register out-register 4)
+add_exec_status(volatile out-volatile 1)
+add_exec_status(const-var out-const-var 3)
+add_exec_status(local out-local 4)
+add_exec_status(global out-global 0)
+add_exec_status(comma out-comma 2)
+add_exec_status(array out-array 4)
+add_exec_status(pointer out-pointer 5)
+add_exec_status(array-param out-array-param 6)
+add_exec_status(bitfield out-bitfield 3)
+add_exec_status(designated-init out-designated-init 2)
+add_exec_status(brace out-brace 1)
+add_exec_status(enum out-enum 4)
+add_exec_status(union out-union 3)
+add_exec_status(using-name out-using-name 2)
+add_exec_status(using-namespace out-using-namespace 2)
+add_exec_status(qualified-call out-qualified-call 2)
+add_exec_status(nullptr out-nullptr 1)
+add_exec_status(struct out-struct 1)
+add_exec_status(sizeof out-sizeof 4)
+add_exec_status(empty-list out-empty-list 1)
 add_exec_status(exec-catch exec-catch 7)
 add_exec_status(exec-catch-all exec-catch-all 6)
 add_exec_status(exec-rethrow exec-rethrow 4)
 add_exec_status(exec-dtor-call exec-dtor-call 4)
 add_exec_status(exec-delete-dtor exec-delete-dtor 5)
 add_exec_status(exec-collect-dtor exec-collect-dtor 8)
+
+add_exec_line(varargs-counts varargs-counts 0 "varargs-counts 4 5 6")
+add_exec_line(varargs-types varargs-types 0 "varargs-types 7 8 9")
+add_exec_line(overload-both overload-both 0 "overload-both 1 3")
+add_exec_line(overload-type overload-type 0 "overload-type 3 8")
+add_exec_line(overload-pointer overload-pointer 0 "overload-pointer 1 2")
+add_exec_line(inherit-field inherit-field 0 "inherit-field 4")
+add_exec_line(inherit-chain inherit-chain 0 "inherit-chain 5")
+add_exec_line(inherit-hide inherit-hide 0 "inherit-hide 3")
+add_exec_line(virtual-through-base virtual-through-base 0 "virtual-through-base 6")
+add_exec_line(virtual-base-body virtual-base-body 0 "virtual-base-body 4 4")
+add_exec_line(default-both default-both 0 "default-both 7 5")
+add_exec_line(short-circuit-and short-circuit-and 0 "short-circuit-and 0 0")
+add_exec_line(short-circuit-or short-circuit-or 0 "short-circuit-or 1 0")
+add_exec_line(this-field this-field 0 "this-field 4")
 
 add_test(
     NAME exec_exec-print-two

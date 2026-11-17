@@ -4,5 +4,5 @@ int answer(void) {
     n = 3;
     p = new int *;
     *p = &n;
-    return **p;
+    { int shown; shown = (int)(**p); print("{:s} {}\n", "exec-new-pointer", shown); return shown; }
 }

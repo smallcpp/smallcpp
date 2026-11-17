@@ -12,5 +12,5 @@ public:
 int answer(void) {
     Pair *p;
     p = new Pair(2, 5);
-    return p->sum();
+    { int shown; shown = (int)(p->sum()); print("{:s} {}\n", "exec-init-list", shown); return shown; }
 }

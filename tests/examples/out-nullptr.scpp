@@ -1,0 +1,7 @@
+int answer(void) {
+    int *p;
+    int *q;
+    p = nullptr;
+    q = NULL;
+    { int shown; shown = (int)(p == q); print("{:s} {}\n", "nullptr", shown); return shown; }
+}

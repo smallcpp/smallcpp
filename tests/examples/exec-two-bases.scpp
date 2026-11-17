@@ -30,5 +30,5 @@ public:
 int answer(void) {
     C *c;
     c = new C(3);
-    return c->read();
+    { int shown; shown = (int)(c->read()); print("{:s} {}\n", "exec-two-bases", shown); return shown; }
 }

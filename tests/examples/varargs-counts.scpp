@@ -1,0 +1,14 @@
+int take(int n, ...) {
+    return n;
+}
+
+int answer(void) {
+    int none;
+    int one;
+    int three;
+    none = take(4);
+    one = take(5, 1);
+    three = take(6, 1, 2, 3);
+    print("varargs-counts {} {} {}\n", none, one, three);
+    return 0;
+}

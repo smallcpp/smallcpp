@@ -1,0 +1,5 @@
+int answer(void) {
+    int n;
+    n = 4;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "local", shown); return shown; }
+}

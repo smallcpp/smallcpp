@@ -1,5 +1,5 @@
 int answer(void) {
     int n;
     n = 6;
-    return n;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "exec-assign", shown); return shown; }
 }

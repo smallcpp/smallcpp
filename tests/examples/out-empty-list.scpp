@@ -1,0 +1,3 @@
+int answer() {
+    { int shown; shown = (int)(1); print("{:s} {}\n", "empty-list", shown); return shown; }
+}

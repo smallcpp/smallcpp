@@ -1,3 +1,3 @@
 int answer(void) {
-    return 6 & 3;
+    { int shown; shown = (int)(6 & 3); print("{:s} {}\n", "exec-bit-and", shown); return shown; }
 }

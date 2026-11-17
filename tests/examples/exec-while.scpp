@@ -3,5 +3,5 @@ int answer(void) {
     n = 0;
     while (n < 3)
         n = n + 1;
-    return n;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "exec-while", shown); return shown; }
 }

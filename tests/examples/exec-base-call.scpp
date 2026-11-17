@@ -18,5 +18,5 @@ public:
 int answer(void) {
     B *b;
     b = new B();
-    return b->read();
+    { int shown; shown = (int)(b->read()); print("{:s} {}\n", "exec-base-call", shown); return shown; }
 }

@@ -1,0 +1,9 @@
+struct Pair {
+    int x;
+    int y;
+};
+
+int answer(void) {
+    struct Pair p = { 1, 2 };
+    { int shown; shown = (int)(p.x); print("{:s} {}\n", "brace", shown); return shown; }
+}

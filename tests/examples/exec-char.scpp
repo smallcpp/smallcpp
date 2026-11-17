@@ -1,5 +1,5 @@
 int answer(void) {
     char c;
     c = 'A';
-    return c;
+    { int shown; shown = (int)(c); print("{:s} {}\n", "exec-char", shown); return shown; }
 }

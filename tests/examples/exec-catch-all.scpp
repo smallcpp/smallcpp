@@ -2,7 +2,7 @@ int answer(void) {
     try {
         throw 1;
     } catch (...) {
-        return 6;
+        { int shown; shown = (int)(6); print("{:s} {}\n", "exec-catch-all", shown); return shown; }
     }
-    return 0;
+    { int shown; shown = (int)(0); print("{:s} {}\n", "exec-catch-all", shown); return shown; }
 }

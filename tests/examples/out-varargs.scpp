@@ -1,0 +1,7 @@
+int first(int n, ...) {
+    return n;
+}
+
+int answer(void) {
+    { int shown; shown = (int)(first(1, 2)); print("{:s} {}\n", "varargs", shown); return shown; }
+}

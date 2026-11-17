@@ -5,5 +5,5 @@ namespace audio {
 }
 
 int answer(void) {
-    return audio::level();
+    { int shown; shown = (int)(audio::level()); print("{:s} {}\n", "exec-namespace", shown); return shown; }
 }

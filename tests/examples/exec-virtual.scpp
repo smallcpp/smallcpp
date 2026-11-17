@@ -10,5 +10,5 @@ public:
 int answer(void) {
     Point *p;
     p = new Point();
-    return p->move(3);
+    { int shown; shown = (int)(p->move(3)); print("{:s} {}\n", "exec-virtual", shown); return shown; }
 }

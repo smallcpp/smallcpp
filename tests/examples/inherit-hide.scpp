@@ -1,0 +1,27 @@
+class A {
+public:
+    A() {
+    }
+    int value(void) {
+        return 1;
+    }
+};
+
+class B : public A {
+public:
+    B() : A() {
+    }
+    int value(void) {
+        return 2;
+    }
+    int both(void) {
+        return value() + A::value();
+    }
+};
+
+int answer(void) {
+    B *b;
+    b = new B();
+    print("inherit-hide {}\n", b->both());
+    return 0;
+}

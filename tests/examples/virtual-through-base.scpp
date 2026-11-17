@@ -1,0 +1,24 @@
+class Base {
+public:
+    Base() {
+    }
+    virtual int id(void) {
+        return 1;
+    }
+};
+
+class Derived : public Base {
+public:
+    Derived() : Base() {
+    }
+    int id(void) {
+        return 6;
+    }
+};
+
+int answer(void) {
+    Base *p;
+    p = new Derived();
+    print("virtual-through-base {}\n", p->id());
+    return 0;
+}

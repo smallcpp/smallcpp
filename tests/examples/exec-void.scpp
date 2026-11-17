@@ -6,5 +6,5 @@ void set(void) {
 
 int answer(void) {
     set();
-    return n;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "exec-void", shown); return shown; }
 }

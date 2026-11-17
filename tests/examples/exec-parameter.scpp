@@ -3,5 +3,5 @@ int inc(int n) {
 }
 
 int answer(void) {
-    return inc(6);
+    { int shown; shown = (int)(inc(6)); print("{:s} {}\n", "exec-parameter", shown); return shown; }
 }

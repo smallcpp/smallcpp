@@ -2,5 +2,5 @@ int answer(void) {
     int n;
     n = 4;
     ++n;
-    return n;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "exec-pre-inc", shown); return shown; }
 }

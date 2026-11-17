@@ -4,5 +4,5 @@ int answer(void) {
     goto done;
     n = 9;
 done:
-    return 5;
+    { int shown; shown = (int)(5); print("{:s} {}\n", "exec-goto", shown); return shown; }
 }

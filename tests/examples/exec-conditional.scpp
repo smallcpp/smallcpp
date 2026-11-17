@@ -1,5 +1,5 @@
 int answer(void) {
     int n;
     n = 0;
-    return n ? 1 : 2;
+    { int shown; shown = (int)(n ? 1 : 2); print("{:s} {}\n", "exec-conditional", shown); return shown; }
 }

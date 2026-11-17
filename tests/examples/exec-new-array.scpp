@@ -3,5 +3,5 @@ int answer(void) {
     items = new int[3];
     items[0] = 1;
     items[2] = 4;
-    return items[0] + items[2];
+    { int shown; shown = (int)(items[0] + items[2]); print("{:s} {}\n", "exec-new-array", shown); return shown; }
 }

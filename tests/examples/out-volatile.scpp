@@ -1,0 +1,6 @@
+volatile int n;
+
+int answer(void) {
+    n = 1;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "volatile", shown); return shown; }
+}
