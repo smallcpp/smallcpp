@@ -1755,7 +1755,7 @@ RValue Codegen::emit_rvalue(const AstNode *node)
     if (node->kind == AST_NEW)
         return emit_new(node);
     if (node->kind == AST_DELETE) {
-        emit_rvalue(node->a);
+        emit_delete(node);
         RValue out;
         out.ty = void_ty();
         return out;
@@ -2899,6 +2899,14 @@ void Codegen::emit_body(Func &fn)
     }
     if (fn.is_ctor)
         emit_inits(fn);
+    if (fn.is_dtor) {
+        std::optional<Slot> self = lookup("this");
+        if (self && self->addr != NULL && self->ty.ir != NULL) {
+            llvm::Value *pointer = builder.CreateLoad(self->ty.ir, self->addr);
+            llvm::Function *done = dtor_done_fn();
+            builder.CreateCall(done->getFunctionType(), done, {pointer});
+        }
+    }
     emit_items(fn.body->a);
     if (!failed) {
         for (const auto &label : labels) {

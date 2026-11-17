@@ -91,7 +91,7 @@ AstNode *ast_catch_all(AstNode *body);
 AstNode *ast_null(const char *spelling);
 /* new creates a pointer to type. args are constructor arguments, or NULL. */
 AstNode *ast_new_expr(AstNode *type, AstNode *args);
-/* delete is a no-op. The text is "noop". The operand is still required. */
+/* delete type-checks its operand. The node text stays "noop" for the parser check. */
 AstNode *ast_delete_noop(AstNode *operand);
 void ast_append(AstNode *head, AstNode *item);
 void ast_add(AstNode *parent, AstNode *child);

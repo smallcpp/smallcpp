@@ -1,5 +1,8 @@
 /*
  * Allocator declared for new. delete does not free.
+ * An unreachable object is reclaimed at a later allocation. If its
+ * destructor has not run, the collector calls it. The order of those
+ * calls is not one a program can rely on.
  */
 #include "internal.h"
 
@@ -10,6 +13,13 @@
 struct Object {
     uintptr_t base;
     uint64_t size;
+    void (*dtor)(void *);
+    int marked;
+};
+
+struct Dead {
+    uintptr_t base;
+    void (*dtor)(void *);
 };
 
 struct Safepoint {
@@ -25,6 +35,81 @@ static int object_cap;
 static struct Safepoint *points;
 static int point_count;
 static int point_cap;
+static int collecting;
+
+static void mark_addr(uintptr_t addr);
+
+static void scan_object(int index)
+{
+    uintptr_t cursor;
+    uintptr_t end;
+
+    end = objects[index].base + objects[index].size;
+    for (cursor = objects[index].base; cursor + sizeof(uintptr_t) <= end;
+         cursor += sizeof(uintptr_t)) {
+        uintptr_t word;
+
+        memcpy(&word, (void *)cursor, sizeof word);
+        mark_addr(word);
+    }
+}
+
+static void mark_addr(uintptr_t addr)
+{
+    int i;
+
+    for (i = 0; i < object_count; i++) {
+        if (objects[i].marked)
+            continue;
+        if (addr < objects[i].base || addr >= objects[i].base + objects[i].size)
+            continue;
+        objects[i].marked = 1;
+        scan_object(i);
+        return;
+    }
+}
+
+static void reclaim(int index)
+{
+    struct Dead *dead;
+    int dead_count = 0;
+    int i;
+    int kept;
+
+    if (index < 0 || index >= point_count)
+        return;
+    for (i = 0; i < object_count; i++)
+        objects[i].marked = 0;
+    for (i = 0; i < points[index].traced_count; i++)
+        mark_addr(points[index].traced[i]);
+    for (i = 0; i < object_count; i++) {
+        if (!objects[i].marked)
+            dead_count++;
+    }
+    if (dead_count == 0)
+        return;
+    dead = malloc((size_t)dead_count * sizeof *dead);
+    if (dead == NULL)
+        return;
+    dead_count = 0;
+    kept = 0;
+    for (i = 0; i < object_count; i++) {
+        if (objects[i].marked) {
+            objects[kept++] = objects[i];
+            continue;
+        }
+        dead[dead_count].base = objects[i].base;
+        dead[dead_count].dtor = objects[i].dtor;
+        dead_count++;
+    }
+    object_count = kept;
+    for (i = 0; i < dead_count; i++) {
+        if (dead[i].dtor != NULL)
+            dead[i].dtor((void *)dead[i].base);
+        free((void *)dead[i].base);
+    }
+    free(dead);
+}
 
 int smallcpp_heap_contains(uintptr_t addr)
 {
@@ -86,8 +171,42 @@ static void *heap_alloc(uint64_t bytes, uint64_t count)
     }
     objects[object_count].base = (uintptr_t)ptr;
     objects[object_count].size = nbytes;
+    objects[object_count].dtor = NULL;
+    objects[object_count].marked = 0;
     object_count++;
     return ptr;
+}
+
+void smallcpp_set_dtor(void *ptr, void (*dtor)(void *))
+{
+    uintptr_t addr;
+    int i;
+
+    if (ptr == NULL)
+        return;
+    addr = (uintptr_t)ptr;
+    for (i = 0; i < object_count; i++) {
+        if (objects[i].base == addr) {
+            objects[i].dtor = dtor;
+            return;
+        }
+    }
+}
+
+void smallcpp_dtor_done(void *ptr)
+{
+    uintptr_t addr;
+    int i;
+
+    if (ptr == NULL)
+        return;
+    addr = (uintptr_t)ptr;
+    for (i = 0; i < object_count; i++) {
+        if (addr >= objects[i].base && addr < objects[i].base + objects[i].size) {
+            objects[i].dtor = NULL;
+            return;
+        }
+    }
 }
 
 void *smallcpp_alloc_at(uint64_t bytes, uint64_t count, uint64_t caller_rbp, uint64_t retaddr,
@@ -107,6 +226,11 @@ void *smallcpp_alloc_at(uint64_t bytes, uint64_t count, uint64_t caller_rbp, uin
     index = point_count++;
     memset(&points[index], 0, sizeof points[index]);
     smallcpp_trace(index, caller_rbp, retaddr, caller_rsp);
+    if (!collecting) {
+        collecting = 1;
+        reclaim(index);
+        collecting = 0;
+    }
     points[index].result = heap_alloc(bytes, count);
     return points[index].result;
 }

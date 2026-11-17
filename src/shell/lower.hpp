@@ -352,6 +352,11 @@ private:
     Const eval_conditional(const AstNode *node);
     Ty null_ty();
     llvm::Function *allocator();
+    llvm::Function *set_dtor_fn();
+    llvm::Function *dtor_done_fn();
+    Func *destructor_of(const Ty &ty);
+    void bind_destructor(llvm::Value *object, const Ty &ty);
+    void emit_delete(const AstNode *node);
     Ty new_element(const AstNode *node, std::vector<const AstNode *> &bounds);
     std::vector<llvm::Value *> live_pointers();
     llvm::Value *allocate(llvm::Value *bytes, llvm::Value *count);
