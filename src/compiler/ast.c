@@ -20,6 +20,30 @@ AstNode *ast_make(AstKind kind, char *text, AstNode *a, AstNode *b, AstNode *c, 
     return node;
 }
 
+static void place_unset(AstNode *node, int line, int column)
+{
+    if (node == NULL || node->line > 0)
+        return;
+    node->line = line;
+    node->column = column;
+    place_unset(node->a, line, column);
+    place_unset(node->b, line, column);
+    place_unset(node->c, line, column);
+    place_unset(node->d, line, column);
+}
+
+AstNode *ast_place(AstNode *node, int line, int column)
+{
+    if (node == NULL)
+        return NULL;
+    if (line < 1)
+        line = 1;
+    if (column < 1)
+        column = 1;
+    place_unset(node, line, column);
+    return node;
+}
+
 AstNode *ast_text(AstKind kind, char *owned)
 {
     return ast_make(kind, owned, NULL, NULL, NULL, NULL);

@@ -139,14 +139,18 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 
 function(add_diag name needle)
-    add_test(
-        NAME diag_${name}
-        COMMAND ${CMAKE_COMMAND}
+    set(command
+        ${CMAKE_COMMAND}
             -DCOMPILER=$<TARGET_FILE:shell>
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${name}.scpp
             -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/${name}.bc
-            "-DNEEDLE=${needle}"
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectDiag.cmake)
+            "-DNEEDLE=${needle}")
+    if(ARGC GREATER 2)
+        list(GET ARGV 2 also)
+        list(APPEND command "-DALSO=${also}")
+    endif()
+    list(APPEND command -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectDiag.cmake)
+    add_test(NAME diag_${name} COMMAND ${command})
 endfunction()
 
 add_test(
@@ -210,3 +214,5 @@ add_diag(bad-namespace-value "namespace is not a value")
 add_diag(bad-operands "invalid operands")
 add_diag(bad-call-constant "call is not constant")
 add_diag(bad-abstract "abstract class")
+add_diag(bad-verbose-syntax "int x = ;" "expected IDENTIFIER")
+add_diag(bad-verbose-semantic "return missing;")

@@ -17,6 +17,18 @@ if(found EQUAL -1)
     message(FATAL_ERROR "diagnostic does not name the problem\n${shown}")
 endif()
 
+if(DEFINED ALSO)
+    string(FIND "${shown}" "${ALSO}" also_found)
+    if(also_found EQUAL -1)
+        message(FATAL_ERROR "diagnostic is missing '${ALSO}'\n${shown}")
+    endif()
+endif()
+
+string(REGEX MATCH "(^|\n)[ ]*\\^[ ]*(\n|$)" caret "${shown}")
+if(caret)
+    message(FATAL_ERROR "diagnostic prints a caret\n${shown}")
+endif()
+
 if(DEFINED COUNT)
     string(REPLACE "${NEEDLE}" "" stripped "${shown}")
     string(LENGTH "${shown}" full_length)

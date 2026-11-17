@@ -43,9 +43,10 @@
  * Source files use the .scpp extension. Ordinary preprocessing is already
  * done. Semantic actions build a syntax tree. They do not generate code.
  *
- * A syntax error is reported with its line and column, then the error
- * token resynchronizes at the next semicolon so later errors are still
- * reported. That recovery is not part of the language.
+ * A syntax error prints the file, line, and column, the source line, and
+ * the tokens that were expected. There is no caret under the line. The
+ * error token then resynchronizes at the next semicolon so later errors
+ * are still reported. That recovery is not part of the language.
  *
  * Deliberate omissions:
  *   - variable-length arrays, including '[*]' and 'static' inside '[]'
@@ -412,23 +413,23 @@ static struct AstNode *designate(struct AstNode *designators, struct AstNode *va
 /* Start symbol. A translation unit is zero or more external declarations. */
 translation_unit
     : %empty {
-        $$ = ast_make(AST_TRANSLATION_UNIT, NULL, NULL, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_TRANSLATION_UNIT, NULL, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column);
         smallcpp_ast = $$;
       }
     | translation_unit external_declaration {
         ast_add($1, $2);
-        $$ = $1;
+        $$ = ast_place($1, @$.first_line, @$.first_column);
         smallcpp_ast = $$;
       }
     ;
 
 external_declaration
-    : function_definition { $$ = $1; }
-    | constructor_definition { $$ = $1; }
-    | destructor_definition { $$ = $1; }
-    | declaration { $$ = $1; }
-    | namespace_definition { $$ = $1; }
-    | using_declaration { $$ = $1; }
+    : function_definition { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | constructor_definition { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | destructor_definition { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | namespace_definition { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | using_declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | error ';' { yyerrok; $$ = NULL; }
     ;
 
@@ -444,80 +445,80 @@ external_declaration
  */
 namespace_definition
     : NAMESPACE IDENTIFIER '{' '}' {
-        $$ = ast_make(AST_NAMESPACE, $2, NULL, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_NAMESPACE, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     | NAMESPACE IDENTIFIER '{' external_declaration_list '}' {
-        $$ = ast_make(AST_NAMESPACE, $2, $4, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_NAMESPACE, $2, $4, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 external_declaration_list
-    : external_declaration { $$ = $1; }
-    | external_declaration_list external_declaration { ast_append($1, $2); $$ = $1; }
+    : external_declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | external_declaration_list external_declaration { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 function_definition
     : declaration_specifiers declarator compound_statement {
-        $$ = ast_make(AST_METHOD, NULL, $1, $2, $3, NULL);
+        $$ = ast_place(ast_make(AST_METHOD, NULL, $1, $2, $3, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 declaration
     : declaration_specifiers init_declarator_list ';' {
         note_declarators($2);
-        $$ = ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL);
+        $$ = ast_place(ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column);
       }
     | declaration_specifiers ';' {
-        $$ = ast_make(AST_DECLARATION, NULL, $1, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_DECLARATION, NULL, $1, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 declaration_specifiers
-    : declaration_specifier { $$ = $1; }
-    | declaration_specifiers declaration_specifier { ast_append($1, $2); $$ = $1; }
+    : declaration_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | declaration_specifiers declaration_specifier { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 declaration_specifier
-    : storage_class_specifier { $$ = $1; }
-    | type_specifier { $$ = $1; }
-    | type_qualifier { $$ = $1; }
-    | function_specifier { $$ = $1; }
+    : storage_class_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | type_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | type_qualifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | function_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 storage_class_specifier
-    : TYPEDEF { $$ = ast_named(AST_SPECIFIER, "typedef"); }
-    | EXTERN { $$ = ast_named(AST_SPECIFIER, "extern"); }
-    | STATIC { $$ = ast_named(AST_SPECIFIER, "static"); }
-    | AUTO { $$ = ast_named(AST_SPECIFIER, "auto"); }
-    | REGISTER { $$ = ast_named(AST_SPECIFIER, "register"); }
+    : TYPEDEF { $$ = ast_place(ast_named(AST_SPECIFIER, "typedef"), @$.first_line, @$.first_column); }
+    | EXTERN { $$ = ast_place(ast_named(AST_SPECIFIER, "extern"), @$.first_line, @$.first_column); }
+    | STATIC { $$ = ast_place(ast_named(AST_SPECIFIER, "static"), @$.first_line, @$.first_column); }
+    | AUTO { $$ = ast_place(ast_named(AST_SPECIFIER, "auto"), @$.first_line, @$.first_column); }
+    | REGISTER { $$ = ast_place(ast_named(AST_SPECIFIER, "register"), @$.first_line, @$.first_column); }
     ;
 
 type_specifier
-    : VOID { $$ = ast_named(AST_SPECIFIER, "void"); }
-    | CHAR { $$ = ast_named(AST_SPECIFIER, "char"); }
-    | SHORT { $$ = ast_named(AST_SPECIFIER, "short"); }
-    | INT { $$ = ast_named(AST_SPECIFIER, "int"); }
-    | LONG { $$ = ast_named(AST_SPECIFIER, "long"); }
-    | FLOAT { $$ = ast_named(AST_SPECIFIER, "float"); }
-    | DOUBLE { $$ = ast_named(AST_SPECIFIER, "double"); }
-    | SIGNED { $$ = ast_named(AST_SPECIFIER, "signed"); }
-    | UNSIGNED { $$ = ast_named(AST_SPECIFIER, "unsigned"); }
-    | BOOL { $$ = ast_named(AST_SPECIFIER, "bool"); }
-    | struct_or_union_specifier { $$ = $1; }
-    | enum_specifier { $$ = $1; }
-    | class_specifier { $$ = $1; }
-    | TYPEDEF_NAME { $$ = ast_text(AST_TYPE_NAME, $1); }
+    : VOID { $$ = ast_place(ast_named(AST_SPECIFIER, "void"), @$.first_line, @$.first_column); }
+    | CHAR { $$ = ast_place(ast_named(AST_SPECIFIER, "char"), @$.first_line, @$.first_column); }
+    | SHORT { $$ = ast_place(ast_named(AST_SPECIFIER, "short"), @$.first_line, @$.first_column); }
+    | INT { $$ = ast_place(ast_named(AST_SPECIFIER, "int"), @$.first_line, @$.first_column); }
+    | LONG { $$ = ast_place(ast_named(AST_SPECIFIER, "long"), @$.first_line, @$.first_column); }
+    | FLOAT { $$ = ast_place(ast_named(AST_SPECIFIER, "float"), @$.first_line, @$.first_column); }
+    | DOUBLE { $$ = ast_place(ast_named(AST_SPECIFIER, "double"), @$.first_line, @$.first_column); }
+    | SIGNED { $$ = ast_place(ast_named(AST_SPECIFIER, "signed"), @$.first_line, @$.first_column); }
+    | UNSIGNED { $$ = ast_place(ast_named(AST_SPECIFIER, "unsigned"), @$.first_line, @$.first_column); }
+    | BOOL { $$ = ast_place(ast_named(AST_SPECIFIER, "bool"), @$.first_line, @$.first_column); }
+    | struct_or_union_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | enum_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | class_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | TYPEDEF_NAME { $$ = ast_place(ast_text(AST_TYPE_NAME, $1), @$.first_line, @$.first_column); }
     ;
 
 struct_or_union_specifier
     : struct_or_union IDENTIFIER '{' struct_declaration_list '}' {
-        $$ = ast_make((AstKind) $1, $2, $4, NULL, NULL, NULL);
+        $$ = ast_place(ast_make((AstKind) $1, $2, $4, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     | struct_or_union '{' struct_declaration_list '}' {
-        $$ = ast_make((AstKind) $1, NULL, $3, NULL, NULL, NULL);
+        $$ = ast_place(ast_make((AstKind) $1, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     | struct_or_union IDENTIFIER {
-        $$ = ast_make((AstKind) $1, $2, NULL, NULL, NULL, NULL);
+        $$ = ast_place(ast_make((AstKind) $1, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
@@ -527,63 +528,63 @@ struct_or_union
     ;
 
 struct_declaration_list
-    : struct_declaration { $$ = $1; }
-    | struct_declaration_list struct_declaration { ast_append($1, $2); $$ = $1; }
+    : struct_declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | struct_declaration_list struct_declaration { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 /* Every member has a declarator, so the struct is non-empty and C99. */
 struct_declaration
     : specifier_qualifier_list struct_declarator_list ';' {
-        $$ = ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL);
+        $$ = ast_place(ast_make(AST_DECLARATION, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column);
       }
     | error ';' { yyerrok; $$ = NULL; }
     ;
 
 specifier_qualifier_list
-    : specifier_qualifier { $$ = $1; }
-    | specifier_qualifier_list specifier_qualifier { ast_append($1, $2); $$ = $1; }
+    : specifier_qualifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | specifier_qualifier_list specifier_qualifier { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 specifier_qualifier
-    : type_specifier { $$ = $1; }
-    | type_qualifier { $$ = $1; }
+    : type_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | type_qualifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 struct_declarator_list
-    : struct_declarator { $$ = $1; }
-    | struct_declarator_list ',' struct_declarator { ast_append($1, $3); $$ = $1; }
+    : struct_declarator { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | struct_declarator_list ',' struct_declarator { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 /* A bit-field is a struct or union member. A ':' after a class name is
  * still the base-clause, and a ':' after a constructor is its initializer. */
 struct_declarator
-    : declarator { $$ = $1; }
+    : declarator { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | declarator ':' constant_expression {
-        $$ = ast_make(AST_BITFIELD, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_BITFIELD, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 enum_specifier
-    : ENUM '{' enumerator_list '}' { $$ = ast_make(AST_ENUM, NULL, $3, NULL, NULL, NULL); }
-    | ENUM '{' enumerator_list ',' '}' { $$ = ast_make(AST_ENUM, NULL, $3, NULL, NULL, NULL); }
+    : ENUM '{' enumerator_list '}' { $$ = ast_place(ast_make(AST_ENUM, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | ENUM '{' enumerator_list ',' '}' { $$ = ast_place(ast_make(AST_ENUM, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | ENUM IDENTIFIER '{' enumerator_list '}' {
-        $$ = ast_make(AST_ENUM, $2, $4, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ENUM, $2, $4, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     | ENUM IDENTIFIER '{' enumerator_list ',' '}' {
-        $$ = ast_make(AST_ENUM, $2, $4, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ENUM, $2, $4, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
-    | ENUM IDENTIFIER { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
+    | ENUM IDENTIFIER { $$ = ast_place(ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 enumerator_list
-    : enumerator { $$ = $1; }
-    | enumerator_list ',' enumerator { ast_append($1, $3); $$ = $1; }
+    : enumerator { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | enumerator_list ',' enumerator { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 enumerator
-    : IDENTIFIER { $$ = ast_text(AST_ENUMERATOR, $1); }
+    : IDENTIFIER { $$ = ast_place(ast_text(AST_ENUMERATOR, $1), @$.first_line, @$.first_column); }
     | IDENTIFIER '=' constant_expression {
-        $$ = ast_make(AST_ENUMERATOR, $1, $3, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ENUMERATOR, $1, $3, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
@@ -603,227 +604,227 @@ enumerator
 class_specifier
     : CLASS name { smallcpp_push_class($2->text); } base_clause '{' class_member_list_opt '}' {
         smallcpp_pop_class();
-        $$ = ast_make(AST_CLASS, NULL, $2, $4, $6, NULL);
+        $$ = ast_place(ast_make(AST_CLASS, NULL, $2, $4, $6, NULL), @$.first_line, @$.first_column);
       }
     | CLASS name { smallcpp_push_class($2->text); } '{' class_member_list_opt '}' {
         smallcpp_pop_class();
-        $$ = ast_make(AST_CLASS, NULL, $2, NULL, $5, NULL);
+        $$ = ast_place(ast_make(AST_CLASS, NULL, $2, NULL, $5, NULL), @$.first_line, @$.first_column);
       }
-    | CLASS name { $$ = ast_make(AST_CLASS, NULL, $2, NULL, NULL, NULL); }
+    | CLASS name { $$ = ast_place(ast_make(AST_CLASS, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | CLASS '{' class_member_list_opt '}' {
-        $$ = ast_make(AST_CLASS, NULL, NULL, NULL, $3, NULL);
+        $$ = ast_place(ast_make(AST_CLASS, NULL, NULL, NULL, $3, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 name
-    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
-    | TYPEDEF_NAME { $$ = ast_text(AST_TYPE_NAME, $1); }
+    : IDENTIFIER { $$ = ast_place(ast_text(AST_IDENT, $1), @$.first_line, @$.first_column); }
+    | TYPEDEF_NAME { $$ = ast_place(ast_text(AST_TYPE_NAME, $1), @$.first_line, @$.first_column); }
     ;
 
 base_clause
-    : ':' base_specifier_list { $$ = $2; }
+    : ':' base_specifier_list { $$ = ast_place($2, @$.first_line, @$.first_column); }
     ;
 
 base_specifier_list
-    : base_specifier { $$ = $1; }
-    | base_specifier_list ',' base_specifier { ast_append($1, $3); $$ = $1; }
+    : base_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | base_specifier_list ',' base_specifier { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 base_specifier
-    : access_keyword name { $$ = ast_make(AST_BASE, NULL, $1, $2, NULL, NULL); }
-    | name { $$ = ast_make(AST_BASE, NULL, $1, NULL, NULL, NULL); }
-    | VIRTUAL access_keyword name { $$ = ast_make(AST_BASE, strdup("virtual"), $2, $3, NULL, NULL); }
-    | access_keyword VIRTUAL name { $$ = ast_make(AST_BASE, strdup("virtual"), $1, $3, NULL, NULL); }
-    | VIRTUAL name { $$ = ast_make(AST_BASE, strdup("virtual"), $2, NULL, NULL, NULL); }
+    : access_keyword name { $$ = ast_place(ast_make(AST_BASE, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column); }
+    | name { $$ = ast_place(ast_make(AST_BASE, NULL, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | VIRTUAL access_keyword name { $$ = ast_place(ast_make(AST_BASE, strdup("virtual"), $2, $3, NULL, NULL), @$.first_line, @$.first_column); }
+    | access_keyword VIRTUAL name { $$ = ast_place(ast_make(AST_BASE, strdup("virtual"), $1, $3, NULL, NULL), @$.first_line, @$.first_column); }
+    | VIRTUAL name { $$ = ast_place(ast_make(AST_BASE, strdup("virtual"), $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 access_keyword
-    : PUBLIC { $$ = ast_named(AST_ACCESS, "public"); }
-    | PRIVATE { $$ = ast_named(AST_ACCESS, "private"); }
-    | PROTECTED { $$ = ast_named(AST_ACCESS, "protected"); }
+    : PUBLIC { $$ = ast_place(ast_named(AST_ACCESS, "public"), @$.first_line, @$.first_column); }
+    | PRIVATE { $$ = ast_place(ast_named(AST_ACCESS, "private"), @$.first_line, @$.first_column); }
+    | PROTECTED { $$ = ast_place(ast_named(AST_ACCESS, "protected"), @$.first_line, @$.first_column); }
     ;
 
 class_member_list_opt
     : %empty { $$ = NULL; }
-    | class_member_list { $$ = $1; }
+    | class_member_list { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 class_member_list
-    : class_member { $$ = $1; }
-    | class_member_list class_member { ast_append($1, $2); $$ = $1; }
+    : class_member { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | class_member_list class_member { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 class_member
-    : access_keyword ':' { $$ = $1; }
-    | constructor_member { $$ = $1; }
-    | destructor_member { $$ = $1; }
-    | declaration { $$ = $1; }
-    | function_definition { $$ = $1; }
-    | using_declaration { $$ = $1; }
+    : access_keyword ':' { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | constructor_member { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | destructor_member { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | function_definition { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | using_declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | error ';' { yyerrok; $$ = NULL; }
     ;
 
 constructor_member
     : CTOR_NAME '(' ')' ctor_initializer_opt compound_statement {
-        $$ = ctor_spelling($1, NULL, $4, $5);
+        $$ = ast_place(ctor_spelling($1, NULL, $4, $5), @$.first_line, @$.first_column);
       }
-    | CTOR_NAME '(' ')' ';' { $$ = ctor_spelling($1, NULL, NULL, NULL); }
+    | CTOR_NAME '(' ')' ';' { $$ = ast_place(ctor_spelling($1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | CTOR_NAME '(' parameter_type_list ')' ctor_initializer_opt compound_statement {
-        $$ = ctor_spelling($1, $3, $5, $6);
+        $$ = ast_place(ctor_spelling($1, $3, $5, $6), @$.first_line, @$.first_column);
       }
-    | CTOR_NAME '(' parameter_type_list ')' ';' { $$ = ctor_spelling($1, $3, NULL, NULL); }
+    | CTOR_NAME '(' parameter_type_list ')' ';' { $$ = ast_place(ctor_spelling($1, $3, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 destructor_member
     : '~' name '(' ')' compound_statement {
         if (!text_is($2, smallcpp_current_class()))
-            yyerror("destructor name does not match the class");
-        $$ = make_dtor($2, $5, 0);
+            yylloc = @$, yyerror("destructor name does not match the class");
+        $$ = ast_place(make_dtor($2, $5, 0), @$.first_line, @$.first_column);
       }
     | '~' name '(' ')' ';' {
         if (!text_is($2, smallcpp_current_class()))
-            yyerror("destructor name does not match the class");
-        $$ = make_dtor($2, NULL, 0);
+            yylloc = @$, yyerror("destructor name does not match the class");
+        $$ = ast_place(make_dtor($2, NULL, 0), @$.first_line, @$.first_column);
       }
     | VIRTUAL '~' name '(' ')' compound_statement {
         if (!text_is($3, smallcpp_current_class()))
-            yyerror("destructor name does not match the class");
-        $$ = make_dtor($3, $6, 1);
+            yylloc = @$, yyerror("destructor name does not match the class");
+        $$ = ast_place(make_dtor($3, $6, 1), @$.first_line, @$.first_column);
       }
     | VIRTUAL '~' name '(' ')' ';' {
         if (!text_is($3, smallcpp_current_class()))
-            yyerror("destructor name does not match the class");
-        $$ = make_dtor($3, NULL, 1);
+            yylloc = @$, yyerror("destructor name does not match the class");
+        $$ = ast_place(make_dtor($3, NULL, 1), @$.first_line, @$.first_column);
       }
     ;
 
 constructor_definition
     : name SCOPE name '(' ')' ctor_initializer_opt compound_statement {
         if (!names_equal($1, $3))
-            yyerror("constructor name does not match the class");
+            yylloc = @$, yyerror("constructor name does not match the class");
         ast_free($1);
-        $$ = make_ctor($3, NULL, $6, $7);
+        $$ = ast_place(make_ctor($3, NULL, $6, $7), @$.first_line, @$.first_column);
       }
     | name SCOPE name '(' parameter_type_list ')' ctor_initializer_opt compound_statement {
         if (!names_equal($1, $3))
-            yyerror("constructor name does not match the class");
+            yylloc = @$, yyerror("constructor name does not match the class");
         ast_free($1);
-        $$ = make_ctor($3, $5, $7, $8);
+        $$ = ast_place(make_ctor($3, $5, $7, $8), @$.first_line, @$.first_column);
       }
     ;
 
 destructor_definition
     : name SCOPE '~' name '(' ')' compound_statement {
         if (!names_equal($1, $4))
-            yyerror("destructor name does not match the class");
+            yylloc = @$, yyerror("destructor name does not match the class");
         ast_free($1);
-        $$ = make_dtor($4, $7, 0);
+        $$ = ast_place(make_dtor($4, $7, 0), @$.first_line, @$.first_column);
       }
     | name SCOPE '~' name '(' ')' ';' {
         if (!names_equal($1, $4))
-            yyerror("destructor name does not match the class");
+            yylloc = @$, yyerror("destructor name does not match the class");
         ast_free($1);
-        $$ = make_dtor($4, NULL, 0);
+        $$ = ast_place(make_dtor($4, NULL, 0), @$.first_line, @$.first_column);
       }
     ;
 
 ctor_initializer_opt
     : %empty { $$ = NULL; }
-    | ':' mem_initializer_list { $$ = $2; }
+    | ':' mem_initializer_list { $$ = ast_place($2, @$.first_line, @$.first_column); }
     ;
 
 mem_initializer_list
-    : mem_initializer { $$ = $1; }
-    | mem_initializer_list ',' mem_initializer { ast_append($1, $3); $$ = $1; }
+    : mem_initializer { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | mem_initializer_list ',' mem_initializer { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 mem_initializer
-    : name '(' ')' { $$ = make_mem_init($1, NULL); }
-    | name '(' argument_expression_list ')' { $$ = make_mem_init($1, $3); }
+    : name '(' ')' { $$ = ast_place(make_mem_init($1, NULL), @$.first_line, @$.first_column); }
+    | name '(' argument_expression_list ')' { $$ = ast_place(make_mem_init($1, $3), @$.first_line, @$.first_column); }
     ;
 
 using_declaration
     : USING NAMESPACE name ';' {
-        $$ = ast_make(AST_USING, strdup("namespace"), $3, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_USING, strdup("namespace"), $3, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
-    | USING using_name ';' { $$ = ast_make(AST_USING, NULL, $2, NULL, NULL, NULL); }
+    | USING using_name ';' { $$ = ast_place(ast_make(AST_USING, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 using_name
-    : name { $$ = $1; }
-    | nested_name { $$ = $1; }
+    : name { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | nested_name { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 type_qualifier
-    : CONST { $$ = ast_named(AST_SPECIFIER, "const"); }
-    | VOLATILE { $$ = ast_named(AST_SPECIFIER, "volatile"); }
+    : CONST { $$ = ast_place(ast_named(AST_SPECIFIER, "const"), @$.first_line, @$.first_column); }
+    | VOLATILE { $$ = ast_place(ast_named(AST_SPECIFIER, "volatile"), @$.first_line, @$.first_column); }
     ;
 
 function_specifier
-    : INLINE { $$ = ast_named(AST_SPECIFIER, "inline"); }
-    | VIRTUAL { $$ = ast_named(AST_SPECIFIER, "virtual"); }
+    : INLINE { $$ = ast_place(ast_named(AST_SPECIFIER, "inline"), @$.first_line, @$.first_column); }
+    | VIRTUAL { $$ = ast_place(ast_named(AST_SPECIFIER, "virtual"), @$.first_line, @$.first_column); }
     ;
 
 init_declarator_list
-    : init_declarator { $$ = $1; }
-    | init_declarator_list ',' init_declarator { ast_append($1, $3); $$ = $1; }
+    : init_declarator { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | init_declarator_list ',' init_declarator { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 init_declarator
-    : declarator { $$ = $1; }
-    | declarator '=' initializer { $$ = ast_make(AST_INIT, NULL, $1, $3, NULL, NULL); }
+    : declarator { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | declarator '=' initializer { $$ = ast_place(ast_make(AST_INIT, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 /* Brace initialization is written after '='. T x{...} is not supported.
  * .member = value and [index] = value are designated initializers. */
 initializer
-    : assignment_expression { $$ = $1; }
-    | brace_initializer { $$ = $1; }
+    : assignment_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | brace_initializer { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 brace_initializer
-    : '{' '}' { $$ = ast_make(AST_INIT, NULL, NULL, NULL, NULL, NULL); }
-    | '{' initializer_list '}' { $$ = ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL); }
-    | '{' initializer_list ',' '}' { $$ = ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL); }
+    : '{' '}' { $$ = ast_place(ast_make(AST_INIT, NULL, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '{' initializer_list '}' { $$ = ast_place(ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '{' initializer_list ',' '}' { $$ = ast_place(ast_make(AST_INIT, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 initializer_list
-    : initializer { $$ = $1; }
-    | designator_list '=' initializer { $$ = designate($1, $3); }
-    | initializer_list ',' initializer { ast_append($1, $3); $$ = $1; }
+    : initializer { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | designator_list '=' initializer { $$ = ast_place(designate($1, $3), @$.first_line, @$.first_column); }
+    | initializer_list ',' initializer { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     | initializer_list ',' designator_list '=' initializer {
         ast_append($1, designate($3, $5));
-        $$ = $1;
+        $$ = ast_place($1, @$.first_line, @$.first_column);
       }
     ;
 
 designator_list
-    : designator { $$ = $1; }
-    | designator_list designator { ast_append($1, $2); $$ = $1; }
+    : designator { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | designator_list designator { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 designator
-    : '.' IDENTIFIER { $$ = ast_make(AST_DESIGNATED, $2, NULL, NULL, NULL, NULL); }
-    | '[' constant_expression ']' { $$ = ast_make(AST_DESIGNATED, NULL, $2, NULL, NULL, NULL); }
+    : '.' IDENTIFIER { $$ = ast_place(ast_make(AST_DESIGNATED, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '[' constant_expression ']' { $$ = ast_place(ast_make(AST_DESIGNATED, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 /* Object and function declarators. No empty brackets, so no flexible array. */
 declarator
-    : pointer direct_declarator { $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL); }
-    | direct_declarator { $$ = $1; }
+    : pointer direct_declarator { $$ = ast_place(ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column); }
+    | direct_declarator { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 direct_declarator
-    : declarator_id { $$ = $1; }
-    | '(' declarator ')' { $$ = $2; }
+    : declarator_id { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | '(' declarator ')' { $$ = ast_place($2, @$.first_line, @$.first_column); }
     | direct_declarator '[' constant_expression ']' {
-        $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     | direct_declarator '(' ')' cv_qualifier_opt pure_specifier_opt {
-        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, NULL, $4, $5);
+        $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, $1, NULL, $4, $5), @$.first_line, @$.first_column);
       }
     | direct_declarator '(' parameter_type_list ')' cv_qualifier_opt pure_specifier_opt {
-        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, $5, $6);
+        $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, $1, $3, $5, $6), @$.first_line, @$.first_column);
       }
     ;
 
@@ -833,211 +834,211 @@ pure_specifier_opt
     | '=' CONSTANT {
         int pure = $2 != NULL && strcmp($2, "0") == 0;
         if (!pure)
-            yyerror("pure specifier is = 0");
+            yylloc = @$, yyerror("pure specifier is = 0");
         free($2);
-        $$ = pure ? ast_named(AST_SPECIFIER, "pure") : NULL;
+        $$ = ast_place(pure ? ast_named(AST_SPECIFIER, "pure") : NULL, @$.first_line, @$.first_column);
       }
     ;
 
 /* const and volatile after a parameter list. No ref-qualifiers. */
 cv_qualifier_opt
     : %empty { $$ = NULL; }
-    | cv_qualifier_seq { $$ = $1; }
+    | cv_qualifier_seq { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 cv_qualifier_seq
-    : type_qualifier { $$ = $1; }
-    | cv_qualifier_seq type_qualifier { ast_append($1, $2); $$ = $1; }
+    : type_qualifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | cv_qualifier_seq type_qualifier { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 /* Point::move is qualified. The last component is an identifier, not a type. */
 declarator_id
-    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
-    | name SCOPE declarator_id { $$ = ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL); }
+    : IDENTIFIER { $$ = ast_place(ast_text(AST_IDENT, $1), @$.first_line, @$.first_column); }
+    | name SCOPE declarator_id { $$ = ast_place(ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 pointer
-    : '*' { $$ = ast_named(AST_POINTER, "*"); }
-    | '*' type_qualifier_list { $$ = ast_make(AST_POINTER, NULL, $2, NULL, NULL, NULL); }
-    | '*' pointer { $$ = ast_make(AST_POINTER, NULL, $2, NULL, NULL, NULL); }
-    | '*' type_qualifier_list pointer { $$ = ast_make(AST_POINTER, NULL, $2, $3, NULL, NULL); }
+    : '*' { $$ = ast_place(ast_named(AST_POINTER, "*"), @$.first_line, @$.first_column); }
+    | '*' type_qualifier_list { $$ = ast_place(ast_make(AST_POINTER, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '*' pointer { $$ = ast_place(ast_make(AST_POINTER, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '*' type_qualifier_list pointer { $$ = ast_place(ast_make(AST_POINTER, NULL, $2, $3, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 type_qualifier_list
-    : type_qualifier { $$ = $1; }
-    | type_qualifier_list type_qualifier { ast_append($1, $2); $$ = $1; }
+    : type_qualifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | type_qualifier_list type_qualifier { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 parameter_type_list
-    : parameter_list { $$ = $1; }
+    : parameter_list { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | parameter_list ',' ELLIPSIS {
         ast_append($1, ast_named(AST_ELLIPSIS, "..."));
-        $$ = $1;
+        $$ = ast_place($1, @$.first_line, @$.first_column);
       }
     ;
 
 parameter_list
-    : parameter_declaration { $$ = $1; }
-    | parameter_list ',' parameter_declaration { ast_append($1, $3); $$ = $1; }
+    : parameter_declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | parameter_list ',' parameter_declaration { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 parameter_declaration
-    : parameter_specifiers { $$ = ast_make(AST_PARAMETER, NULL, $1, NULL, NULL, NULL); }
+    : parameter_specifiers { $$ = ast_place(ast_make(AST_PARAMETER, NULL, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | parameter_specifiers parameter_declarator {
         note_declarator($2);
-        $$ = ast_make(AST_PARAMETER, NULL, $1, $2, NULL, NULL);
+        $$ = ast_place(ast_make(AST_PARAMETER, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column);
       }
     | parameter_specifiers parameter_declarator '=' assignment_expression {
         note_declarator($2);
-        $$ = ast_make(AST_PARAMETER, NULL, $1, $2, $4, NULL);
+        $$ = ast_place(ast_make(AST_PARAMETER, NULL, $1, $2, $4, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 /* register is the only storage class both languages allow on a parameter. */
 parameter_specifiers
-    : parameter_specifier { $$ = $1; }
-    | parameter_specifiers parameter_specifier { ast_append($1, $2); $$ = $1; }
+    : parameter_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | parameter_specifiers parameter_specifier { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 parameter_specifier
-    : type_specifier { $$ = $1; }
-    | type_qualifier { $$ = $1; }
-    | REGISTER { $$ = ast_named(AST_SPECIFIER, "register"); }
+    : type_specifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | type_qualifier { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | REGISTER { $$ = ast_place(ast_named(AST_SPECIFIER, "register"), @$.first_line, @$.first_column); }
     ;
 
 /* Named and abstract parameter declarators. Empty [] adjusts to a pointer. */
 parameter_declarator
     : pointer direct_parameter_declarator {
-        $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL);
+        $$ = ast_place(ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column);
       }
-    | direct_parameter_declarator { $$ = $1; }
-    | pointer { $$ = $1; }
+    | direct_parameter_declarator { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | pointer { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 direct_parameter_declarator
-    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
-    | '(' parameter_declarator ')' { $$ = $2; }
-    | '[' ']' { $$ = ast_named(AST_ARRAY, "[]"); }
-    | '[' constant_expression ']' { $$ = ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL); }
-    | '(' ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, NULL, NULL, NULL, NULL); }
-    | '(' parameter_type_list ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL); }
+    : IDENTIFIER { $$ = ast_place(ast_text(AST_IDENT, $1), @$.first_line, @$.first_column); }
+    | '(' parameter_declarator ')' { $$ = ast_place($2, @$.first_line, @$.first_column); }
+    | '[' ']' { $$ = ast_place(ast_named(AST_ARRAY, "[]"), @$.first_line, @$.first_column); }
+    | '[' constant_expression ']' { $$ = ast_place(ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '(' ')' { $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '(' parameter_type_list ')' { $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | direct_parameter_declarator '[' ']' {
-        $$ = ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     | direct_parameter_declarator '[' constant_expression ']' {
-        $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     | direct_parameter_declarator '(' parameter_type_list ')' {
-        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 type_name
-    : specifier_qualifier_list { $$ = $1; }
+    : specifier_qualifier_list { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | specifier_qualifier_list abstract_declarator {
-        $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL);
+        $$ = ast_place(ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 abstract_declarator
-    : pointer { $$ = $1; }
-    | direct_abstract_declarator { $$ = $1; }
+    : pointer { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | direct_abstract_declarator { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | pointer direct_abstract_declarator {
-        $$ = ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL);
+        $$ = ast_place(ast_make(AST_DECLARATOR, NULL, $1, $2, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 direct_abstract_declarator
-    : '(' abstract_declarator ')' { $$ = $2; }
-    | '[' ']' { $$ = ast_named(AST_ARRAY, "[]"); }
-    | '[' constant_expression ']' { $$ = ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL); }
-    | '(' ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, NULL, NULL, NULL, NULL); }
-    | '(' parameter_type_list ')' { $$ = ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL); }
+    : '(' abstract_declarator ')' { $$ = ast_place($2, @$.first_line, @$.first_column); }
+    | '[' ']' { $$ = ast_place(ast_named(AST_ARRAY, "[]"), @$.first_line, @$.first_column); }
+    | '[' constant_expression ']' { $$ = ast_place(ast_make(AST_ARRAY, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '(' ')' { $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '(' parameter_type_list ')' { $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | direct_abstract_declarator '[' ']' {
-        $$ = ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ARRAY, NULL, $1, NULL, NULL, NULL), @$.first_line, @$.first_column);
       }
     | direct_abstract_declarator '[' constant_expression ']' {
-        $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     | direct_abstract_declarator '(' parameter_type_list ')' {
-        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_FUNCTION_DECL, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 statement
-    : labeled_statement { $$ = $1; }
-    | compound_statement { $$ = $1; }
-    | expression_statement { $$ = $1; }
-    | selection_statement { $$ = $1; }
-    | iteration_statement { $$ = $1; }
-    | jump_statement { $$ = $1; }
-    | try_statement { $$ = $1; }
-    | throw_statement { $$ = $1; }
+    : labeled_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | compound_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | expression_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | selection_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | iteration_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | jump_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | try_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | throw_statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | error ';' { yyerrok; $$ = NULL; }
     ;
 
 labeled_statement
-    : IDENTIFIER ':' statement { $$ = ast_make(AST_LABEL, $1, $3, NULL, NULL, NULL); }
+    : IDENTIFIER ':' statement { $$ = ast_place(ast_make(AST_LABEL, $1, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | CASE constant_expression ':' statement {
-        $$ = ast_make(AST_CASE, NULL, $2, $4, NULL, NULL);
+        $$ = ast_place(ast_make(AST_CASE, NULL, $2, $4, NULL, NULL), @$.first_line, @$.first_column);
       }
-    | DEFAULT ':' statement { $$ = ast_make(AST_DEFAULT, NULL, $3, NULL, NULL, NULL); }
+    | DEFAULT ':' statement { $$ = ast_place(ast_make(AST_DEFAULT, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 compound_statement
-    : '{' '}' { $$ = ast_make(AST_COMPOUND, NULL, NULL, NULL, NULL, NULL); }
-    | '{' block_item_list '}' { $$ = ast_make(AST_COMPOUND, NULL, $2, NULL, NULL, NULL); }
+    : '{' '}' { $$ = ast_place(ast_make(AST_COMPOUND, NULL, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | '{' block_item_list '}' { $$ = ast_place(ast_make(AST_COMPOUND, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 block_item_list
-    : block_item { $$ = $1; }
-    | block_item_list block_item { ast_append($1, $2); $$ = $1; }
+    : block_item { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | block_item_list block_item { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 block_item
-    : declaration { $$ = $1; }
-    | statement { $$ = $1; }
-    | using_declaration { $$ = $1; }
+    : declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | statement { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | using_declaration { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 expression_statement
-    : ';' { $$ = ast_named(AST_EXPR_STMT, ";"); }
-    | expression ';' { $$ = ast_make(AST_EXPR_STMT, NULL, $1, NULL, NULL, NULL); }
+    : ';' { $$ = ast_place(ast_named(AST_EXPR_STMT, ";"), @$.first_line, @$.first_column); }
+    | expression ';' { $$ = ast_place(ast_make(AST_EXPR_STMT, NULL, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 selection_statement
     : IF '(' expression ')' statement %prec LOWER_THAN_ELSE {
-        $$ = ast_make(AST_IF, NULL, $3, $5, NULL, NULL);
+        $$ = ast_place(ast_make(AST_IF, NULL, $3, $5, NULL, NULL), @$.first_line, @$.first_column);
       }
     | IF '(' expression ')' statement ELSE statement {
-        $$ = ast_make(AST_IF, NULL, $3, $5, $7, NULL);
+        $$ = ast_place(ast_make(AST_IF, NULL, $3, $5, $7, NULL), @$.first_line, @$.first_column);
       }
     | SWITCH '(' expression ')' statement {
-        $$ = ast_make(AST_SWITCH, NULL, $3, $5, NULL, NULL);
+        $$ = ast_place(ast_make(AST_SWITCH, NULL, $3, $5, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 iteration_statement
     : WHILE '(' expression ')' statement {
-        $$ = ast_make(AST_WHILE, NULL, $3, $5, NULL, NULL);
+        $$ = ast_place(ast_make(AST_WHILE, NULL, $3, $5, NULL, NULL), @$.first_line, @$.first_column);
       }
     | DO statement WHILE '(' expression ')' ';' {
-        $$ = ast_make(AST_DO, NULL, $2, $5, NULL, NULL);
+        $$ = ast_place(ast_make(AST_DO, NULL, $2, $5, NULL, NULL), @$.first_line, @$.first_column);
       }
     | FOR '(' expression_opt ';' expression_opt ';' expression_opt ')' statement {
-        $$ = ast_make(AST_FOR, NULL, $3, $5, $7, $9);
+        $$ = ast_place(ast_make(AST_FOR, NULL, $3, $5, $7, $9), @$.first_line, @$.first_column);
       }
     | FOR '(' declaration expression_opt ';' expression_opt ')' statement {
-        $$ = ast_make(AST_FOR, NULL, $3, $4, $6, $8);
+        $$ = ast_place(ast_make(AST_FOR, NULL, $3, $4, $6, $8), @$.first_line, @$.first_column);
       }
     ;
 
 jump_statement
-    : GOTO IDENTIFIER ';' { $$ = ast_make(AST_GOTO, $2, NULL, NULL, NULL, NULL); }
-    | CONTINUE ';' { $$ = ast_named(AST_CONTINUE, "continue"); }
-    | BREAK ';' { $$ = ast_named(AST_BREAK, "break"); }
-    | RETURN ';' { $$ = ast_named(AST_RETURN, "return"); }
-    | RETURN expression ';' { $$ = ast_make(AST_RETURN, NULL, $2, NULL, NULL, NULL); }
+    : GOTO IDENTIFIER ';' { $$ = ast_place(ast_make(AST_GOTO, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | CONTINUE ';' { $$ = ast_place(ast_named(AST_CONTINUE, "continue"), @$.first_line, @$.first_column); }
+    | BREAK ';' { $$ = ast_place(ast_named(AST_BREAK, "break"), @$.first_line, @$.first_column); }
+    | RETURN ';' { $$ = ast_place(ast_named(AST_RETURN, "return"), @$.first_line, @$.first_column); }
+    | RETURN expression ';' { $$ = ast_place(ast_make(AST_RETURN, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 /*
@@ -1048,39 +1049,39 @@ jump_statement
  */
 try_statement
     : TRY compound_statement catch_clause_list {
-        $$ = ast_make(AST_TRY, NULL, $2, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_TRY, NULL, $2, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 catch_clause_list
-    : catch_clause { $$ = $1; }
-    | catch_clause_list catch_clause { ast_append($1, $2); $$ = $1; }
+    : catch_clause { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | catch_clause_list catch_clause { ast_append($1, $2); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 catch_clause
     : CATCH '(' parameter_declaration ')' compound_statement {
-        $$ = ast_make(AST_CATCH, NULL, $3, $5, NULL, NULL);
+        $$ = ast_place(ast_make(AST_CATCH, NULL, $3, $5, NULL, NULL), @$.first_line, @$.first_column);
       }
-    | CATCH '(' ELLIPSIS ')' compound_statement { $$ = ast_catch_all($5); }
+    | CATCH '(' ELLIPSIS ')' compound_statement { $$ = ast_place(ast_catch_all($5), @$.first_line, @$.first_column); }
     ;
 
 throw_statement
-    : THROW assignment_expression ';' { $$ = ast_make(AST_THROW, NULL, $2, NULL, NULL, NULL); }
-    | THROW ';' { $$ = ast_named(AST_THROW, "throw"); }
+    : THROW assignment_expression ';' { $$ = ast_place(ast_make(AST_THROW, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | THROW ';' { $$ = ast_place(ast_named(AST_THROW, "throw"), @$.first_line, @$.first_column); }
     ;
 
 primary_expression
-    : IDENTIFIER { $$ = ast_text(AST_IDENT, $1); }
-    | nested_name { $$ = $1; }
-    | THIS { $$ = ast_named(AST_THIS, "this"); }
-    | TRUE { $$ = ast_named(AST_LITERAL, "true"); }
-    | FALSE { $$ = ast_named(AST_LITERAL, "false"); }
-    | NULLPTR { $$ = ast_null("nullptr"); }
-    | NULL_KEYWORD { $$ = ast_null("NULL"); }
-    | CONSTANT { $$ = ast_text(AST_LITERAL, $1); }
-    | STRING_LITERAL { $$ = ast_text(AST_LITERAL, $1); }
-    | '(' expression ')' { $$ = $2; }
-    | format_expression { $$ = $1; }
+    : IDENTIFIER { $$ = ast_place(ast_text(AST_IDENT, $1), @$.first_line, @$.first_column); }
+    | nested_name { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | THIS { $$ = ast_place(ast_named(AST_THIS, "this"), @$.first_line, @$.first_column); }
+    | TRUE { $$ = ast_place(ast_named(AST_LITERAL, "true"), @$.first_line, @$.first_column); }
+    | FALSE { $$ = ast_place(ast_named(AST_LITERAL, "false"), @$.first_line, @$.first_column); }
+    | NULLPTR { $$ = ast_place(ast_null("nullptr"), @$.first_line, @$.first_column); }
+    | NULL_KEYWORD { $$ = ast_place(ast_null("NULL"), @$.first_line, @$.first_column); }
+    | CONSTANT { $$ = ast_place(ast_text(AST_LITERAL, $1), @$.first_line, @$.first_column); }
+    | STRING_LITERAL { $$ = ast_place(ast_text(AST_LITERAL, $1), @$.first_line, @$.first_column); }
+    | '(' expression ')' { $$ = ast_place($2, @$.first_line, @$.first_column); }
+    | format_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 /*
@@ -1089,65 +1090,65 @@ primary_expression
  * standard format specs. The arguments follow the string.
  */
 format_expression
-    : PRINT '(' STRING_LITERAL ')' { $$ = native_format(AST_PRINT, $3, NULL); }
+    : PRINT '(' STRING_LITERAL ')' { yylloc = @$; $$ = ast_place(native_format(AST_PRINT, $3, NULL), @$.first_line, @$.first_column); }
     | PRINT '(' STRING_LITERAL ',' argument_expression_list ')' {
-        $$ = native_format(AST_PRINT, $3, $5);
+        yylloc = @$; $$ = ast_place(native_format(AST_PRINT, $3, $5), @$.first_line, @$.first_column);
       }
-    | FORMAT '(' STRING_LITERAL ')' { $$ = native_format(AST_FORMAT, $3, NULL); }
+    | FORMAT '(' STRING_LITERAL ')' { yylloc = @$; $$ = ast_place(native_format(AST_FORMAT, $3, NULL), @$.first_line, @$.first_column); }
     | FORMAT '(' STRING_LITERAL ',' argument_expression_list ')' {
-        $$ = native_format(AST_FORMAT, $3, $5);
+        yylloc = @$; $$ = ast_place(native_format(AST_FORMAT, $3, $5), @$.first_line, @$.first_column);
       }
     ;
 
 /* A nested name has at least one '::', so a bare type name is not an expression. */
 nested_name
-    : name SCOPE name { $$ = ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL); }
-    | nested_name SCOPE name { $$ = ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL); }
+    : name SCOPE name { $$ = ast_place(ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column); }
+    | nested_name SCOPE name { $$ = ast_place(ast_make(AST_QUALIFIED, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 postfix_expression
-    : primary_expression { $$ = $1; }
+    : primary_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | postfix_expression '[' expression ']' {
-        $$ = ast_make(AST_INDEX, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_INDEX, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
-    | postfix_expression '(' ')' { $$ = ast_make(AST_CALL, NULL, $1, NULL, NULL, NULL); }
+    | postfix_expression '(' ')' { $$ = ast_place(ast_make(AST_CALL, NULL, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | postfix_expression '(' argument_expression_list ')' {
-        $$ = ast_make(AST_CALL, NULL, $1, $3, NULL, NULL);
+        $$ = ast_place(ast_make(AST_CALL, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
-    | postfix_expression '.' IDENTIFIER { $$ = ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL); }
-    | postfix_expression '.' '~' name '(' ')' { $$ = dtor_call($1, $4, 0); }
-    | postfix_expression ARROW IDENTIFIER { $$ = ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL); }
-    | postfix_expression ARROW '~' name '(' ')' { $$ = dtor_call($1, $4, 1); }
-    | postfix_expression INC { $$ = ast_unary("post++", $1); }
-    | postfix_expression DEC { $$ = ast_unary("post--", $1); }
+    | postfix_expression '.' IDENTIFIER { $$ = ast_place(ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | postfix_expression '.' '~' name '(' ')' { $$ = ast_place(dtor_call($1, $4, 0), @$.first_line, @$.first_column); }
+    | postfix_expression ARROW IDENTIFIER { $$ = ast_place(ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | postfix_expression ARROW '~' name '(' ')' { $$ = ast_place(dtor_call($1, $4, 1), @$.first_line, @$.first_column); }
+    | postfix_expression INC { $$ = ast_place(ast_unary("post++", $1), @$.first_line, @$.first_column); }
+    | postfix_expression DEC { $$ = ast_place(ast_unary("post--", $1), @$.first_line, @$.first_column); }
     ;
 
 argument_expression_list
-    : assignment_expression { $$ = $1; }
-    | argument_expression_list ',' assignment_expression { ast_append($1, $3); $$ = $1; }
+    : assignment_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | argument_expression_list ',' assignment_expression { ast_append($1, $3); $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 unary_expression
-    : postfix_expression { $$ = $1; }
-    | INC unary_expression { $$ = ast_unary("++", $2); }
-    | DEC unary_expression { $$ = ast_unary("--", $2); }
-    | unary_operator cast_expression { $$ = ast_unary($1, $2); }
-    | SIZEOF unary_expression { $$ = ast_make(AST_SIZEOF, NULL, $2, NULL, NULL, NULL); }
-    | SIZEOF '(' type_name ')' { $$ = ast_make(AST_SIZEOF, NULL, $3, NULL, NULL, NULL); }
-    | NEW new_type %prec NEW_BARE { $$ = make_new($2, NULL, NULL, NULL); }
-    | NEW new_type new_pointer { $$ = make_new($2, $3, NULL, NULL); }
-    | NEW new_type new_arrays { $$ = make_new($2, NULL, $3, NULL); }
-    | NEW new_type new_pointer new_arrays { $$ = make_new($2, $3, $4, NULL); }
-    | NEW new_type '(' ')' { $$ = make_new($2, NULL, NULL, NULL); }
-    | NEW new_type '(' argument_expression_list ')' { $$ = make_new($2, NULL, NULL, $4); }
-    | NEW new_type new_pointer '(' ')' { $$ = make_new($2, $3, NULL, NULL); }
+    : postfix_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | INC unary_expression { $$ = ast_place(ast_unary("++", $2), @$.first_line, @$.first_column); }
+    | DEC unary_expression { $$ = ast_place(ast_unary("--", $2), @$.first_line, @$.first_column); }
+    | unary_operator cast_expression { $$ = ast_place(ast_unary($1, $2), @$.first_line, @$.first_column); }
+    | SIZEOF unary_expression { $$ = ast_place(ast_make(AST_SIZEOF, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | SIZEOF '(' type_name ')' { $$ = ast_place(ast_make(AST_SIZEOF, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | NEW new_type %prec NEW_BARE { $$ = ast_place(make_new($2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | NEW new_type new_pointer { $$ = ast_place(make_new($2, $3, NULL, NULL), @$.first_line, @$.first_column); }
+    | NEW new_type new_arrays { $$ = ast_place(make_new($2, NULL, $3, NULL), @$.first_line, @$.first_column); }
+    | NEW new_type new_pointer new_arrays { $$ = ast_place(make_new($2, $3, $4, NULL), @$.first_line, @$.first_column); }
+    | NEW new_type '(' ')' { $$ = ast_place(make_new($2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | NEW new_type '(' argument_expression_list ')' { $$ = ast_place(make_new($2, NULL, NULL, $4), @$.first_line, @$.first_column); }
+    | NEW new_type new_pointer '(' ')' { $$ = ast_place(make_new($2, $3, NULL, NULL), @$.first_line, @$.first_column); }
     | NEW new_type new_pointer '(' argument_expression_list ')' {
-        $$ = make_new($2, $3, NULL, $5);
+        $$ = ast_place(make_new($2, $3, NULL, $5), @$.first_line, @$.first_column);
       }
     | DELETE cast_expression {
         if (!operand_is_pointer($2))
-            yyerror("delete operand is not a pointer");
-        $$ = ast_delete_noop($2);
+            yylloc = @$, yyerror("delete operand is not a pointer");
+        $$ = ast_place(ast_delete_noop($2), @$.first_line, @$.first_column);
       }
     ;
 
@@ -1157,32 +1158,32 @@ unary_expression
  * belong to the new-expression. (new int) * p is multiplication.
  */
 new_type
-    : name { $$ = $1; }
-    | VOID { $$ = ast_named(AST_SPECIFIER, "void"); }
-    | CHAR { $$ = ast_named(AST_SPECIFIER, "char"); }
-    | SHORT { $$ = ast_named(AST_SPECIFIER, "short"); }
-    | INT { $$ = ast_named(AST_SPECIFIER, "int"); }
-    | LONG { $$ = ast_named(AST_SPECIFIER, "long"); }
-    | FLOAT { $$ = ast_named(AST_SPECIFIER, "float"); }
-    | DOUBLE { $$ = ast_named(AST_SPECIFIER, "double"); }
-    | SIGNED { $$ = ast_named(AST_SPECIFIER, "signed"); }
-    | UNSIGNED { $$ = ast_named(AST_SPECIFIER, "unsigned"); }
-    | BOOL { $$ = ast_named(AST_SPECIFIER, "bool"); }
-    | STRUCT IDENTIFIER { $$ = ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL); }
-    | STRUCT TYPEDEF_NAME { $$ = ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL); }
-    | ENUM IDENTIFIER { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
-    | ENUM TYPEDEF_NAME { $$ = ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL); }
+    : name { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | VOID { $$ = ast_place(ast_named(AST_SPECIFIER, "void"), @$.first_line, @$.first_column); }
+    | CHAR { $$ = ast_place(ast_named(AST_SPECIFIER, "char"), @$.first_line, @$.first_column); }
+    | SHORT { $$ = ast_place(ast_named(AST_SPECIFIER, "short"), @$.first_line, @$.first_column); }
+    | INT { $$ = ast_place(ast_named(AST_SPECIFIER, "int"), @$.first_line, @$.first_column); }
+    | LONG { $$ = ast_place(ast_named(AST_SPECIFIER, "long"), @$.first_line, @$.first_column); }
+    | FLOAT { $$ = ast_place(ast_named(AST_SPECIFIER, "float"), @$.first_line, @$.first_column); }
+    | DOUBLE { $$ = ast_place(ast_named(AST_SPECIFIER, "double"), @$.first_line, @$.first_column); }
+    | SIGNED { $$ = ast_place(ast_named(AST_SPECIFIER, "signed"), @$.first_line, @$.first_column); }
+    | UNSIGNED { $$ = ast_place(ast_named(AST_SPECIFIER, "unsigned"), @$.first_line, @$.first_column); }
+    | BOOL { $$ = ast_place(ast_named(AST_SPECIFIER, "bool"), @$.first_line, @$.first_column); }
+    | STRUCT IDENTIFIER { $$ = ast_place(ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | STRUCT TYPEDEF_NAME { $$ = ast_place(ast_make(AST_STRUCT, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | ENUM IDENTIFIER { $$ = ast_place(ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | ENUM TYPEDEF_NAME { $$ = ast_place(ast_make(AST_ENUM, $2, NULL, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 new_pointer
-    : '*' { $$ = ast_named(AST_POINTER, "*"); }
-    | '*' new_pointer { $$ = ast_make(AST_POINTER, strdup("*"), $2, NULL, NULL, NULL); }
+    : '*' { $$ = ast_place(ast_named(AST_POINTER, "*"), @$.first_line, @$.first_column); }
+    | '*' new_pointer { $$ = ast_place(ast_make(AST_POINTER, strdup("*"), $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 new_arrays
-    : '[' expression ']' { $$ = ast_make(AST_ARRAY, NULL, NULL, $2, NULL, NULL); }
+    : '[' expression ']' { $$ = ast_place(ast_make(AST_ARRAY, NULL, NULL, $2, NULL, NULL), @$.first_line, @$.first_column); }
     | '[' expression ']' new_arrays {
-        $$ = ast_make(AST_ARRAY, NULL, $4, $2, NULL, NULL);
+        $$ = ast_place(ast_make(AST_ARRAY, NULL, $4, $2, NULL, NULL), @$.first_line, @$.first_column);
       }
     ;
 
@@ -1196,79 +1197,79 @@ unary_operator
     ;
 
 cast_expression
-    : unary_expression { $$ = $1; }
-    | '(' type_name ')' cast_expression { $$ = ast_make(AST_CAST, NULL, $2, $4, NULL, NULL); }
+    : unary_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | '(' type_name ')' cast_expression { $$ = ast_place(ast_make(AST_CAST, NULL, $2, $4, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
 multiplicative_expression
-    : cast_expression { $$ = $1; }
-    | multiplicative_expression '*' cast_expression { $$ = ast_binary($1, "*", $3); }
-    | multiplicative_expression '/' cast_expression { $$ = ast_binary($1, "/", $3); }
-    | multiplicative_expression '%' cast_expression { $$ = ast_binary($1, "%", $3); }
+    : cast_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | multiplicative_expression '*' cast_expression { $$ = ast_place(ast_binary($1, "*", $3), @$.first_line, @$.first_column); }
+    | multiplicative_expression '/' cast_expression { $$ = ast_place(ast_binary($1, "/", $3), @$.first_line, @$.first_column); }
+    | multiplicative_expression '%' cast_expression { $$ = ast_place(ast_binary($1, "%", $3), @$.first_line, @$.first_column); }
     ;
 
 additive_expression
-    : multiplicative_expression { $$ = $1; }
-    | additive_expression '+' multiplicative_expression { $$ = ast_binary($1, "+", $3); }
-    | additive_expression '-' multiplicative_expression { $$ = ast_binary($1, "-", $3); }
+    : multiplicative_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | additive_expression '+' multiplicative_expression { $$ = ast_place(ast_binary($1, "+", $3), @$.first_line, @$.first_column); }
+    | additive_expression '-' multiplicative_expression { $$ = ast_place(ast_binary($1, "-", $3), @$.first_line, @$.first_column); }
     ;
 
 shift_expression
-    : additive_expression { $$ = $1; }
-    | shift_expression SHL additive_expression { $$ = ast_binary($1, "<<", $3); }
-    | shift_expression SHR additive_expression { $$ = ast_binary($1, ">>", $3); }
+    : additive_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | shift_expression SHL additive_expression { $$ = ast_place(ast_binary($1, "<<", $3), @$.first_line, @$.first_column); }
+    | shift_expression SHR additive_expression { $$ = ast_place(ast_binary($1, ">>", $3), @$.first_line, @$.first_column); }
     ;
 
 relational_expression
-    : shift_expression { $$ = $1; }
-    | relational_expression '<' shift_expression { $$ = ast_binary($1, "<", $3); }
-    | relational_expression '>' shift_expression { $$ = ast_binary($1, ">", $3); }
-    | relational_expression LE shift_expression { $$ = ast_binary($1, "<=", $3); }
-    | relational_expression GE shift_expression { $$ = ast_binary($1, ">=", $3); }
+    : shift_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | relational_expression '<' shift_expression { $$ = ast_place(ast_binary($1, "<", $3), @$.first_line, @$.first_column); }
+    | relational_expression '>' shift_expression { $$ = ast_place(ast_binary($1, ">", $3), @$.first_line, @$.first_column); }
+    | relational_expression LE shift_expression { $$ = ast_place(ast_binary($1, "<=", $3), @$.first_line, @$.first_column); }
+    | relational_expression GE shift_expression { $$ = ast_place(ast_binary($1, ">=", $3), @$.first_line, @$.first_column); }
     ;
 
 equality_expression
-    : relational_expression { $$ = $1; }
-    | equality_expression EQEQ relational_expression { $$ = ast_binary($1, "==", $3); }
-    | equality_expression NOTEQ relational_expression { $$ = ast_binary($1, "!=", $3); }
+    : relational_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | equality_expression EQEQ relational_expression { $$ = ast_place(ast_binary($1, "==", $3), @$.first_line, @$.first_column); }
+    | equality_expression NOTEQ relational_expression { $$ = ast_place(ast_binary($1, "!=", $3), @$.first_line, @$.first_column); }
     ;
 
 and_expression
-    : equality_expression { $$ = $1; }
-    | and_expression '&' equality_expression { $$ = ast_binary($1, "&", $3); }
+    : equality_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | and_expression '&' equality_expression { $$ = ast_place(ast_binary($1, "&", $3), @$.first_line, @$.first_column); }
     ;
 
 exclusive_or_expression
-    : and_expression { $$ = $1; }
-    | exclusive_or_expression '^' and_expression { $$ = ast_binary($1, "^", $3); }
+    : and_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | exclusive_or_expression '^' and_expression { $$ = ast_place(ast_binary($1, "^", $3), @$.first_line, @$.first_column); }
     ;
 
 inclusive_or_expression
-    : exclusive_or_expression { $$ = $1; }
-    | inclusive_or_expression '|' exclusive_or_expression { $$ = ast_binary($1, "|", $3); }
+    : exclusive_or_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | inclusive_or_expression '|' exclusive_or_expression { $$ = ast_place(ast_binary($1, "|", $3), @$.first_line, @$.first_column); }
     ;
 
 logical_and_expression
-    : inclusive_or_expression { $$ = $1; }
-    | logical_and_expression ANDAND inclusive_or_expression { $$ = ast_binary($1, "&&", $3); }
+    : inclusive_or_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | logical_and_expression ANDAND inclusive_or_expression { $$ = ast_place(ast_binary($1, "&&", $3), @$.first_line, @$.first_column); }
     ;
 
 logical_or_expression
-    : logical_and_expression { $$ = $1; }
-    | logical_or_expression OROR logical_and_expression { $$ = ast_binary($1, "||", $3); }
+    : logical_and_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | logical_or_expression OROR logical_and_expression { $$ = ast_place(ast_binary($1, "||", $3), @$.first_line, @$.first_column); }
     ;
 
 conditional_expression
-    : logical_or_expression { $$ = $1; }
+    : logical_or_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | logical_or_expression '?' expression ':' conditional_expression {
-        $$ = ast_make(AST_CONDITIONAL, NULL, $1, $3, $5, NULL);
+        $$ = ast_place(ast_make(AST_CONDITIONAL, NULL, $1, $3, $5, NULL), @$.first_line, @$.first_column);
       }
     ;
 
 assignment_expression
-    : conditional_expression { $$ = $1; }
+    : conditional_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
     | unary_expression assignment_operator assignment_expression {
-        $$ = ast_assign($1, $2, $3);
+        $$ = ast_place(ast_assign($1, $2, $3), @$.first_line, @$.first_column);
       }
     ;
 
@@ -1287,36 +1288,97 @@ assignment_operator
     ;
 
 expression
-    : assignment_expression { $$ = $1; }
-    | expression ',' assignment_expression { $$ = ast_binary($1, ",", $3); }
+    : assignment_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
+    | expression ',' assignment_expression { $$ = ast_place(ast_binary($1, ",", $3), @$.first_line, @$.first_column); }
     ;
 
 expression_opt
     : %empty { $$ = NULL; }
-    | expression { $$ = $1; }
+    | expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 constant_expression
-    : conditional_expression { $$ = $1; }
+    : conditional_expression { $$ = ast_place($1, @$.first_line, @$.first_column); }
     ;
 
 %%
+
+static int real_token(const char *name)
+{
+    if (name == NULL || name[0] == '\0')
+        return 0;
+    if (strcmp(name, "LOWER_THAN_ELSE") == 0 || strcmp(name, "LOWER_THAN_PURE") == 0
+        || strcmp(name, "NEW_BARE") == 0)
+        return 0;
+    return 1;
+}
+
+static void append_text(char **buf, size_t *length, size_t *cap, const char *text)
+{
+    size_t add;
+    char *grown;
+
+    if (text == NULL)
+        return;
+    add = strlen(text);
+    if (*length + add + 1 > *cap) {
+        size_t next = *cap == 0 ? 64 : *cap;
+        while (*length + add + 1 > next)
+            next *= 2;
+        grown = realloc(*buf, next);
+        if (grown == NULL)
+            return;
+        *buf = grown;
+        *cap = next;
+    }
+    memcpy(*buf + *length, text, add);
+    *length += add;
+    (*buf)[*length] = '\0';
+}
 
 static int
 yyreport_syntax_error(const yypcontext_t *ctx)
 {
     YYLTYPE *loc = yypcontext_location(ctx);
     yysymbol_kind_t token = yypcontext_token(ctx);
-    char message[160];
+    int count = yypcontext_expected_tokens(ctx, NULL, 0);
+    yysymbol_kind_t *expected = NULL;
+    int named = 0;
+    char *message = NULL;
+    size_t length = 0;
+    size_t cap = 0;
+    int i;
 
     if (loc != NULL)
         yylloc = *loc;
     if (token == YYSYMBOL_YYEMPTY)
-        yyerror("syntax error");
+        append_text(&message, &length, &cap, "syntax error");
     else {
-        snprintf(message, sizeof message, "syntax error, unexpected %s",
-                 yysymbol_name(token));
-        yyerror(message);
+        append_text(&message, &length, &cap, "syntax error, unexpected ");
+        append_text(&message, &length, &cap, yysymbol_name(token));
     }
+    if (count > 0) {
+        expected = calloc((size_t) count, sizeof *expected);
+        if (expected != NULL)
+            count = yypcontext_expected_tokens(ctx, expected, count);
+        else
+            count = 0;
+    } else {
+        count = 0;
+    }
+    for (i = 0; i < count; i++) {
+        const char *name = yysymbol_name(expected[i]);
+        if (!real_token(name))
+            continue;
+        if (named == 0)
+            append_text(&message, &length, &cap, ", expected ");
+        else
+            append_text(&message, &length, &cap, ", ");
+        append_text(&message, &length, &cap, name);
+        named++;
+    }
+    yyerror(message != NULL ? message : "syntax error");
+    free(message);
+    free(expected);
     return 0;
 }

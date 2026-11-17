@@ -117,6 +117,7 @@ llvm::Constant *Codegen::type_info(const Ty &ty)
 
 void Codegen::emit_throw(const AstNode *node)
 {
+    SourceNote here(focus, node);
     bool bare = node->a == NULL;
     if (bare && in_handler == 0) {
         error("bare throw is not in a handler");
@@ -157,6 +158,7 @@ void Codegen::emit_throw(const AstNode *node)
 
 void Codegen::emit_try(const AstNode *node)
 {
+    SourceNote here(focus, node);
     struct Caught {
         llvm::BasicBlock *body;
         llvm::Constant *info;

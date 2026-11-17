@@ -1,4 +1,5 @@
 #include "ast.h"
+#include "diagnostic.h"
 #include "smallcpp.tab.h"
 
 #include <stdio.h>
@@ -18,7 +19,7 @@ void yyerror(const char *message)
     int line = yylloc.first_line > 0 ? yylloc.first_line : 1;
     int column = yylloc.first_column > 0 ? yylloc.first_column : 1;
 
-    fprintf(stderr, "%s:%d:%d: %s\n", input_path, line, column, message);
+    smallcpp_diag_report(line, column, message);
     error_count++;
 }
 
@@ -811,6 +812,7 @@ int main(int argc, char **argv)
         return 2;
     }
     input_path = argv[1];
+    smallcpp_diag_load(argv[1]);
     smallcpp_ast = NULL;
     yylineno = 1;
     yycolumn = 1;

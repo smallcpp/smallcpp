@@ -10,6 +10,7 @@ ADD_FLEX_BISON_DEPENDENCY(SmallcppScanner SmallcppParser)
 
 add_library(smallcpp_parse STATIC
     ast.c
+    diagnostic.c
     ${BISON_SmallcppParser_OUTPUTS}
     ${FLEX_SmallcppScanner_OUTPUTS})
 target_include_directories(smallcpp_parse PUBLIC
