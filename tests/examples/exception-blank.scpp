@@ -2,10 +2,10 @@
 
 int main(void) {
     try {
-        exception *error;
-        error = new exception();
+        Exception *error;
+        error = new Exception();
         throw *error;
-    } catch (exception error) {
+    } catch (Exception error) {
         int shown;
         shown = 1;
         if (error.message == nullptr)

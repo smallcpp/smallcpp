@@ -1,7 +1,7 @@
 /*
  * The base exception class and the uncaught-exception path.
  *
- * exception::exception stores a const char * in the first field. The
+ * Exception::Exception stores a const char * in the first field. The
  * names match the symbols the compiler emits for those two constructors.
  * smallcpp_note_throw records the object passed to __cxa_throw. If that
  * throw is not caught, the terminate handler prints the message and a
@@ -16,10 +16,10 @@ struct Exception {
 };
 
 void exception_blank(struct Exception *self)
-    __asm__("\"exception::exception(class.exception*)\"");
+    __asm__("\"Exception::Exception(class.Exception*)\"");
 
 void exception_text(struct Exception *self, const char *text)
-    __asm__("\"exception::exception(class.exception*,i8s*)\"");
+    __asm__("\"Exception::Exception(class.Exception*,i8s*)\"");
 
 void exception_blank(struct Exception *self)
 {
@@ -62,9 +62,9 @@ static const char *noted_message(void)
 
     if (name == NULL || noted_object == NULL)
         return NULL;
-    if (strcmp(name, "class.exception") == 0)
+    if (strcmp(name, "class.Exception") == 0)
         return *(const char *const *)noted_object;
-    if (strcmp(name, "class.exception*") != 0)
+    if (strcmp(name, "class.Exception*") != 0)
         return NULL;
     object = *(struct Exception **)noted_object;
     if (object == NULL)
