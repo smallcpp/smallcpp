@@ -35,8 +35,8 @@
  * C++ syntax:
  * namespace name { ... }.
  * A qualified name uses '::'. A new-expression creates a pointer. delete
- * is a keyword and a no-op, because collection is precise, but its operand
- * is still type-checked as a pointer. nullptr and NULL are keywords for
+ * type-checks its pointer and calls the destructor. It does not deallocate.
+ * A direct call is object.~Class() or pointer->~Class(). nullptr and NULL are keywords for
  * the same null pointer constant.
  * Source files use the .scpp extension. Ordinary preprocessing is already
  * done. Semantic actions build a syntax tree. They do not generate code.
@@ -255,6 +255,25 @@ static struct AstNode *ctor_spelling(char *spelling, struct AstNode *params,
 static struct AstNode *make_dtor(struct AstNode *name, struct AstNode *body)
 {
     return ast_make(AST_DESTRUCTOR, steal_text(name), body, NULL, NULL, NULL);
+}
+
+static struct AstNode *dtor_call(struct AstNode *object, struct AstNode *name, int arrow)
+{
+    char *spelling = steal_text(name);
+    char *label = NULL;
+    size_t length = spelling == NULL ? 0 : strlen(spelling);
+
+    if (spelling != NULL) {
+        label = malloc(length + 2);
+        if (label != NULL) {
+            label[0] = '~';
+            memcpy(label + 1, spelling, length + 1);
+        }
+        free(spelling);
+    }
+    return ast_make(AST_CALL, NULL,
+                    ast_make(arrow ? AST_ARROW : AST_MEMBER, label, object, NULL, NULL, NULL),
+                    NULL, NULL, NULL);
 }
 
 static struct AstNode *make_mem_init(struct AstNode *name, struct AstNode *args)
@@ -1063,7 +1082,9 @@ postfix_expression
         $$ = ast_make(AST_CALL, NULL, $1, $3, NULL, NULL);
       }
     | postfix_expression '.' IDENTIFIER { $$ = ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL); }
+    | postfix_expression '.' '~' name '(' ')' { $$ = dtor_call($1, $4, 0); }
     | postfix_expression ARROW IDENTIFIER { $$ = ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL); }
+    | postfix_expression ARROW '~' name '(' ')' { $$ = dtor_call($1, $4, 1); }
     | postfix_expression INC { $$ = ast_unary("post++", $1); }
     | postfix_expression DEC { $$ = ast_unary("post--", $1); }
     ;

@@ -116,6 +116,9 @@ add_exec_status(empty-list empty-list 1)
 add_exec_status(exec-catch exec-catch 7)
 add_exec_status(exec-catch-all exec-catch-all 6)
 add_exec_status(exec-rethrow exec-rethrow 4)
+add_exec_status(exec-dtor-call exec-dtor-call 4)
+add_exec_status(exec-delete-dtor exec-delete-dtor 5)
+add_exec_status(exec-collect-dtor exec-collect-dtor 8)
 
 add_test(
     NAME exec_exec-print-two

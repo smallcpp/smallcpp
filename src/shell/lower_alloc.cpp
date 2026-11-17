@@ -152,8 +152,77 @@ RValue Codegen::emit_new(const AstNode *node)
         error("the type has no constructor");
         return fallback();
     }
+    if (!failed && bounds.empty())
+        bind_destructor(result, object);
     RValue out;
     out.ty = pointer_to(object);
     out.v = result;
     return out;
+}
+
+llvm::Function *Codegen::set_dtor_fn()
+{
+    auto *ptr = llvm::PointerType::get(context, 0);
+    auto *type = llvm::FunctionType::get(llvm::Type::getVoidTy(context), {ptr, ptr}, false);
+    return declare_runtime("smallcpp_set_dtor", type);
+}
+
+llvm::Function *Codegen::dtor_done_fn()
+{
+    auto *ptr = llvm::PointerType::get(context, 0);
+    auto *type = llvm::FunctionType::get(llvm::Type::getVoidTy(context), {ptr}, false);
+    return declare_runtime("smallcpp_dtor_done", type);
+}
+
+Func *Codegen::destructor_of(const Ty &ty)
+{
+    if (!class_type(ty))
+        return NULL;
+    auto found = records.find(ty.record);
+    if (found == records.end())
+        return NULL;
+    std::string plain = source_name(found->second);
+    auto pos = plain.rfind("::");
+    std::string last = pos == std::string::npos ? plain : plain.substr(pos + 2);
+    std::string ir_name = plain + "::~" + last;
+    auto over = overloads.find(ir_name);
+    if (over == overloads.end())
+        return NULL;
+    for (Func &fn : over->second) {
+        if (fn.is_dtor && fn.fn != NULL)
+            return &fn;
+    }
+    return NULL;
+}
+
+void Codegen::bind_destructor(llvm::Value *object, const Ty &ty)
+{
+    Func *dtor = destructor_of(ty);
+    if (object == NULL || dtor == NULL || dtor->fn == NULL)
+        return;
+    llvm::Function *set = set_dtor_fn();
+    builder.CreateCall(set->getFunctionType(), set, {object, dtor->fn});
+}
+
+void Codegen::emit_delete(const AstNode *node)
+{
+    RValue ptr = emit_rvalue(node->a);
+    if (failed)
+        return;
+    if (!ptr.ty.is_pointer || ptr.ty.inner == NULL) {
+        error("delete operand is not a pointer");
+        return;
+    }
+    Func *dtor = destructor_of(*ptr.ty.inner);
+    if (dtor == NULL || dtor->fn == NULL || ptr.v == NULL)
+        return;
+    auto *null = llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
+    llvm::BasicBlock *call_bb = new_block("delete.dtor");
+    llvm::BasicBlock *done_bb = new_block("delete.done");
+    llvm::Value *skip = builder.CreateICmpEQ(ptr.v, null, "delete.null");
+    builder.CreateCondBr(skip, done_bb, call_bb);
+    builder.SetInsertPoint(call_bb);
+    builder.CreateCall(dtor->fn->getFunctionType(), dtor->fn, {ptr.v});
+    builder.CreateBr(done_bb);
+    builder.SetInsertPoint(done_bb);
 }

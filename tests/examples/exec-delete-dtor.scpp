@@ -1,0 +1,21 @@
+int hits;
+
+class Box {
+public:
+    ~Box() {
+        hits = hits + 1;
+    }
+};
+
+int answer(void) {
+    Box *p;
+    int *q;
+    p = new Box;
+    delete p;
+    if (hits != 1)
+        return 2;
+    p = nullptr;
+    q = nullptr;
+    q = new int;
+    return hits == 1 ? 5 : hits;
+}
