@@ -1,0 +1,3 @@
+#define FOO BAR
+#define BAR FOO
+FOO

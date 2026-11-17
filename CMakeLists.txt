@@ -33,6 +33,16 @@ if(NOT LLVM_ENABLE_RTTI)
     target_compile_options(smallcpp_cli PUBLIC -fno-rtti)
 endif()
 
+add_executable(preproc
+    src/preproc/main.cpp
+    src/preproc/process.cpp)
+target_link_libraries(preproc PRIVATE smallcpp_cli)
+target_compile_features(preproc PRIVATE cxx_std_17)
+if(NOT LLVM_ENABLE_RTTI)
+    target_compile_options(preproc PRIVATE -fno-rtti)
+endif()
+target_compile_definitions(preproc PRIVATE "SMALLCPP_VERSION=\"0.1\"")
+
 add_executable(scpp
     src/shell/main.cpp
     src/shell/codegen.cpp
