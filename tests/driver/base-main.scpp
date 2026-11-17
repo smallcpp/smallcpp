@@ -1,0 +1,5 @@
+extern int scpp_base_value(void);
+
+int main(void) {
+    return scpp_base_value();
+}

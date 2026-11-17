@@ -41,6 +41,7 @@ endif()
 
 execute_process(
     COMMAND "${SCPP}" ${phase_args} "${SOURCE}"
+    WORKING_DIRECTORY "${WORK}"
     RESULT_VARIABLE status
     OUTPUT_VARIABLE shown_out
     ERROR_VARIABLE shown_err)

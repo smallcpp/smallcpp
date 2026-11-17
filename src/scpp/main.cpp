@@ -499,7 +499,16 @@ int main(int argc, char **argv)
         return usage_error(command_line, "one output file cannot hold several translation units");
 
     std::vector<Unit> units;
-    if (per_input) {
+    if (stop == Stop::Link) {
+        for (const std::string &input : inputs) {
+            Unit unit;
+            unit.input = input;
+            const std::string base = base_name(input);
+            unit.preprocessed = base + ".i";
+            unit.product = base + ".o";
+            units.push_back(unit);
+        }
+    } else if (per_input) {
         for (const std::string &input : inputs) {
             Unit unit;
             unit.input = input;
@@ -515,25 +524,13 @@ int main(int argc, char **argv)
     } else if (inputs.size() == 1) {
         Unit unit;
         unit.input = inputs[0];
-        if (stop == Stop::Preprocess) {
+        if (stop == Stop::Preprocess)
             unit.product = output;
-        } else if (stop == Stop::Link) {
-            unit.preprocessed = output + ".i";
-            unit.product = output + ".o";
-        } else {
+        else {
             unit.preprocessed = output + ".i";
             unit.product = output;
         }
         units.push_back(unit);
-    } else {
-        for (std::size_t index = 0; index < inputs.size(); ++index) {
-            Unit unit;
-            unit.input = inputs[index];
-            const std::string stem = output + "." + std::to_string(index);
-            unit.preprocessed = stem + ".i";
-            unit.product = stem + ".o";
-            units.push_back(unit);
-        }
     }
 
     const std::string preproc = tool_path("SMALLCPP_PREPROC", SMALLCPP_PREPROC);
