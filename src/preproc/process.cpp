@@ -518,7 +518,7 @@ private:
             try {
                 macro.body = replacement_tokens(text.substr(eq + 1));
             } catch (const std::runtime_error &) {
-                fail(request_.input, 1, 1, "invalid environment macro: " + name);
+                continue;
             }
             define_macro(std::move(macro), site);
         }

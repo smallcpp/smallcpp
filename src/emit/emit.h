@@ -11,11 +11,14 @@ extern "C" {
 
 #include "ast.h"
 
-/* A path ending in .bc is bitcode. Returns 0 on success. */
+/* Write LLVM bitcode. Returns 0 on success. */
 int smallcpp_emit_bitcode(const AstNode *root, const char *path);
 
-/* Any other path is an executable linked with the runtime. Returns 0 on success. */
-int smallcpp_emit_executable(const AstNode *root, const char *path);
+/* Write a native object and do not link. Returns 0 on success. */
+int smallcpp_emit_object(const AstNode *root, const char *path);
+
+/* Link an executable with the runtime. debug is nonzero to pass -g to Clang. */
+int smallcpp_emit_executable(const AstNode *root, const char *path, int debug);
 
 #ifdef __cplusplus
 }

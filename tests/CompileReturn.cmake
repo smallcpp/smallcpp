@@ -4,7 +4,7 @@ if(NOT DEFINED COMPILER OR NOT DEFINED VERIFY OR NOT DEFINED SOURCE
 endif()
 
 execute_process(
-    COMMAND "${COMPILER}" "${SOURCE}" "${BITCODE}"
+    COMMAND "${COMPILER}" --emit-llvm "${SOURCE}" "${BITCODE}"
     RESULT_VARIABLE compile_status)
 if(NOT compile_status EQUAL 0)
     message(FATAL_ERROR "scpp did not write a verified module")

@@ -266,6 +266,149 @@ add_test(
         -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/return-zero-both.bc
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectAst.cmake)
 
+set(phase_include ${CMAKE_CURRENT_SOURCE_DIR}/driver/inc)
+add_test(
+    NAME phase_emit_llvm
+    COMMAND ${CMAKE_COMMAND}
+        -DSCPP=$<TARGET_FILE:scpp>
+        -DPREPROC=$<TARGET_FILE:preproc>
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DCLANG=${SMALLCPP_CLANGXX}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/driver/use-define.scpp
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/phase-emit.ll
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/phase-emit
+        -DLOG=${CMAKE_CURRENT_BINARY_DIR}/phase-emit.log
+        -DPHASE_ARGS=-DFOO=0|-I${phase_include}|-i|-g|-L${phase_include}|--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-emit.ll
+        -DPREPROC_HAS=-D|FOO=0|-I|${phase_include}|-i
+        -DPREPROC_LACKS=-g|-L|--emit-llvm|-c|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-emit.ll
+        -DCC_HAS=-g|--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-emit.ll
+        -DCC_LACKS=-D|-I|-i|-L|-c|FOO=0|${phase_include}
+        -DCLANG_ABSENT=1
+        -DMAGIC=bc
+        -DKEEP_I=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
+add_test(
+    NAME phase_object
+    COMMAND ${CMAKE_COMMAND}
+        -DSCPP=$<TARGET_FILE:scpp>
+        -DPREPROC=$<TARGET_FILE:preproc>
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DCLANG=${SMALLCPP_CLANGXX}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/phase-object.o
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/phase-object
+        -DLOG=${CMAKE_CURRENT_BINARY_DIR}/phase-object.log
+        -DPHASE_ARGS=-g|-c|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-object.o
+        -DPREPROC_LACKS=-g|-c|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-object.o|-L|--emit-llvm
+        -DCC_HAS=-g|-c|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-object.o
+        -DCC_LACKS=-L|--emit-llvm|-D|-I|-i
+        -DCLANG_ABSENT=1
+        -DMAGIC=elf
+        -DKEEP_I=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
+add_test(
+    NAME phase_link
+    COMMAND ${CMAKE_COMMAND}
+        -DSCPP=$<TARGET_FILE:scpp>
+        -DPREPROC=$<TARGET_FILE:preproc>
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DCLANG=${SMALLCPP_CLANGXX}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/phase-link
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/phase-link-work
+        -DLOG=${CMAKE_CURRENT_BINARY_DIR}/phase-link.log
+        -DPHASE_ARGS=-DNAME=1|-I${phase_include}|-g|-L${phase_include}|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-link
+        -DPREPROC_HAS=-D|NAME=1|-I|${phase_include}
+        -DPREPROC_LACKS=-g|-L|-c|--emit-llvm|-o|-i|${CMAKE_CURRENT_BINARY_DIR}/phase-link
+        -DCC_HAS=-g|-c|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-link.o
+        -DCC_LACKS=-D|-I|-L|--emit-llvm|-i|NAME=1|${CMAKE_CURRENT_BINARY_DIR}/phase-link
+        -DCLANG_HAS=-g|-L|${phase_include}|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-link
+        -DCLANG_LACKS=-D|-I|-c|--emit-llvm|-i|NAME=1
+        -DMAGIC=elf
+        -DKEEP_I=1
+        -DKEEP_O=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
+add_test(
+    NAME phase_ignore_short
+    COMMAND ${CMAKE_COMMAND}
+        -DSCPP=$<TARGET_FILE:scpp>
+        -DPREPROC=$<TARGET_FILE:preproc>
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DCLANG=${SMALLCPP_CLANGXX}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/driver/env-ident.scpp
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/phase-ignore.ll
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/phase-ignore
+        -DLOG=${CMAKE_CURRENT_BINARY_DIR}/phase-ignore.log
+        -DPPENV=0
+        -DEXPECT_STATUS=1
+        -DNEEDLE=PPENV
+        "-DABSENT=unknown option"
+        -DPHASE_ARGS=-i|--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-ignore.ll
+        -DPREPROC_HAS=-i
+        -DPREPROC_LACKS=--ignore-environment|-g|-L|-c|--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-ignore.ll
+        -DCC_HAS=--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-ignore.ll
+        -DCC_LACKS=-i|--ignore-environment|-D|-I|-L|-g
+        -DCLANG_ABSENT=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
+add_test(
+    NAME phase_ignore_long
+    COMMAND ${CMAKE_COMMAND}
+        -DSCPP=$<TARGET_FILE:scpp>
+        -DPREPROC=$<TARGET_FILE:preproc>
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DCLANG=${SMALLCPP_CLANGXX}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/driver/env-ident.scpp
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/phase-ignore-long.ll
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/phase-ignore-long
+        -DLOG=${CMAKE_CURRENT_BINARY_DIR}/phase-ignore-long.log
+        -DPPENV=0
+        -DEXPECT_STATUS=1
+        -DNEEDLE=PPENV
+        "-DABSENT=unknown option"
+        -DPHASE_ARGS=--ignore-environment|--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-ignore-long.ll
+        -DPREPROC_HAS=--ignore-environment
+        -DPREPROC_LACKS=-i|-g|-L|-c|--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-ignore-long.ll
+        -DCC_HAS=--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-ignore-long.ll
+        -DCC_LACKS=-i|--ignore-environment|-D|-I|-L|-g
+        -DCLANG_ABSENT=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
+add_test(
+    NAME phase_import_env
+    COMMAND ${CMAKE_COMMAND}
+        -DSCPP=$<TARGET_FILE:scpp>
+        -DPREPROC=$<TARGET_FILE:preproc>
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DCLANG=${SMALLCPP_CLANGXX}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/driver/env-ident.scpp
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/phase-import.ll
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/phase-import
+        -DLOG=${CMAKE_CURRENT_BINARY_DIR}/phase-import.log
+        -DPPENV=0
+        -DPHASE_ARGS=--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-import.ll
+        -DPREPROC_LACKS=-i|--ignore-environment|-g|-L|-c|--emit-llvm
+        -DCC_HAS=--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-import.ll
+        -DCC_LACKS=-i|--ignore-environment|-D|-I|-L|-g
+        -DCLANG_ABSENT=1
+        -DMAGIC=bc
+        -DKEEP_I=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
+add_test(
+    NAME phase_conflict
+    COMMAND ${CMAKE_COMMAND}
+        -DSCPP=$<TARGET_FILE:scpp>
+        -DPREPROC=$<TARGET_FILE:preproc>
+        -DCC=$<TARGET_FILE:scpp_cc>
+        -DCLANG=${SMALLCPP_CLANGXX}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/phase-conflict.o
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/phase-conflict
+        -DLOG=${CMAKE_CURRENT_BINARY_DIR}/phase-conflict.log
+        -DEXPECT_STATUS=2
+        -DNEEDLE=cannot be combined
+        -DPHASE_ARGS=-c|--emit-llvm|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-conflict.o
+        -DNO_PHASES=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
+
 add_test(
     NAME build_test_programs
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}

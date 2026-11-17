@@ -87,7 +87,7 @@ endif()
 target_compile_definitions(scpp_cc PRIVATE "SMALLCPP_VERSION=\"0.1\"")
 add_dependencies(scpp_cc smallcpp_runtime)
 
-add_executable(scpp src/shell/main.cpp)
+add_executable(scpp src/scpp/main.cpp)
 target_link_libraries(scpp PRIVATE smallcpp_cli)
 target_compile_features(scpp PRIVATE cxx_std_17)
 if(NOT LLVM_ENABLE_RTTI)
@@ -95,7 +95,10 @@ if(NOT LLVM_ENABLE_RTTI)
 endif()
 target_compile_definitions(scpp PRIVATE
     "SMALLCPP_VERSION=\"0.1\""
-    "SMALLCPP_CC=\"$<TARGET_FILE:scpp_cc>\"")
-add_dependencies(scpp scpp_cc)
+    "SMALLCPP_PREPROC=\"$<TARGET_FILE:preproc>\""
+    "SMALLCPP_CC=\"$<TARGET_FILE:scpp_cc>\""
+    "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
+    "SMALLCPP_RUNTIME=\"$<TARGET_FILE:smallcpp_runtime>\"")
+add_dependencies(scpp preproc scpp_cc smallcpp_runtime)
 
 add_subdirectory(tests)
