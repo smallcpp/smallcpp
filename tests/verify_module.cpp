@@ -1356,6 +1356,80 @@ static int check_nullptr(llvm::Module &module)
     return 0;
 }
 
+static llvm::Function *personality(llvm::Module &module)
+{
+    llvm::Function *fn = module.getFunction("__gxx_personality_v0");
+    if (fn == NULL || !fn->isDeclaration())
+        return NULL;
+    return fn;
+}
+
+static int check_throw(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *target = module.getFunction("__cxa_throw");
+    bool saw = false;
+    bool dead = false;
+
+    if (fn == NULL || personality(module) == NULL)
+        return fail("throw-value", "the personality is not declared");
+    if (target == NULL || !target->isDeclaration())
+        return fail("throw-value", "throw has no runtime declaration");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (call != NULL && call->getCalledFunction() == target) {
+            saw = call->arg_size() == 1 && const_eq(call->getArgOperand(0), 1);
+        }
+        if (llvm::isa<llvm::UnreachableInst>(inst))
+            dead = true;
+    }
+    if (!saw)
+        return fail("throw-value", "throw does not pass the value");
+    if (!dead)
+        return fail("throw-value", "throw returns");
+    return 0;
+}
+
+static int check_rethrow(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *target = module.getFunction("__cxa_rethrow");
+
+    if (fn == NULL || target == NULL || !target->isDeclaration())
+        return fail("rethrow", "bare throw has no runtime declaration");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (call != NULL && call->getCalledFunction() == target)
+            return 0;
+    }
+    return fail("rethrow", "bare throw was not emitted");
+}
+
+static int check_handler(const char *mode, llvm::Module &module, bool catch_all)
+{
+    llvm::Function *fn = answer(module);
+    bool invoke = false;
+    bool pad = false;
+
+    if (fn == NULL || fn->getPersonalityFn() != personality(module))
+        return fail(mode, "the personality is not the runtime function");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        if (llvm::isa<llvm::InvokeInst>(inst))
+            invoke = true;
+        auto *landing = llvm::dyn_cast<llvm::LandingPadInst>(&inst);
+        if (landing == NULL)
+            continue;
+        for (unsigned i = 0; i < landing->getNumClauses(); i++) {
+            bool null_clause = llvm::isa<llvm::ConstantPointerNull>(landing->getClause(i));
+            if (null_clause == catch_all)
+                pad = true;
+        }
+    }
+    if (!invoke || !pad)
+        return fail(mode, "the try is not an invoke and a landing pad");
+    return 0;
+}
+
 static int check_namespace_fn(llvm::Module &module)
 {
     llvm::Function *level = module.getFunction("audio::level");
@@ -1612,6 +1686,14 @@ int main(int argc, char **argv)
         return check_delete(*module);
     if (strcmp(mode, "nullptr") == 0)
         return check_nullptr(*module);
+    if (strcmp(mode, "throw-value") == 0)
+        return check_throw(*module);
+    if (strcmp(mode, "rethrow") == 0)
+        return check_rethrow(*module);
+    if (strcmp(mode, "catch-typed") == 0)
+        return check_handler("catch-typed", *module, false);
+    if (strcmp(mode, "catch-all-handler") == 0)
+        return check_handler("catch-all-handler", *module, true);
 
     fprintf(stderr, "unknown mode %s\n", mode);
     return 2;
