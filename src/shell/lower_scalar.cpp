@@ -2673,8 +2673,10 @@ void Codegen::emit_return(const AstNode *node)
             if (!failed && !value.ty.is_void)
                 error("void function returns a value");
         }
-        if (!failed && !terminated())
+        if (!failed && !terminated()) {
+            close_open_catches();
             builder.CreateRetVoid();
+        }
         return;
     }
     if (node->a == NULL) {
@@ -2682,8 +2684,10 @@ void Codegen::emit_return(const AstNode *node)
         return;
     }
     RValue value = cast_to(emit_rvalue(node->a), ret_ty);
-    if (!failed && !terminated())
+    if (!failed && !terminated()) {
+        close_open_catches();
         builder.CreateRet(value.v);
+    }
 }
 
 const AstNode *Codegen::scalar_declarator(const AstNode *node, const AstNode *&init)
@@ -2861,6 +2865,7 @@ void Codegen::emit_body(Func &fn)
     switches.clear();
     handlers.clear();
     in_handler = 0;
+    catch_open.clear();
     std::vector<std::string> saved_ns = ns_stack;
     const std::vector<LookupScope> *saved_lookup = active_lookup;
     std::string saved_class = method_class;

@@ -1368,7 +1368,8 @@ static int check_throw(llvm::Module &module)
 {
     llvm::Function *fn = answer(module);
     llvm::Function *target = module.getFunction("__cxa_throw");
-    bool saw = false;
+    bool stored = false;
+    bool threw = false;
     bool dead = false;
 
     if (fn == NULL || personality(module) == NULL)
@@ -1376,14 +1377,16 @@ static int check_throw(llvm::Module &module)
     if (target == NULL || !target->isDeclaration())
         return fail("throw-value", "throw has no runtime declaration");
     for (llvm::Instruction &inst : llvm::instructions(*fn)) {
-        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
-        if (call != NULL && call->getCalledFunction() == target) {
-            saw = call->arg_size() == 1 && const_eq(call->getArgOperand(0), 1);
-        }
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 1))
+            stored = true;
+        auto *call = llvm::dyn_cast<llvm::CallBase>(&inst);
+        if (call != NULL && call->getCalledFunction() == target)
+            threw = true;
         if (llvm::isa<llvm::UnreachableInst>(inst))
             dead = true;
     }
-    if (!saw)
+    if (!stored || !threw)
         return fail("throw-value", "throw does not pass the value");
     if (!dead)
         return fail("throw-value", "throw returns");
