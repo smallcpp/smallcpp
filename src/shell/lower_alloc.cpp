@@ -1,0 +1,159 @@
+/*
+ * new and the allocation safepoint.
+ */
+#include "lower.hpp"
+
+Ty Codegen::null_ty()
+{
+    Ty ty = pointer_to(int_ty());
+    ty.is_null = true;
+    return ty;
+}
+
+llvm::Function *Codegen::allocator()
+{
+    llvm::Function *fn = module.getFunction("smallcpp_alloc");
+    if (fn != NULL)
+        return fn;
+    auto *ptr = llvm::PointerType::get(context, 0);
+    auto *i64 = llvm::Type::getInt64Ty(context);
+    auto *type = llvm::FunctionType::get(ptr, {i64, i64}, false);
+    return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage, "smallcpp_alloc", module);
+}
+
+Ty Codegen::new_element(const AstNode *node, std::vector<const AstNode *> &bounds)
+{
+    if (node == NULL) {
+        error("new has no type");
+        return int_ty();
+    }
+    if (node->kind == AST_ARRAY) {
+        bounds.push_back(node->b);
+        return new_element(node->a, bounds);
+    }
+    if (node->kind == AST_POINTER)
+        return pointer_to(new_element(node->a != NULL ? node->a : node->b, bounds));
+    if (node->kind == AST_SPECIFIER || node->kind == AST_STRUCT || node->kind == AST_UNION
+        || node->kind == AST_ENUM || node->kind == AST_CLASS || node->kind == AST_TYPE_NAME)
+        return parse_specs(node, Where::Param);
+    if (node->kind == AST_IDENT) {
+        std::optional<Ty> alias = lookup_alias(node->text);
+        if (!alias) {
+            error_name("unknown type", node->text);
+            return int_ty();
+        }
+        return *alias;
+    }
+    error("new has no type");
+    return int_ty();
+}
+
+std::vector<llvm::Value *> Codegen::live_pointers()
+{
+    std::vector<llvm::Value *> live;
+    if (function == NULL)
+        return live;
+    for (llvm::Argument &arg : function->args()) {
+        if (arg.getType()->isPointerTy())
+            live.push_back(&arg);
+    }
+    for (std::size_t i = 1; i < scopes.size(); i++) {
+        for (const auto &item : scopes[i]) {
+            if (item.second.ty.is_pointer && item.second.addr != NULL)
+                live.push_back(item.second.addr);
+        }
+    }
+    return live;
+}
+
+llvm::Value *Codegen::allocate(llvm::Value *bytes, llvm::Value *count)
+{
+    if (function != NULL && !function->hasGC())
+        function->setGC("statepoint-example");
+    std::vector<llvm::Value *> live = live_pointers();
+    llvm::CallInst *state = builder.CreateGCStatepointCall(
+        0, 0, allocator(), {bytes, count}, std::nullopt, live, "safepoint");
+    auto *ptr = llvm::PointerType::get(context, 0);
+    llvm::Value *result = builder.CreateGCResult(state, ptr, "allocated");
+    std::vector<llvm::Value *> mapped = live;
+    mapped.push_back(result);
+    llvm::Function *stackmap = llvm::Intrinsic::getOrInsertDeclaration(
+        &module, llvm::Intrinsic::experimental_stackmap);
+    std::vector<llvm::Value *> args;
+    args.push_back(llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0));
+    args.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0));
+    args.insert(args.end(), mapped.begin(), mapped.end());
+    builder.CreateCall(stackmap, args);
+    return result;
+}
+
+RValue Codegen::emit_new(const AstNode *node)
+{
+    std::vector<const AstNode *> bounds;
+    const AstNode *allocated = node->a;
+    if (allocated != NULL && allocated->kind == AST_POINTER)
+        allocated = allocated->a;
+    Ty elem = new_element(allocated, bounds);
+    if (failed)
+        return fallback();
+    if (elem.is_void || !complete_type(elem.is_array ? *elem.inner : elem)) {
+        error("incomplete type");
+        return fallback();
+    }
+    Ty object = elem.is_array ? *elem.inner : elem;
+    auto *i64 = llvm::Type::getInt64Ty(context);
+    uint64_t bytes = module.getDataLayout().getTypeAllocSize(object.ir).getFixedValue();
+    llvm::Value *count = llvm::ConstantInt::get(i64, 1);
+    for (const AstNode *bound : bounds) {
+        RValue value = emit_rvalue(bound);
+        if (failed)
+            return fallback();
+        if (!is_integer(value.ty)) {
+            error("array bound is not an integer");
+            return fallback();
+        }
+        llvm::Value *wide = convert(value.v, value.ty, integer(64, true, 4));
+        count = builder.CreateMul(count, wide);
+    }
+    llvm::Value *result = allocate(llvm::ConstantInt::get(i64, bytes), count);
+    if (class_type(object)) {
+        std::string plain = source_name(records[object.record]);
+        auto pos = plain.rfind("::");
+        std::string last = pos == std::string::npos ? plain : plain.substr(pos + 2);
+        std::string ir_name = plain + "::" + last;
+        if (overloads.count(ir_name) != 0) {
+            std::vector<RValue> args;
+            for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
+                args.push_back(emit_rvalue(arg));
+            if (failed)
+                return fallback();
+            std::vector<Ty> types;
+            types.push_back(pointer_to(object));
+            for (const RValue &arg : args)
+                types.push_back(arg.ty);
+            Func *ctor = resolve_keys({ir_name}, types, last.c_str());
+            if (ctor == NULL)
+                return fallback();
+            std::vector<llvm::Value *> values;
+            values.push_back(result);
+            unsigned user = static_cast<unsigned>(ctor->params.size() - 1);
+            unsigned provided = static_cast<unsigned>(args.size());
+            unsigned limit = provided < user ? provided : user;
+            for (unsigned i = 0; i < limit; i++)
+                values.push_back(convert(args[i].v, args[i].ty, ctor->params[i + 1]));
+            for (unsigned i = limit; i < user; i++)
+                values.push_back(ctor->defaults[i + 1]);
+            builder.CreateCall(ctor->fn->getFunctionType(), ctor->fn, values);
+        } else if (node->b != NULL) {
+            error("no matching constructor");
+            return fallback();
+        }
+    } else if (node->b != NULL) {
+        error("the type has no constructor");
+        return fallback();
+    }
+    RValue out;
+    out.ty = pointer_to(object);
+    out.v = result;
+    return out;
+}
