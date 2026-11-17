@@ -37,5 +37,5 @@ int answer(void) {
     left = object;
     right = object;
     left->set(5);
-    return right->get();
+    { int shown; shown = (int)(right->get()); print("{:s} {}\n", "exec-virtual-base", shown); return shown; }
 }

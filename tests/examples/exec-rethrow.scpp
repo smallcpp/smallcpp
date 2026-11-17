@@ -6,7 +6,7 @@ int answer(void) {
             throw;
         }
     } catch (int error) {
-        return error;
+        { int shown; shown = (int)(error); print("{:s} {}\n", "exec-rethrow", shown); return shown; }
     }
-    return 0;
+    { int shown; shown = (int)(0); print("{:s} {}\n", "exec-rethrow", shown); return shown; }
 }

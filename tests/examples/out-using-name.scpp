@@ -1,0 +1,11 @@
+namespace audio {
+    int gain(int n) {
+        return n + 1;
+    }
+}
+
+using audio::gain;
+
+int answer(void) {
+    { int shown; shown = (int)(gain(1)); print("{:s} {}\n", "using-name", shown); return shown; }
+}

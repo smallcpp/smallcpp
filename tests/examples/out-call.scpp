@@ -1,0 +1,7 @@
+int inc(int n) {
+    return n + 1;
+}
+
+int answer(void) {
+    { int shown; shown = (int)(inc(1)); print("{:s} {}\n", "call", shown); return shown; }
+}

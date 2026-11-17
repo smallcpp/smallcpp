@@ -11,5 +11,5 @@ public:
 int answer(void) {
     Point *p;
     p = new Point(6);
-    return p->read();
+    { int shown; shown = (int)(p->read()); print("{:s} {}\n", "exec-method", shown); return shown; }
 }

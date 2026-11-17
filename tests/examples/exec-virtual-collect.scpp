@@ -18,9 +18,9 @@ int answer(void) {
     int *q;
     p = new Derived();
     if (hits != 0)
-        return 2;
+        { int shown; shown = (int)(2); print("{:s} {}\n", "exec-virtual-collect", shown); return shown; }
     p = nullptr;
     q = nullptr;
     q = new int;
-    return hits == 1 ? 9 : hits;
+    { int shown; shown = (int)(hits == 1 ? 9 : hits); print("{:s} {}\n", "exec-virtual-collect", shown); return shown; }
 }

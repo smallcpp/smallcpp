@@ -2,5 +2,5 @@ int answer(void) {
     int n;
     n = 3;
     n ^= 1;
-    return n;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "exec-xor-assign", shown); return shown; }
 }

@@ -1,0 +1,5 @@
+int answer(void) {
+    int values[3];
+    values[1] = 4;
+    { int shown; shown = (int)(values[1]); print("{:s} {}\n", "array", shown); return shown; }
+}

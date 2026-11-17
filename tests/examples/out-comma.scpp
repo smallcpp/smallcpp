@@ -1,0 +1,3 @@
+int answer(void) {
+    { int shown; shown = (int)((1, 2)); print("{:s} {}\n", "comma", shown); return shown; }
+}

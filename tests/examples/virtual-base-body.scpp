@@ -1,0 +1,23 @@
+class Base {
+public:
+    Base() {
+    }
+    virtual int id(void) {
+        return 4;
+    }
+};
+
+class Derived : public Base {
+public:
+    Derived() : Base() {
+    }
+};
+
+int answer(void) {
+    Derived *d;
+    Base *b;
+    d = new Derived();
+    b = d;
+    print("virtual-base-body {} {}\n", d->id(), b->id());
+    return 0;
+}

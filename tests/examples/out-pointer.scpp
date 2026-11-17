@@ -1,0 +1,7 @@
+int answer(void) {
+    int n;
+    int *p;
+    n = 5;
+    p = &n;
+    { int shown; shown = (int)(*p); print("{:s} {}\n", "pointer", shown); return shown; }
+}

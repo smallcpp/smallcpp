@@ -1,0 +1,7 @@
+int add(int n, int k = 3) {
+    return n + k;
+}
+
+int answer(void) {
+    { int shown; shown = (int)(add(4)); print("{:s} {}\n", "default-call", shown); return shown; }
+}

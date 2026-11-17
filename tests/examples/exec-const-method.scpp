@@ -11,5 +11,5 @@ public:
 int answer(void) {
     Box *b;
     b = new Box(8);
-    return b->read();
+    { int shown; shown = (int)(b->read()); print("{:s} {}\n", "exec-const-method", shown); return shown; }
 }

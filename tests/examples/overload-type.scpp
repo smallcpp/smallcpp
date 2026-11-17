@@ -1,0 +1,14 @@
+int id(int n) {
+    return n + 1;
+}
+
+int id(double n) {
+    if (n > 1.0 && n < 2.0)
+        return 8;
+    return 0;
+}
+
+int answer(void) {
+    print("overload-type {} {}\n", id(2), id(1.5));
+    return 0;
+}

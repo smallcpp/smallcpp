@@ -1,0 +1,16 @@
+class Box {
+public:
+    int value;
+    Box() : value(4) {
+    }
+    int read(void) {
+        return this->value;
+    }
+};
+
+int answer(void) {
+    Box *box;
+    box = new Box();
+    print("this-field {}\n", box->read());
+    return 0;
+}

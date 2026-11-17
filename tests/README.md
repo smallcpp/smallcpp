@@ -8,4 +8,4 @@
 
 `run_return`, `run_print`, and `run_format` ask `scpp` for an executable and run it. `run_return` must exit 0. `run_print` must write `count is 1` and a newline. `run_format` must exit 0.
 
-`exec_*` runs one short program and checks its exit status, or the text it prints. `diag_*` feeds `scpp` a bad snippet. The compiler must exit non-zero, and the diagnostic must name the problem. `diag_bad-recover` requires the syntax error twice.
+`exec_*` runs one short program. The program prints one line, and the test checks that line and the exit status. `diag_*` feeds `scpp` a bad snippet. The compiler must exit non-zero, and the diagnostic must name the problem. `diag_bad-recover` requires the syntax error twice.

@@ -1,0 +1,22 @@
+class Base {
+public:
+    int value;
+    Base() : value(4) {
+    }
+};
+
+class Derived : public Base {
+public:
+    Derived() : Base() {
+    }
+    int read(void) {
+        return value;
+    }
+};
+
+int answer(void) {
+    Derived *d;
+    d = new Derived();
+    print("inherit-field {}\n", d->read());
+    return 0;
+}

@@ -8,5 +8,5 @@ int answer(void) {
             continue;
         t = t + i;
     }
-    return t;
+    { int shown; shown = (int)(t); print("{:s} {}\n", "exec-continue", shown); return shown; }
 }

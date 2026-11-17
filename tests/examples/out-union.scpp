@@ -1,0 +1,10 @@
+union Num {
+    int i;
+    float f;
+};
+
+int answer(void) {
+    union Num n;
+    n.i = 3;
+    { int shown; shown = (int)(n.i); print("{:s} {}\n", "union", shown); return shown; }
+}

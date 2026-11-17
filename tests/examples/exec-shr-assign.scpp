@@ -2,5 +2,5 @@ int answer(void) {
     int n;
     n = 16;
     n >>= 2;
-    return n;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "exec-shr-assign", shown); return shown; }
 }

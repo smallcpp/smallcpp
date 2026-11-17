@@ -3,5 +3,5 @@ int zero() {
 }
 
 int answer(void) {
-    return zero();
+    { int shown; shown = (int)(zero()); print("{:s} {}\n", "exec-empty-params", shown); return shown; }
 }

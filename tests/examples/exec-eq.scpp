@@ -1,3 +1,3 @@
 int answer(void) {
-    return 2 == 2;
+    { int shown; shown = (int)(2 == 2); print("{:s} {}\n", "exec-eq", shown); return shown; }
 }

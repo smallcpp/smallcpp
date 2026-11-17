@@ -1,0 +1,7 @@
+inline int twice(int n) {
+    return n + n;
+}
+
+int answer(void) {
+    { int shown; shown = (int)(twice(3)); print("{:s} {}\n", "inline", shown); return shown; }
+}

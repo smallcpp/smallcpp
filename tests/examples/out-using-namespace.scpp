@@ -1,0 +1,11 @@
+namespace audio {
+    int gain(int n) {
+        return n + 1;
+    }
+}
+
+using namespace audio;
+
+int answer(void) {
+    { int shown; shown = (int)(gain(1)); print("{:s} {}\n", "using-namespace", shown); return shown; }
+}

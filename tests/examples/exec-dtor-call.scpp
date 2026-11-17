@@ -13,9 +13,9 @@ int answer(void) {
     p = new Box;
     p->~Box();
     if (hits != 1)
-        return 2;
+        { int shown; shown = (int)(2); print("{:s} {}\n", "exec-dtor-call", shown); return shown; }
     p = nullptr;
     q = nullptr;
     q = new int;
-    return hits == 1 ? 4 : hits;
+    { int shown; shown = (int)(hits == 1 ? 4 : hits); print("{:s} {}\n", "exec-dtor-call", shown); return shown; }
 }

@@ -21,5 +21,5 @@ int answer(void) {
     Base *p;
     d = new Derived();
     p = d;
-    return p->id();
+    { int shown; shown = (int)(p->id()); print("{:s} {}\n", "exec-base-virtual", shown); return shown; }
 }

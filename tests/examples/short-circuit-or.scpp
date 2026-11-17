@@ -1,0 +1,17 @@
+int flag;
+
+int side(void) {
+    flag = 7;
+    return 1;
+}
+
+int answer(void) {
+    int n;
+    flag = 0;
+    if (1 || side())
+        n = 1;
+    else
+        n = 0;
+    print("short-circuit-or {} {}\n", n, flag);
+    return 0;
+}

@@ -35,5 +35,5 @@ int answer(void) {
     object = new Both();
     left = object;
     right = object;
-    return left->left() + right->right();
+    { int shown; shown = (int)(left->left() + right->right()); print("{:s} {}\n", "exec-multi-virtual", shown); return shown; }
 }

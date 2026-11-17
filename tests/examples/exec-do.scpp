@@ -4,5 +4,5 @@ int answer(void) {
     do
         n = n + 1;
     while (n < 1);
-    return n;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "exec-do", shown); return shown; }
 }

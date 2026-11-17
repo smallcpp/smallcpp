@@ -1,0 +1,5 @@
+int n;
+
+int answer(void) {
+    { int shown; shown = (int)(n); print("{:s} {}\n", "global", shown); return shown; }
+}

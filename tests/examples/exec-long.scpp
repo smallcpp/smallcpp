@@ -1,5 +1,5 @@
 int answer(void) {
     long n;
     n = 9;
-    return (int)n;
+    { int shown; shown = (int)((int)n); print("{:s} {}\n", "exec-long", shown); return shown; }
 }

@@ -1,0 +1,28 @@
+class A {
+public:
+    int value;
+    A() : value(5) {
+    }
+};
+
+class B : public A {
+public:
+    B() : A() {
+    }
+};
+
+class C : public B {
+public:
+    C() : B() {
+    }
+    int read(void) {
+        return value;
+    }
+};
+
+int answer(void) {
+    C *c;
+    c = new C();
+    print("inherit-chain {}\n", c->read());
+    return 0;
+}

@@ -1,0 +1,5 @@
+int answer(void) {
+    register int n;
+    n = 4;
+    { int shown; shown = (int)(n); print("{:s} {}\n", "register", shown); return shown; }
+}

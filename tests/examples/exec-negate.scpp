@@ -1,3 +1,3 @@
 int answer(void) {
-    return -3 == -3;
+    { int shown; shown = (int)(-3 == -3); print("{:s} {}\n", "exec-negate", shown); return shown; }
 }

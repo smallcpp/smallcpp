@@ -3,5 +3,5 @@ int answer(void) {
     int k;
     n = 4;
     k = n--;
-    return n + k;
+    { int shown; shown = (int)(n + k); print("{:s} {}\n", "exec-post-dec", shown); return shown; }
 }

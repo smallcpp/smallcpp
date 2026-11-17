@@ -2,6 +2,6 @@ int answer(void) {
     signed int n;
     n = -3;
     if (n < 0)
-        return 1;
-    return 0;
+        { int shown; shown = (int)(1); print("{:s} {}\n", "exec-signed", shown); return shown; }
+    { int shown; shown = (int)(0); print("{:s} {}\n", "exec-signed", shown); return shown; }
 }

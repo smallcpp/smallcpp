@@ -13,9 +13,9 @@ int answer(void) {
     p = new Box;
     delete p;
     if (hits != 1)
-        return 2;
+        { int shown; shown = (int)(2); print("{:s} {}\n", "exec-delete-dtor", shown); return shown; }
     p = nullptr;
     q = nullptr;
     q = new int;
-    return hits == 1 ? 5 : hits;
+    { int shown; shown = (int)(hits == 1 ? 5 : hits); print("{:s} {}\n", "exec-delete-dtor", shown); return shown; }
 }

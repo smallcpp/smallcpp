@@ -1,0 +1,8 @@
+enum Color {
+    Red,
+    Green = 4
+};
+
+int answer(void) {
+    { int shown; shown = (int)(Green); print("{:s} {}\n", "enum", shown); return shown; }
+}
