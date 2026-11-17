@@ -1,4 +1,4 @@
-add_executable(command_line_test command_line_test.cpp)
+add_executable(command_line_test EXCLUDE_FROM_ALL command_line_test.cpp)
 target_link_libraries(command_line_test PRIVATE smallcpp_cli)
 add_test(NAME command_line COMMAND command_line_test)
 
@@ -27,7 +27,7 @@ add_test(
         -DEXPECT_STATUS=2
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectCli.cmake)
 
-add_executable(parse_test parse_main.c)
+add_executable(parse_test EXCLUDE_FROM_ALL parse_main.c)
 target_link_libraries(parse_test PRIVATE smallcpp_parse)
 
 add_custom_command(TARGET parse_test POST_BUILD
@@ -73,7 +73,7 @@ add_parse_example(parse_designated designated.scpp FALSE)
 add_parse_example(parse_empty_params empty-params.scpp FALSE)
 add_parse_example(parse_brace_init brace-init.scpp FALSE)
 
-add_executable(verify_module verify_module.cpp)
+add_executable(verify_module EXCLUDE_FROM_ALL verify_module.cpp)
 target_link_libraries(verify_module PRIVATE ${SMALLCPP_LLVM_LIBS})
 smallcpp_use_llvm(verify_module)
 
@@ -239,3 +239,15 @@ add_test(
         -DRUNTIME=$<TARGET_FILE:smallcpp_runtime>
         -DINCLUDE=${CMAKE_SOURCE_DIR}/src/runtime
         -P ${CMAKE_CURRENT_SOURCE_DIR}/CollectLive.cmake)
+
+add_test(
+    NAME build_test_programs
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
+            --target command_line_test parse_test verify_module)
+set_tests_properties(build_test_programs PROPERTIES FIXTURES_SETUP smallcpp_test_programs)
+get_property(smallcpp_tests DIRECTORY PROPERTY TESTS)
+foreach(name IN LISTS smallcpp_tests)
+    if(NOT name STREQUAL "build_test_programs")
+        set_property(TEST ${name} APPEND PROPERTY FIXTURES_REQUIRED smallcpp_test_programs)
+    endif()
+endforeach()

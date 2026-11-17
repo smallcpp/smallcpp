@@ -5,6 +5,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
 
+# The test target builds the ordinary targets first. Test programs are not
+# among them; CTest builds those before it runs the suite.
+set(CMAKE_SKIP_TEST_ALL_DEPENDENCY FALSE)
 enable_testing()
 
 find_package(LLVM 22.1 REQUIRED CONFIG)
