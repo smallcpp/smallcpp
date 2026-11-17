@@ -7,7 +7,7 @@ execute_process(
     RESULT_VARIABLE compile_status
     ERROR_VARIABLE compile_error)
 if(NOT compile_status EQUAL 0)
-    message(FATAL_ERROR "shell did not write an executable\n${compile_error}")
+    message(FATAL_ERROR "scpp did not write an executable\n${compile_error}")
 endif()
 
 execute_process(

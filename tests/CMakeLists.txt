@@ -3,25 +3,25 @@ target_link_libraries(command_line_test PRIVATE smallcpp_cli)
 add_test(NAME command_line COMMAND command_line_test)
 
 add_test(
-    NAME shell_help
+    NAME scpp_help
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
+        -DCOMPILER=$<TARGET_FILE:scpp>
         -DNEEDLE=Usage:
         -DCLI_ARGS=--help
         -DEXPECT_STATUS=0
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectCli.cmake)
 add_test(
-    NAME shell_version
+    NAME scpp_version
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
-        -DNEEDLE=shell: v0.1
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DNEEDLE=scpp: v0.1
         -DCLI_ARGS=--version
         -DEXPECT_STATUS=0
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectCli.cmake)
 add_test(
-    NAME shell_unknown_option
+    NAME scpp_unknown_option
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
+        -DCOMPILER=$<TARGET_FILE:scpp>
         -DNEEDLE=unknown option
         -DCLI_ARGS=--not-an-option
         -DEXPECT_STATUS=2
@@ -80,7 +80,7 @@ smallcpp_use_llvm(verify_module)
 add_test(
     NAME compile_output_option
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
+        -DCOMPILER=$<TARGET_FILE:scpp>
         -DVERIFY=$<TARGET_FILE:verify_module>
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
         -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/output-option.bc
@@ -89,7 +89,7 @@ add_test(
 add_test(
     NAME compile_return
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
+        -DCOMPILER=$<TARGET_FILE:scpp>
         -DVERIFY=$<TARGET_FILE:verify_module>
         -DMODE=return
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
@@ -100,7 +100,7 @@ function(add_compile_example name)
     add_test(
         NAME compile_${name}
         COMMAND ${CMAKE_COMMAND}
-            -DCOMPILER=$<TARGET_FILE:shell>
+            -DCOMPILER=$<TARGET_FILE:scpp>
             -DVERIFY=$<TARGET_FILE:verify_module>
             -DMODE=${name}
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${name}.scpp
@@ -212,7 +212,7 @@ function(add_run_example name source check)
     add_test(
         NAME run_${name}
         COMMAND ${CMAKE_COMMAND}
-            -DCOMPILER=$<TARGET_FILE:shell>
+            -DCOMPILER=$<TARGET_FILE:scpp>
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${source}
             -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/${name}-run
             -DCHECK=${check}
@@ -228,7 +228,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/Evidence.cmake)
 add_test(
     NAME collect_live_root
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
+        -DCOMPILER=$<TARGET_FILE:scpp>
         -DLLC=${SMALLCPP_LLC}
         -DCLANG=${SMALLCPP_CLANG}
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/live-root.scpp

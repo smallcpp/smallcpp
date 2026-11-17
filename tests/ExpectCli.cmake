@@ -17,7 +17,7 @@ execute_process(
     OUTPUT_VARIABLE shown_out
     ERROR_VARIABLE shown_err)
 if(NOT status EQUAL EXPECT_STATUS)
-    message(FATAL_ERROR "shell status ${status}, expected ${EXPECT_STATUS}\n${shown_out}${shown_err}")
+    message(FATAL_ERROR "scpp status ${status}, expected ${EXPECT_STATUS}\n${shown_out}${shown_err}")
 endif()
 
 string(FIND "${shown_out}${shown_err}" "${NEEDLE}" found)

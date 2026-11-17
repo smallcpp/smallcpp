@@ -37,7 +37,7 @@ void yyerror(const char *message)
 
 static smallcpp::CommandLine make_command_line()
 {
-    smallcpp::CommandLine command_line("shell",
+    smallcpp::CommandLine command_line("scpp",
                                        "Compile one smallcpp source file to bitcode or a program.",
                                        SMALLCPP_VERSION);
     smallcpp::CommandLineOption help;
