@@ -1,0 +1,8 @@
+enum Color {
+    Red,
+    Green = 4
+};
+
+int answer(void) {
+    return Green;
+}
