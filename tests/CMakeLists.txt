@@ -318,7 +318,7 @@ add_test(
         -DPHASE_ARGS=-DNAME=1|-I${phase_include}|-g|-L${phase_include}|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-link
         -DPREPROC_HAS=-D|NAME=1|-I|${phase_include}
         -DPREPROC_LACKS=-g|-L|-c|--emit-llvm|-o|-i|${CMAKE_CURRENT_BINARY_DIR}/phase-link
-        -DCC_HAS=-g|-c|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-link.o
+        -DCC_HAS=-g|-c|-o|return-zero.o
         -DCC_LACKS=-D|-I|-L|--emit-llvm|-i|NAME=1|${CMAKE_CURRENT_BINARY_DIR}/phase-link
         -DCLANG_HAS=-g|-L|${phase_include}|-o|${CMAKE_CURRENT_BINARY_DIR}/phase-link
         -DCLANG_LACKS=-D|-I|-c|--emit-llvm|-i|NAME=1
@@ -429,7 +429,7 @@ add_test(
         -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/bad-no-main
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectNoMain.cmake)
 
-foreach(check default keep preprocess emit-llvm library include library-order)
+foreach(check default keep preprocess emit-llvm library include library-order base-one base-two)
     add_test(
         NAME driver_${check}
         COMMAND ${CMAKE_COMMAND}
