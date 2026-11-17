@@ -1,0 +1,5 @@
+int answer(void) {
+    const char *line;
+    line = format("{0}", 4);
+    return line[1];
+}

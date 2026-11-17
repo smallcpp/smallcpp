@@ -10,7 +10,7 @@ enable_testing()
 find_package(LLVM 22.1 REQUIRED CONFIG)
 message(STATUS "Using LLVM ${LLVM_PACKAGE_VERSION} from ${LLVM_DIR}")
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
-llvm_map_components_to_libnames(SMALLCPP_LLVM_LIBS core support bitwriter bitreader analysis)
+llvm_map_components_to_libnames(SMALLCPP_LLVM_LIBS core support bitwriter bitreader analysis nativecodegen)
 
 function(smallcpp_use_llvm target)
     target_include_directories(${target} SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
@@ -26,6 +26,7 @@ add_subdirectory(src/compiler)
 add_executable(shell
     src/shell/main.cpp
     src/shell/codegen.cpp
+    src/shell/link.cpp
     src/shell/lower_scalar.cpp
     src/shell/lower_call.cpp
     src/shell/lower_aggregate.cpp
@@ -40,8 +41,19 @@ smallcpp_use_llvm(shell)
 add_library(smallcpp_runtime STATIC
     src/runtime/heap.c
     src/runtime/trace.c
-    src/runtime/image.c)
+    src/runtime/image.c
+    src/runtime/io.c
+    src/runtime/main.c)
 target_include_directories(smallcpp_runtime PUBLIC src/runtime)
 target_link_libraries(smallcpp_runtime PUBLIC ${CMAKE_DL_LIBS})
+
+find_program(SMALLCPP_CLANGXX NAMES clang++ HINTS /usr/lib/llvm-22/bin)
+if(NOT SMALLCPP_CLANGXX)
+    message(FATAL_ERROR "clang++ is required to link an executable")
+endif()
+target_compile_definitions(shell PRIVATE
+    "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
+    "SMALLCPP_RUNTIME_LIB=\"$<TARGET_FILE:smallcpp_runtime>\"")
+add_dependencies(shell smallcpp_runtime)
 
 add_subdirectory(tests)

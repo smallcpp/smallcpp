@@ -170,6 +170,21 @@ if(NOT SMALLCPP_LLC OR NOT SMALLCPP_CLANG)
     message(FATAL_ERROR "llc and clang are required to run the collector")
 endif()
 
+function(add_run_example name source check)
+    add_test(
+        NAME run_${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCOMPILER=$<TARGET_FILE:shell>
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${source}
+            -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/${name}-run
+            -DCHECK=${check}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/RunProgram.cmake)
+endfunction()
+
+add_run_example(return return-zero.scpp status)
+add_run_example(print print-literal.scpp print)
+add_run_example(format format-value.scpp status)
+
 add_test(
     NAME collect_live_root
     COMMAND ${CMAKE_COMMAND}
