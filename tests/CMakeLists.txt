@@ -410,6 +410,14 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectPhases.cmake)
 
 add_test(
+    NAME run_ledger
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/ledger-run
+        -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/examples/ledger
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectLedger.cmake)
+
+add_test(
     NAME build_test_programs
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
             --target command_line_test parse_test verify_module)

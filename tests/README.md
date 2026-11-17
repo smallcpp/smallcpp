@@ -8,7 +8,7 @@
 
 `collect_live_root` runs `scpp` on `examples/live-root.scpp`, links that object with the collector, and runs it. The second `new` must trace the pointer returned by the first.
 
-`run_return`, `run_print`, and `run_format` ask `scpp` for an executable and run it. `run_return` must exit 0. `run_print` must write `count is 1` and a newline. `run_format` must exit 0.
+`run_return`, `run_print`, and `run_format` ask `scpp` for an executable and run it. `run_return` must exit 0. `run_print` must write `count is 1` and a newline. `run_format` must exit 0. `run_ledger` compiles `examples/ledger` as five translation units and requires the line `cash 40`.
 
 `pp_*` runs `preproc` on one short input. A passing test compares the preprocessed text. A failing test checks that `preproc` exits non-zero and that the diagnostic names the problem. Examples that are not about the process environment pass `-i`, so an environment name does not change their text. The environment examples check an imported value, `-D` replacing it, `-U` removing it, and both `-i` and `--ignore-environment`. `preproc` is a normal build target. `scpp` runs it before `scpp_cc`.
 
