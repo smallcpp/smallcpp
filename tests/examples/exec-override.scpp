@@ -1,0 +1,23 @@
+class Base {
+public:
+    Base() {
+    }
+    virtual int id(void) {
+        return 1;
+    }
+};
+
+class Derived : public Base {
+public:
+    Derived() {
+    }
+    int id(void) {
+        return 6;
+    }
+};
+
+int answer(void) {
+    Derived *p;
+    p = new Derived();
+    return p->id();
+}

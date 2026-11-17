@@ -152,6 +152,8 @@ RValue Codegen::emit_new(const AstNode *node)
         error("the type has no constructor");
         return fallback();
     }
+    if (!failed && class_type(object))
+        emit_vptrs(result, object.record);
     if (!failed && bounds.empty())
         bind_destructor(result, object);
     RValue out;
