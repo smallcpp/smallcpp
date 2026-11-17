@@ -50,7 +50,7 @@ static smallcpp::CommandLine make_command_line()
     include.short_name = 'I';
     include.long_name = "include-dir";
     include.name = "include-dir";
-    include.description = "Search DIR for #include before /usr/local/include and /usr/include";
+    include.description = "Search DIR for #include before the language headers, /usr/local/include, and /usr/include";
     include.value_type = smallcpp::CommandLineValueType::String;
     include.list = true;
     include.list_separator = '\n';
@@ -70,7 +70,7 @@ static smallcpp::CommandLine make_command_line()
     nostdinc.long_name = "nostdinc";
     nostdinc.name = "nostdinc";
     nostdinc.single_dash = true;
-    nostdinc.description = "Do not search /usr/local/include or /usr/include";
+    nostdinc.description = "Do not search the language headers, /usr/local/include, or /usr/include";
     command_line.add_option(nostdinc);
 
     smallcpp::CommandLineOption define;

@@ -412,6 +412,14 @@ add_test(
         -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/examples/ledger
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectLedger.cmake)
 add_test(
+    NAME exec_uncaught-exception
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/uncaught-exception.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/uncaught-exception
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectUncaught.cmake)
+
+add_test(
     NAME debug_answer
     COMMAND ${CMAKE_COMMAND}
         -DCOMPILER=$<TARGET_FILE:scpp>

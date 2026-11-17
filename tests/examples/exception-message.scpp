@@ -1,0 +1,13 @@
+#include <exceptions>
+
+int main(void) {
+    try {
+        exception *error;
+        error = new exception("missing");
+        throw *error;
+    } catch (exception error) {
+        print("{:s} {:s}\n", "exception-message", error.message);
+        return 0;
+    }
+    return 1;
+}

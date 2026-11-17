@@ -11,6 +11,10 @@
  */
 #include "process.hpp"
 
+#ifndef SMALLCPP_STDINC
+#define SMALLCPP_STDINC ""
+#endif
+
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
@@ -1252,6 +1256,8 @@ private:
             for (const std::string &dir : request_.includes)
                 candidates.push_back(fs::path(dir) / header);
             if (!request_.nostdinc) {
+                if (SMALLCPP_STDINC[0] != '\0')
+                    candidates.push_back(fs::path(SMALLCPP_STDINC) / header);
                 candidates.push_back(fs::path("/usr/local/include") / header);
                 candidates.push_back(fs::path("/usr/include") / header);
             }

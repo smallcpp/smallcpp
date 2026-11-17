@@ -41,13 +41,17 @@ target_compile_features(preproc PRIVATE cxx_std_17)
 if(NOT LLVM_ENABLE_RTTI)
     target_compile_options(preproc PRIVATE -fno-rtti)
 endif()
-target_compile_definitions(preproc PRIVATE "SMALLCPP_VERSION=\"0.1\"")
+target_compile_definitions(preproc PRIVATE
+    "SMALLCPP_VERSION=\"0.1\""
+    "SMALLCPP_STDINC=\"${CMAKE_SOURCE_DIR}/include\"")
 
 add_library(smallcpp_runtime STATIC
     src/runtime/heap.c
     src/runtime/trace.c
     src/runtime/image.c
-    src/runtime/io.c)
+    src/runtime/io.c
+    src/runtime/except.c
+    src/runtime/lines.c)
 target_include_directories(smallcpp_runtime PUBLIC src/runtime)
 target_link_libraries(smallcpp_runtime PUBLIC ${CMAKE_DL_LIBS})
 

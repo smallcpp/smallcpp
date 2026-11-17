@@ -1,0 +1,17 @@
+#include <exceptions>
+
+int main(void) {
+    try {
+        exception *error;
+        error = new exception();
+        throw *error;
+    } catch (exception error) {
+        int shown;
+        shown = 1;
+        if (error.message == nullptr)
+            shown = 0;
+        print("{:s} {}\n", "exception-blank", shown);
+        return shown;
+    }
+    return 1;
+}

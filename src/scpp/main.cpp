@@ -595,6 +595,7 @@ int main(int argc, char **argv)
     for (const std::string &object : objects)
         link.push_back(object);
     append_library_names(link, command_line);
+    link.push_back("-Wl,-u,smallcpp_uncaught_init");
     link.push_back(SMALLCPP_RUNTIME);
     link.push_back("-ldl");
     const int status = run_program(clang, link, "");

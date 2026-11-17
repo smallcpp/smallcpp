@@ -98,6 +98,7 @@ int emit_and_link(llvm::Module &module, const char *executable, int debug)
     args.push_back("-o");
     args.push_back(executable);
     args.push_back(object);
+    args.push_back("-Wl,-u,smallcpp_uncaught_init");
     args.push_back(runtime);
     args.push_back("-ldl");
     status = llvm::sys::ExecuteAndWait(clang, args, std::nullopt, {}, 0, 0, &error);

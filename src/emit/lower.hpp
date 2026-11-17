@@ -487,6 +487,7 @@ private:
     llvm::Function *personality();
     llvm::Function *throw_fn();
     llvm::Function *rethrow_fn();
+    llvm::Function *note_throw_fn();
     llvm::Function *allocate_exception();
     llvm::Function *begin_catch_fn();
     llvm::Function *end_catch_fn();
