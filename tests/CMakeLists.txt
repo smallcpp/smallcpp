@@ -163,3 +163,24 @@ add_compile_example(catch-typed)
 add_compile_example(catch-all-handler)
 add_compile_example(print-literal)
 add_compile_example(format-literal)
+
+find_program(SMALLCPP_LLC NAMES llc HINTS /usr/lib/llvm-22/bin)
+find_program(SMALLCPP_CLANG NAMES clang HINTS /usr/lib/llvm-22/bin)
+if(NOT SMALLCPP_LLC OR NOT SMALLCPP_CLANG)
+    message(FATAL_ERROR "llc and clang are required to run the collector")
+endif()
+
+add_test(
+    NAME collect_live_root
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:shell>
+        -DLLC=${SMALLCPP_LLC}
+        -DCLANG=${SMALLCPP_CLANG}
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/live-root.scpp
+        -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/live-root.bc
+        -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/live-root.o
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/live-root-run
+        -DDRIVER=${CMAKE_CURRENT_SOURCE_DIR}/live_root.c
+        -DRUNTIME=$<TARGET_FILE:smallcpp_runtime>
+        -DINCLUDE=${CMAKE_SOURCE_DIR}/src/runtime
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/CollectLive.cmake)
