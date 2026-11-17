@@ -7,14 +7,14 @@ Initial C++ CMake scaffold. The `scpp` target parses one `.scpp` file and lowers
 ```sh
 cmake -S . -B build
 cmake --build build
-(cd build && ctest --output-on-failure)
+cmake --build build --target test
 ./bin/scpp tests/examples/return-zero.scpp answer.bc
 ./bin/scpp tests/examples/return-zero.scpp answer
 ./bin/scpp tests/examples/if.scpp if.bc
 ./bin/parse_test tests/examples/accept.scpp
 ```
 
-Binaries are written to `bin/` and libraries to `lib/`.
+Binaries are written to `bin/` and libraries to `lib/`. A normal build writes `scpp` and the libraries. `command_line_test`, `parse_test`, and `verify_module` are built by the `test` target, and CTest runs after that.
 
 ## Layout
 

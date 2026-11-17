@@ -6,6 +6,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Changed
 
+- Test programs stay out of a normal build. `cmake --build build` writes `scpp` and the libraries. `command_line_test`, `parse_test`, and `verify_module` are built when the `test` target is requested. That target builds the ordinary targets, then CTest builds those three programs and runs the suite.
 - The compiler target and binary are `scpp`. `./bin/scpp input.scpp output` compiles the same way `shell` did. `scpp -o output input.scpp`, `--help`, and `--version` are the same. `--version` prints `scpp: v0.1`. The sources stay in `src/shell`.
 - The shell code generator is split by phase. `src/shell/codegen.cpp` drives lowering. Types and scalars, calls, aggregates, namespaces, classes, allocation, exceptions, and print and format each have their own file: `lower_scalar.cpp`, `lower_call.cpp`, `lower_aggregate.cpp`, `lower_namespace.cpp`, `lower_class.cpp`, `lower_alloc.cpp`, `lower_except.cpp`, and `lower_print.cpp`. `src/shell/lower.hpp` holds the types those files share. Lowering behavior is unchanged.
 
