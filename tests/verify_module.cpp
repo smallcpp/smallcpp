@@ -12,6 +12,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
@@ -1245,6 +1246,116 @@ static int check_base_call(llvm::Module &module)
     return 0;
 }
 
+static bool intrinsic_id(const llvm::CallInst *call, llvm::Intrinsic::ID id)
+{
+    if (call == NULL)
+        return false;
+    const llvm::Function *fn = call->getCalledFunction();
+    return fn != NULL && fn->isIntrinsic() && fn->getIntrinsicID() == id;
+}
+
+static llvm::CallInst *find_call(llvm::Function &fn, llvm::Intrinsic::ID id)
+{
+    for (llvm::Instruction &inst : llvm::instructions(fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (intrinsic_id(call, id))
+            return call;
+    }
+    return NULL;
+}
+
+static int check_alloc(const char *mode, llvm::Module &module, uint64_t count, bool constructor)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *alloc = module.getFunction("smallcpp_alloc");
+    llvm::CallInst *state = fn == NULL ? NULL : find_call(*fn, llvm::Intrinsic::experimental_gc_statepoint);
+    llvm::CallInst *result = fn == NULL ? NULL : find_call(*fn, llvm::Intrinsic::experimental_gc_result);
+    llvm::CallInst *map = fn == NULL ? NULL : find_call(*fn, llvm::Intrinsic::experimental_stackmap);
+    bool saw_alloc = false;
+    bool saw_count = false;
+    bool saw_result = false;
+
+    if (alloc == NULL || !alloc->isDeclaration())
+        return fail(mode, "the allocator is not a declaration");
+    if (state == NULL)
+        return fail(mode, "the allocation is not a safepoint");
+    for (llvm::Value *arg : state->args()) {
+        if (arg == alloc)
+            saw_alloc = true;
+        auto *constant = llvm::dyn_cast<llvm::ConstantInt>(arg);
+        if (constant != NULL && constant->getBitWidth() == 64 && constant->equalsInt(count))
+            saw_count = true;
+    }
+    if (!saw_alloc)
+        return fail(mode, "the safepoint does not call the allocator");
+    if (!saw_count)
+        return fail(mode, "the allocation does not pass its size");
+    if (result == NULL || map == NULL)
+        return fail(mode, "the stack map is missing");
+    for (llvm::Value *arg : map->args()) {
+        if (arg == result)
+            saw_result = true;
+    }
+    if (!saw_result)
+        return fail(mode, "the returned pointer is not in the stack map");
+    if (constructor) {
+        llvm::Function *ctor = module.getFunction("Point::Point");
+        if (!calls_direct(*fn, ctor))
+            return fail(mode, "new does not call the constructor");
+    }
+    return 0;
+}
+
+static int check_new_object(llvm::Module &module)
+{
+    return check_alloc("new-object", module, 1, true);
+}
+
+static int check_new_array(llvm::Module &module)
+{
+    return check_alloc("new-array-call", module, 3, false);
+}
+
+static int check_new_pointer(llvm::Module &module)
+{
+    return check_alloc("new-pointer", module, 8, false);
+}
+
+static int check_delete(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    bool loaded = false;
+
+    if (fn == NULL)
+        return fail("delete-ptr", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        if (llvm::isa<llvm::CallInst>(inst))
+            return fail("delete-ptr", "delete emits a call");
+        if (llvm::isa<llvm::LoadInst>(inst))
+            loaded = true;
+    }
+    if (!loaded)
+        return fail("delete-ptr", "delete does not evaluate its operand");
+    return 0;
+}
+
+static int check_nullptr(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    int nulls = 0;
+
+    if (fn == NULL)
+        return fail("nullptr", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && llvm::isa<llvm::ConstantPointerNull>(store->getValueOperand()))
+            nulls++;
+    }
+    if (nulls < 2)
+        return fail("nullptr", "nullptr and NULL are not the null pointer");
+    return 0;
+}
+
 static int check_namespace_fn(llvm::Module &module)
 {
     llvm::Function *level = module.getFunction("audio::level");
@@ -1491,6 +1602,16 @@ int main(int argc, char **argv)
         return check_virtual_call(*module);
     if (strcmp(mode, "base-call") == 0)
         return check_base_call(*module);
+    if (strcmp(mode, "new-object") == 0)
+        return check_new_object(*module);
+    if (strcmp(mode, "new-array-call") == 0)
+        return check_new_array(*module);
+    if (strcmp(mode, "new-pointer") == 0)
+        return check_new_pointer(*module);
+    if (strcmp(mode, "delete-ptr") == 0)
+        return check_delete(*module);
+    if (strcmp(mode, "nullptr") == 0)
+        return check_nullptr(*module);
 
     fprintf(stderr, "unknown mode %s\n", mode);
     return 2;
