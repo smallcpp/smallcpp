@@ -1,0 +1,4 @@
+int answer(void) {
+    print("count is {}\n", 1);
+    return 0;
+}
