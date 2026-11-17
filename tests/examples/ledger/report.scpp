@@ -1,0 +1,33 @@
+#ifdef LEDGER_AS_HEADER
+#define LEDGER_REPORT_HEADER
+#undef LEDGER_AS_HEADER
+#endif
+
+#define LEDGER_AS_HEADER
+#include "book.scpp"
+#undef LEDGER_AS_HEADER
+
+#ifndef LEDGER_REPORT
+#define LEDGER_REPORT
+
+void report(Book *book);
+
+#endif
+
+#ifndef LEDGER_REPORT_HEADER
+
+void report(Book *book) {
+    int tally;
+    int slot;
+    Account *account;
+    tally = 0;
+    slot = 0;
+    while (slot < book->size()) {
+        account = book->at(slot);
+        tally = tally + account->balance();
+        slot = slot + 1;
+    }
+    print("cash {}\n", tally);
+}
+
+#endif

@@ -1,0 +1,23 @@
+#define LEDGER_AS_HEADER
+#include "report.scpp"
+#undef LEDGER_AS_HEADER
+
+int answer(void) {
+    Book *book;
+    Checking *checking;
+    Savings *savings;
+    Account *posted;
+    book = new Book();
+    checking = new Checking(0);
+    savings = new Savings(0);
+    posted = (Account *)checking;
+    book->add(posted);
+    posted = (Account *)savings;
+    book->add(posted);
+    checking->deposit(21);
+    savings->deposit(20);
+    checking->withdraw(10);
+    savings->deposit(10);
+    report(book);
+    return 0;
+}

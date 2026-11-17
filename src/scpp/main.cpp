@@ -32,7 +32,7 @@ static smallcpp::CommandLine make_command_line()
 {
     smallcpp::CommandLine command_line(
         "scpp",
-        "Compile one smallcpp source file. Each option is passed only to the phase that uses it.",
+        "Compile smallcpp source files and link them. Each option is passed only to the phase that uses it.",
         SMALLCPP_VERSION);
 
     smallcpp::CommandLineOption help;
@@ -117,7 +117,7 @@ static smallcpp::CommandLine make_command_line()
     command_line.add_option(emit_llvm);
 
     command_line.add_positional(
-        {"file", "input.scpp, and the output path when -o is omitted", true, true});
+        {"file", "One or more input.scpp files. Without -o, the last path is the output", true, true});
     return command_line;
 }
 
@@ -259,6 +259,75 @@ static int compile_file(const smallcpp::CommandLine &command_line, const std::st
     return run_program(clang, link, "");
 }
 
+static int compile_sources(const smallcpp::CommandLine &command_line,
+                           const std::vector<std::string> &inputs, const std::string &output,
+                           const std::string &ignore)
+{
+    const bool compile_only = command_line.switch_value("compile");
+    bool emit_llvm = command_line.switch_value("emit-llvm");
+    const bool debug = command_line.switch_value("debug");
+    if (!emit_llvm && !compile_only && ends_with(output, ".bc"))
+        emit_llvm = true;
+    if (compile_only || emit_llvm)
+        return usage_error(command_line, "one output file cannot hold several translation units");
+
+    const std::string preproc = tool_path("SMALLCPP_PREPROC", SMALLCPP_PREPROC);
+    const std::string cc = tool_path("SMALLCPP_CC", SMALLCPP_CC);
+    const std::string clang = tool_path("SMALLCPP_CLANGXX", SMALLCPP_CLANGXX);
+    std::vector<std::string> objects;
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+        const std::string stem = output + "." + std::to_string(index);
+        const std::string preprocessed = stem + ".i";
+        const std::string object = stem + ".o";
+        std::vector<std::string> preprocess;
+        for (const smallcpp::CommandLineEvent &event : command_line.events()) {
+            if (event.name == "define") {
+                preprocess.push_back("-D");
+                preprocess.push_back(event.value);
+            } else if (event.name == "include-dir") {
+                preprocess.push_back("-I");
+                preprocess.push_back(event.value);
+            } else if (event.name == "ignore-environment") {
+                preprocess.push_back(ignore);
+            }
+        }
+        preprocess.push_back(inputs[index]);
+        int status = run_program(preproc, preprocess, preprocessed);
+        if (status != 0)
+            return status;
+
+        std::vector<std::string> frontend;
+        if (debug)
+            frontend.push_back("-g");
+        frontend.push_back("-c");
+        frontend.push_back("-o");
+        frontend.push_back(object);
+        frontend.push_back(preprocessed);
+        status = run_program(cc, frontend, "");
+        if (status != 0)
+            return status;
+        objects.push_back(object);
+    }
+
+    std::vector<std::string> link;
+    link.push_back("-no-pie");
+    if (debug)
+        link.push_back("-g");
+    for (const smallcpp::CommandLineEvent &event : command_line.events()) {
+        if (event.name == "library-path") {
+            link.push_back("-L");
+            link.push_back(event.value);
+        }
+    }
+    link.push_back("-o");
+    link.push_back(output);
+    for (const std::string &object : objects)
+        link.push_back(object);
+    link.push_back(SMALLCPP_RUNTIME);
+    link.push_back("-ldl");
+    return run_program(clang, link, "");
+}
+
 int main(int argc, char **argv)
 {
     smallcpp::CommandLine command_line = make_command_line();
@@ -282,20 +351,26 @@ int main(int argc, char **argv)
         return usage_error(command_line, "-c and --emit-llvm cannot be combined");
 
     const std::vector<std::string> &files = command_line.positional_values();
-    std::string input;
     std::string output = command_line.value("output").value_or("");
+    std::vector<std::string> inputs;
     if (files.size() == 1) {
-        input = files[0];
-    } else if (files.size() == 2) {
-        if (command_line.was_provided("output"))
-            return usage_error(command_line, "output is already set");
-        input = files[0];
+        inputs.push_back(files[0]);
+    } else if (files.size() == 2 && !command_line.was_provided("output")) {
+        inputs.push_back(files[0]);
         output = files[1];
+    } else if (files.size() >= 2 && command_line.was_provided("output")) {
+        inputs = files;
+    } else if (files.size() > 2) {
+        inputs.assign(files.begin(), files.end() - 1);
+        output = files.back();
     } else {
-        return usage_error(command_line, "only one input file is supported");
+        return usage_error(command_line, "required argument not found: file");
     }
     if (output.empty())
         return usage_error(command_line, "required argument not found: output");
 
-    return compile_file(command_line, input, output, ignore_spelling(arguments));
+    const std::string ignore = ignore_spelling(arguments);
+    if (inputs.size() == 1)
+        return compile_file(command_line, inputs[0], output, ignore);
+    return compile_sources(command_line, inputs, output, ignore);
 }
