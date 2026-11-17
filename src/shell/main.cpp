@@ -1,6 +1,8 @@
 #include "codegen.h"
 
+#include <cstddef>
 #include <cstdio>
+#include <cstring>
 
 extern "C" {
 #include "smallcpp.tab.h"
@@ -23,7 +25,7 @@ int main(int argc, char **argv)
     int status;
 
     if (argc != 3) {
-        std::fprintf(stderr, "usage: %s input.scpp output.bc\n", argv[0]);
+        std::fprintf(stderr, "usage: %s input.scpp output.bc|program\n", argv[0]);
         return 2;
     }
     smallcpp_ast = NULL;
@@ -46,7 +48,11 @@ int main(int argc, char **argv)
         smallcpp_ast = NULL;
         return 1;
     }
-    status = compile_to_bitcode(smallcpp_ast, argv[2]);
+    std::size_t length = std::strlen(argv[2]);
+    if (length >= 3 && std::strcmp(argv[2] + length - 3, ".bc") == 0)
+        status = compile_to_bitcode(smallcpp_ast, argv[2]);
+    else
+        status = compile_to_executable(smallcpp_ast, argv[2]);
     ast_free(smallcpp_ast);
     smallcpp_ast = NULL;
     return status;

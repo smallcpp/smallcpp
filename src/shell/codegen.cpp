@@ -2,6 +2,7 @@
  * Drive lowering, then verify the module and write bitcode.
  */
 #include "codegen.h"
+#include "link.hpp"
 #include "lower.hpp"
 
 Codegen::Codegen(llvm::LLVMContext &context, llvm::Module &module)
@@ -36,10 +37,10 @@ int Codegen::run(const AstNode *root)
     return 0;
 }
 
-int compile_to_bitcode(const AstNode *root, const char *bitcode_path)
+static int lower_verified(const AstNode *root, llvm::LLVMContext &context,
+                           std::unique_ptr<llvm::Module> &module)
 {
-    llvm::LLVMContext context;
-    auto module = std::make_unique<llvm::Module>("smallcpp", context);
+    module = std::make_unique<llvm::Module>("smallcpp", context);
     Codegen codegen(context, *module);
     if (codegen.run(root) != 0)
         return 1;
@@ -51,6 +52,15 @@ int compile_to_bitcode(const AstNode *root, const char *bitcode_path)
         std::fprintf(stderr, "module failed verification: %s\n", diagnostic.c_str());
         return 1;
     }
+    return 0;
+}
+
+int compile_to_bitcode(const AstNode *root, const char *bitcode_path)
+{
+    llvm::LLVMContext context;
+    std::unique_ptr<llvm::Module> module;
+    if (lower_verified(root, context, module) != 0)
+        return 1;
 
     std::error_code error;
     llvm::raw_fd_ostream out(bitcode_path, error, llvm::sys::fs::OF_None);
@@ -65,4 +75,13 @@ int compile_to_bitcode(const AstNode *root, const char *bitcode_path)
         return 1;
     }
     return 0;
+}
+
+int compile_to_executable(const AstNode *root, const char *path)
+{
+    llvm::LLVMContext context;
+    std::unique_ptr<llvm::Module> module;
+    if (lower_verified(root, context, module) != 0)
+        return 1;
+    return emit_and_link(*module, path);
 }
