@@ -1,0 +1,5 @@
+int answer(void) {
+    int *items;
+    items = new int[3];
+    return 0;
+}

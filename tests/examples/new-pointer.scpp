@@ -1,0 +1,5 @@
+int answer(void) {
+    int **p;
+    p = new int*;
+    return 0;
+}

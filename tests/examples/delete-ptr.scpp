@@ -1,0 +1,4 @@
+int answer(int *p) {
+    delete p;
+    return 0;
+}
