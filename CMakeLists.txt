@@ -37,4 +37,11 @@ add_executable(shell
 target_link_libraries(shell PRIVATE smallcpp_parse ${SMALLCPP_LLVM_LIBS})
 smallcpp_use_llvm(shell)
 
+add_library(smallcpp_runtime STATIC
+    src/runtime/heap.c
+    src/runtime/trace.c
+    src/runtime/image.c)
+target_include_directories(smallcpp_runtime PUBLIC src/runtime)
+target_link_libraries(smallcpp_runtime PUBLIC ${CMAKE_DL_LIBS})
+
 add_subdirectory(tests)

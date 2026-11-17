@@ -1,0 +1,9 @@
+int answer(void) {
+    int *kept;
+    int *next;
+    kept = new int;
+    next = new int;
+    *kept = 1;
+    *next = 2;
+    return *kept;
+}

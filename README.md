@@ -18,6 +18,7 @@ Binaries are written to `bin/` and libraries to `lib/`.
 ## Layout
 
 - `src/shell` — parser driver that writes a verified LLVM bitcode module
+- `src/runtime` — precise collector. `smallcpp_alloc` traces stack maps at safepoints. `delete` does not free
 - `src/compiler` — Bison grammar and Flex scanner
 - `src/preprocessor` — source directory for a later target
 - `docs` — documentation (`docs/smallcpp.y` and `docs/smallcpp.l` are copies of the grammar and scanner)
