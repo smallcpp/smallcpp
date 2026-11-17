@@ -2,6 +2,6 @@ int zero() {
     return 7;
 }
 
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(zero()); print("{:s} {}\n", "exec-empty-params", shown); return shown; }
 }

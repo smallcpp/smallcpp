@@ -16,7 +16,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Base *p;
     p = new Derived();
     print("virtual-through-base {}\n", p->id());

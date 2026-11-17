@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     const char *s;
     s = "hi";
     if (s[0] == 'h' && s[1] == 'i')

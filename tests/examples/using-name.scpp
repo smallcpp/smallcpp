@@ -6,6 +6,6 @@ namespace audio {
 
 using audio::gain;
 
-int answer(void) {
+int main(void) {
     return gain(1);
 }

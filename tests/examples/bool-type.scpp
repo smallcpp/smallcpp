@@ -1,3 +1,3 @@
-bool answer(bool n) {
+bool main(bool n) {
     return n;
 }

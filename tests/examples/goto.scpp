@@ -1,4 +1,4 @@
-int answer(int n) {
+int main(int n) {
     if (n)
         goto done;
     n = 1;

@@ -20,7 +20,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     C *c;
     c = new C();
     print("inherit-chain {}\n", c->read());

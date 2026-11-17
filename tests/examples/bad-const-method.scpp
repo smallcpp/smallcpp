@@ -5,7 +5,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     const Box *b;
     b = new Box();
     return b->write();

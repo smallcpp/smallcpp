@@ -1,3 +1,3 @@
-long answer(long n) {
+long main(long n) {
     return n;
 }

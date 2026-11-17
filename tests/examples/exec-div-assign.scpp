@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     int n;
     n = 8;
     n /= 2;

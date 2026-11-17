@@ -3,6 +3,6 @@ enum Color {
     Green = 4
 };
 
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)(Green); print("{:s} {}\n", "enum", shown); return shown; }
 }

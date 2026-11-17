@@ -27,7 +27,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     C *c;
     c = new C(3);
     { int shown; shown = (int)(c->read()); print("{:s} {}\n", "exec-two-bases", shown); return shown; }

@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     int **p;
     int n;
     n = 3;

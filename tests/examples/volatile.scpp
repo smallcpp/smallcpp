@@ -1,6 +1,6 @@
 volatile int n;
 
-int answer(void) {
+int main(void) {
     n = 1;
     return n;
 }

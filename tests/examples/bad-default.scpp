@@ -2,6 +2,6 @@ int f(int a = 1, int b) {
     return a + b;
 }
 
-int answer(void) {
+int main(void) {
     return f(1);
 }

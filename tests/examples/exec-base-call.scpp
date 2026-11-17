@@ -15,7 +15,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     B *b;
     b = new B();
     { int shown; shown = (int)(b->read()); print("{:s} {}\n", "exec-base-call", shown); return shown; }

@@ -1,3 +1,3 @@
-int answer(void) {
+int main(void) {
     { int shown; shown = (int)((int)sizeof(int)); print("{:s} {}\n", "sizeof", shown); return shown; }
 }

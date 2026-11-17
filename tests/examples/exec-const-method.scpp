@@ -8,7 +8,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Box *b;
     b = new Box(8);
     { int shown; shown = (int)(b->read()); print("{:s} {}\n", "exec-const-method", shown); return shown; }

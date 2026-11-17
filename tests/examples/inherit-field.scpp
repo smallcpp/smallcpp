@@ -14,7 +14,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Derived *d;
     d = new Derived();
     print("inherit-field {}\n", d->read());

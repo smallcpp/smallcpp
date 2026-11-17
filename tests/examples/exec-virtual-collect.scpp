@@ -13,7 +13,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Base *p;
     int *q;
     p = new Derived();

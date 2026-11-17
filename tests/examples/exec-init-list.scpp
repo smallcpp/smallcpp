@@ -9,7 +9,7 @@ public:
     }
 };
 
-int answer(void) {
+int main(void) {
     Pair *p;
     p = new Pair(2, 5);
     { int shown; shown = (int)(p->sum()); print("{:s} {}\n", "exec-init-list", shown); return shown; }

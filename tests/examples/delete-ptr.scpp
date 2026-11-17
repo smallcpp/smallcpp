@@ -1,4 +1,4 @@
-int answer(int *p) {
+int main(int *p) {
     delete p;
     return 0;
 }

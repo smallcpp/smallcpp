@@ -3,7 +3,7 @@ union Num {
     float f;
 };
 
-int answer(void) {
+int main(void) {
     union Num n;
     n.i = 3;
     return n.i;

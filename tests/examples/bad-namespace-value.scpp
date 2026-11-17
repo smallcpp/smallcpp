@@ -2,6 +2,6 @@ namespace audio {
     int n;
 }
 
-int answer(void) {
+int main(void) {
     return audio;
 }

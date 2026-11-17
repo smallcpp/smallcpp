@@ -3,7 +3,7 @@ public:
     virtual int id(void) = 0;
 };
 
-int answer(void) {
+int main(void) {
     Base *p;
     p = new Base();
     return 0;

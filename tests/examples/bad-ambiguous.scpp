@@ -6,6 +6,6 @@ int f(long a, int b) {
     return 2;
 }
 
-int answer(void) {
+int main(void) {
     return f(1, 1);
 }

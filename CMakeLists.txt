@@ -47,8 +47,7 @@ add_library(smallcpp_runtime STATIC
     src/runtime/heap.c
     src/runtime/trace.c
     src/runtime/image.c
-    src/runtime/io.c
-    src/runtime/main.c)
+    src/runtime/io.c)
 target_include_directories(smallcpp_runtime PUBLIC src/runtime)
 target_link_libraries(smallcpp_runtime PUBLIC ${CMAKE_DL_LIBS})
 

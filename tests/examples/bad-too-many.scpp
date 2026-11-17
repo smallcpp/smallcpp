@@ -2,7 +2,7 @@ struct Pair {
     int x;
 };
 
-int answer(void) {
+int main(void) {
     struct Pair p = { 1, 2 };
     return p.x;
 }

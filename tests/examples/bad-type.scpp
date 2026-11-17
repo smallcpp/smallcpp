@@ -2,6 +2,6 @@ void f(void) {
     return;
 }
 
-int answer(void) {
+int main(void) {
     return f();
 }

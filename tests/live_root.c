@@ -2,14 +2,12 @@
 
 #include <stddef.h>
 
-extern int answer(void);
-
-int main(void)
+int smallcpp_live_root_status(int result)
 {
     void *kept;
     void *next;
 
-    if (answer() == 0)
+    if (result == 0)
         return 1;
     if (smallcpp_safepoint_count() < 2)
         return 2;

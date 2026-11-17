@@ -426,6 +426,15 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectDebug.cmake)
 
 add_test(
+    NAME diag_no_main
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/bad-no-main.scpp
+        -DOBJECT=${CMAKE_CURRENT_BINARY_DIR}/bad-no-main.o
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/bad-no-main
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectNoMain.cmake)
+
+add_test(
     NAME build_test_programs
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
             --target command_line_test parse_test verify_module)

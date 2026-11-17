@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     long n;
     n = 9;
     { int shown; shown = (int)((int)n); print("{:s} {}\n", "exec-long", shown); return shown; }

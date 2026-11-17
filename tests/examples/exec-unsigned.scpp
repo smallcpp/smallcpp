@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     unsigned int n;
     n = 1;
     if (n > 0)

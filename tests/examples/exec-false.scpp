@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     if (false)
         { int shown; shown = (int)(0); print("{:s} {}\n", "exec-false", shown); return shown; }
     { int shown; shown = (int)(1); print("{:s} {}\n", "exec-false", shown); return shown; }

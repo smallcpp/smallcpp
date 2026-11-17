@@ -1,4 +1,4 @@
-int answer(int n) {
+int main(int n) {
     int x;
     if (n)
         x = 1;

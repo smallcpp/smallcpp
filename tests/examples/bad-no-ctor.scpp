@@ -2,7 +2,7 @@ class Point {
     int x;
 };
 
-int answer(void) {
+int main(void) {
     Point *p;
     p = new Point(1);
     return 0;

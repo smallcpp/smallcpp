@@ -1,5 +1,5 @@
 extern int extra(int n);
 
-int answer(void) {
+int main(void) {
     return extra(2);
 }

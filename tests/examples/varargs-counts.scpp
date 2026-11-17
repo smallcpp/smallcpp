@@ -2,7 +2,7 @@ int take(int n, ...) {
     return n;
 }
 
-int answer(void) {
+int main(void) {
     int none;
     int one;
     int three;

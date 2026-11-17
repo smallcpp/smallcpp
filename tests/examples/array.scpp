@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     int values[3];
     values[1] = 4;
     return values[1];

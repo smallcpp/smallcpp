@@ -2,7 +2,7 @@ struct Point {
     int x;
 };
 
-int answer(void) {
+int main(void) {
     struct Point p;
     return p.z;
 }

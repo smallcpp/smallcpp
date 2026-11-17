@@ -7,6 +7,6 @@ Point::Other(int x) {
     return;
 }
 
-int answer(void) {
+int main(void) {
     return 0;
 }

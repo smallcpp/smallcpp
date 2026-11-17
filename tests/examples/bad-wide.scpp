@@ -1,4 +1,4 @@
-int answer(void) {
+int main(void) {
     L"hi";
     return 0;
 }
