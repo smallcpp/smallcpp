@@ -1,0 +1,2 @@
+#define FROM_LOCAL 5
+FROM_LOCAL

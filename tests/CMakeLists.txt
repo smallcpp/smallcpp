@@ -224,6 +224,7 @@ add_run_example(print print-literal.scpp print)
 add_run_example(format format-value.scpp status)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/Evidence.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Preproc.cmake)
 
 add_test(
     NAME collect_live_root

@@ -24,8 +24,14 @@ struct CommandLineOption {
     bool list = false;
     char list_separator = ':';
     bool required = false;
+    bool single_dash = false;
     std::optional<std::string> default_value;
     CommandLineAction action = CommandLineAction::None;
+};
+
+struct CommandLineEvent {
+    std::string name;
+    std::string value;
 };
 
 struct CommandLinePositional {
@@ -50,6 +56,7 @@ public:
     const std::vector<std::string> &values(const std::string &name) const;
     bool contains(const std::string &name, const std::string &item) const;
     const std::vector<std::string> &positional_values() const noexcept;
+    const std::vector<CommandLineEvent> &events() const noexcept;
     CommandLineAction action() const noexcept;
 
     std::string help_text() const;
@@ -71,6 +78,7 @@ private:
     std::unordered_map<std::string, bool> provided_;
     std::unordered_map<std::string, std::size_t> counts_;
     std::vector<std::string> positional_values_;
+    std::vector<CommandLineEvent> events_;
     CommandLineAction action_ = CommandLineAction::None;
 };
 
