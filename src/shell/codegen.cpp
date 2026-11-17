@@ -17,6 +17,7 @@ extern "C" {
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -31,6 +32,7 @@ extern "C" {
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -45,8 +47,15 @@ struct Ty {
     bool is_const = false;
     bool is_volatile = false;
     bool is_pointer = false;
+    bool is_array = false;
+    bool is_record = false;
+    bool is_union = false;
+    bool is_enum = false;
+    int array_len = 0;
     int rank = 0;
     int fp_rank = 0;
+    std::string record;
+    std::shared_ptr<Ty> inner;
 };
 
 struct Storage {
@@ -60,6 +69,25 @@ struct Storage {
 struct Slot {
     llvm::Value *addr = nullptr;
     Ty ty;
+    int bits = 0;
+};
+
+struct Field {
+    std::string name;
+    Ty ty;
+    int bits = 0;
+    unsigned index = 0;
+    llvm::Type *storage = nullptr;
+};
+
+struct Record {
+    std::string name;
+    bool is_union = false;
+    bool is_class = false;
+    bool complete = false;
+    bool defining = false;
+    llvm::StructType *ir = nullptr;
+    std::vector<Field> fields;
 };
 
 struct RValue {
@@ -114,6 +142,14 @@ struct Func {
     bool is_inline = false;
 };
 
+struct Declared {
+    const AstNode *name = nullptr;
+    const AstNode *func = nullptr;
+    const AstNode *init = nullptr;
+    Ty ty;
+    int bits = 0;
+};
+
 class Codegen {
 public:
     Codegen(llvm::LLVMContext &context, llvm::Module &module)
@@ -163,6 +199,10 @@ private:
     std::vector<std::map<std::string, Slot>> scopes;
     std::map<std::string, std::vector<Func>> overloads;
     std::map<std::string, Ty> aliases;
+    std::map<std::string, Record> records;
+    std::map<std::string, int64_t> enum_consts;
+    std::set<std::string> enum_types;
+    int anon_records = 0;
     std::vector<LoopFrame> loops;
     std::vector<SwitchFrame> switches;
     SwitchFrame *collecting = nullptr;
@@ -274,13 +314,8 @@ private:
             break;
         case AST_ARRAY:
         case AST_INDEX:
-            error("arrays are a later phase");
-            break;
         case AST_POINTER:
         case AST_DECLARATOR:
-        case AST_NULL:
-            error("pointers are a later phase");
-            break;
         case AST_STRUCT:
         case AST_UNION:
         case AST_ENUM:
@@ -289,7 +324,10 @@ private:
         case AST_ARROW:
         case AST_BITFIELD:
         case AST_DESIGNATED:
-            error("aggregates are a later phase");
+            error("not allowed here");
+            break;
+        case AST_NULL:
+            error("null is a later phase");
             break;
         case AST_NAMESPACE:
         case AST_USING:
@@ -338,18 +376,429 @@ private:
     {
         if (node == NULL)
             error("declaration has no name");
-        else if (node->kind == AST_ARRAY)
-            error("arrays are a later phase");
-        else if (node->kind == AST_POINTER || node->kind == AST_DECLARATOR)
-            error("pointers are a later phase");
-        else if (node->kind == AST_FUNCTION_DECL)
-            error("not a scalar");
         else if (node->kind == AST_QUALIFIED)
             error("qualified names are a later phase");
-        else if (node->kind == AST_BITFIELD)
-            error("aggregates are a later phase");
         else
-            error("not a scalar");
+            error("not a declarator");
+    }
+
+    Ty pointer_to(Ty inner)
+    {
+        Ty ty;
+        ty.ir = llvm::PointerType::get(context, 0);
+        ty.is_pointer = true;
+        ty.inner = std::make_shared<Ty>(inner);
+        return ty;
+    }
+
+    Ty array_of(Ty elem, int length)
+    {
+        Ty ty;
+        ty.ir = llvm::ArrayType::get(elem.ir, static_cast<uint64_t>(length));
+        ty.is_array = true;
+        ty.array_len = length;
+        ty.inner = std::make_shared<Ty>(elem);
+        return ty;
+    }
+
+    Ty decay(Ty ty)
+    {
+        ty = drop(ty);
+        if (ty.is_array && ty.inner)
+            return pointer_to(*ty.inner);
+        return ty;
+    }
+
+    Ty record_type(const Record &rec)
+    {
+        Ty ty;
+        ty.ir = rec.ir;
+        ty.is_record = true;
+        ty.is_union = rec.is_union;
+        ty.record = rec.name;
+        return ty;
+    }
+
+    Ty enum_type(const std::string &name)
+    {
+        Ty ty = int_ty();
+        ty.is_enum = true;
+        ty.record = name;
+        return ty;
+    }
+
+    bool complete_type(const Ty &ty)
+    {
+        if (ty.is_void || ty.ir == NULL)
+            return false;
+        if (ty.is_pointer)
+            return ty.inner != NULL;
+        if (ty.is_array) {
+            if (ty.array_len <= 0 || ty.inner == NULL)
+                return false;
+            return complete_type(*ty.inner);
+        }
+        if (ty.is_record) {
+            auto found = records.find(ty.record);
+            return found != records.end() && found->second.complete;
+        }
+        return true;
+    }
+
+    unsigned abi_align(llvm::Type *ty)
+    {
+        if (ty == NULL)
+            return 1;
+        return static_cast<unsigned>(module.getDataLayout().getABITypeAlign(ty).value());
+    }
+
+    unsigned record_align(const Ty &ty)
+    {
+        unsigned align = 1;
+        auto found = records.find(ty.record);
+        if (found == records.end())
+            return align;
+        for (const Field &field : found->second.fields) {
+            llvm::Type *storage = field.bits > 0 ? field.storage : field.ty.ir;
+            unsigned one = abi_align(storage);
+            if (one > align)
+                align = one;
+        }
+        return align;
+    }
+
+    void note_quals(Ty &ty, const AstNode *list)
+    {
+        for (const AstNode *node = list; node != NULL; node = node->next) {
+            if (node->kind != AST_SPECIFIER || node->text == NULL)
+                continue;
+            if (std::strcmp(node->text, "const") == 0)
+                ty.is_const = true;
+            else if (std::strcmp(node->text, "volatile") == 0)
+                ty.is_volatile = true;
+        }
+    }
+
+    Ty apply_pointers(Ty base, const AstNode *node)
+    {
+        if (node == NULL)
+            return base;
+        if (node->kind != AST_POINTER) {
+            error("not a pointer");
+            return base;
+        }
+        Ty result = pointer_to(base);
+        const AstNode *nested = NULL;
+        const AstNode *quals = NULL;
+        if (node->a != NULL && node->a->kind == AST_POINTER)
+            nested = node->a;
+        else if (node->a != NULL && node->a->kind == AST_SPECIFIER)
+            quals = node->a;
+        if (node->b != NULL && node->b->kind == AST_POINTER)
+            nested = node->b;
+        if (quals != NULL)
+            note_quals(result, quals);
+        if (nested != NULL)
+            return apply_pointers(result, nested);
+        return result;
+    }
+
+    bool declarator_form(const AstNode *node)
+    {
+        if (node == NULL)
+            return false;
+        switch (node->kind) {
+        case AST_IDENT:
+        case AST_TYPE_NAME:
+        case AST_ARRAY:
+        case AST_DECLARATOR:
+        case AST_POINTER:
+        case AST_FUNCTION_DECL:
+        case AST_QUALIFIED:
+        case AST_BITFIELD:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    int const_i64(const AstNode *node, int64_t &out)
+    {
+        Const value = eval_const(node);
+        if (!value.ok || !is_integer(value.ty) || value.v == NULL) {
+            if (!failed)
+                error("not a constant integer");
+            return 0;
+        }
+        out = llvm::cast<llvm::ConstantInt>(value.v)->getSExtValue();
+        return 1;
+    }
+
+    Ty walk_declarator(Ty base, const AstNode *node, Declared &out)
+    {
+        if (failed)
+            return base;
+        if (node == NULL)
+            return base;
+        if (node->kind == AST_IDENT || node->kind == AST_TYPE_NAME) {
+            out.name = node;
+            return base;
+        }
+        if (node->kind == AST_QUALIFIED) {
+            out.name = node;
+            return base;
+        }
+        if (node->kind == AST_FUNCTION_DECL) {
+            if (node->a != NULL && node->a->kind != AST_IDENT && node->a->kind != AST_QUALIFIED) {
+                error("not in this phase");
+                return base;
+            }
+            out.func = node;
+            out.name = node->a;
+            return base;
+        }
+        if (node->kind == AST_DECLARATOR)
+            return walk_declarator(apply_pointers(base, node->a), node->b, out);
+        if (node->kind == AST_POINTER)
+            return apply_pointers(base, node);
+        if (node->kind == AST_ARRAY) {
+            if (node->text != NULL && std::strcmp(node->text, "[]") == 0)
+                return pointer_to(base);
+            if (declarator_form(node->a)) {
+                if (node->b == NULL)
+                    return walk_declarator(pointer_to(base), node->a, out);
+                int64_t length = 0;
+                if (!const_i64(node->b, length) || length <= 0 || length > (1 << 20)) {
+                    if (!failed)
+                        error("array size is not constant");
+                    return base;
+                }
+                return walk_declarator(array_of(base, static_cast<int>(length)), node->a, out);
+            }
+            int64_t length = 0;
+            if (!const_i64(node->a, length) || length <= 0 || length > (1 << 20)) {
+                if (!failed)
+                    error("array size is not constant");
+                return base;
+            }
+            return array_of(base, static_cast<int>(length));
+        }
+        error("not a declarator");
+        return base;
+    }
+
+    Declared declare_one(Ty base, const AstNode *node)
+    {
+        Declared out;
+        out.ty = base;
+        if (node != NULL && node->kind == AST_INIT) {
+            out.init = node->b;
+            node = node->a;
+        }
+        if (node != NULL && node->kind == AST_BITFIELD) {
+            int64_t width = 0;
+            if (!const_i64(node->b, width) || width <= 0 || width > 128) {
+                if (!failed)
+                    error("bit-field width is not constant");
+            } else
+                out.bits = static_cast<int>(width);
+            node = node->a;
+        }
+        if (failed)
+            return out;
+        out.ty = walk_declarator(base, node, out);
+        return out;
+    }
+
+    std::string tag_key(bool is_union, const char *text)
+    {
+        if (text == NULL || text[0] == '\0')
+            return (is_union ? ".union.anon." : ".struct.anon.") + std::to_string(++anon_records);
+        return (is_union ? "union." : "struct.") + std::string(text);
+    }
+
+    Ty make_record(const AstNode *node)
+    {
+        bool is_union = node->kind == AST_UNION;
+        std::string key = tag_key(is_union, node->text);
+        if (node->a == NULL) {
+            auto found = records.find(key);
+            if (found == records.end()) {
+                Record created;
+                created.name = key;
+                created.is_union = is_union;
+                created.ir = llvm::StructType::create(context, key);
+                records.emplace(key, created);
+            } else if (found->second.is_union != is_union) {
+                error("tag is the wrong kind");
+                return int_ty();
+            }
+            return record_type(records[key]);
+        }
+        auto found = records.find(key);
+        if (found != records.end() && (found->second.complete || found->second.defining)) {
+            error("redefined type");
+            return found->second.ir == NULL ? int_ty() : record_type(found->second);
+        }
+        if (found != records.end() && found->second.is_union != is_union) {
+            error("tag is the wrong kind");
+            return int_ty();
+        }
+        Record created;
+        created.name = key;
+        created.is_union = is_union;
+        created.defining = true;
+        created.ir = found == records.end() ? llvm::StructType::create(context, key)
+                                            : found->second.ir;
+        records[key] = created;
+        for (const AstNode *mem = node->a; mem != NULL && !failed; mem = mem->next) {
+            if (mem->kind != AST_DECLARATION) {
+                error("not a member");
+                break;
+            }
+            Storage storage;
+            Ty base = parse_specs(mem->a, Where::Param, &storage);
+            if (failed)
+                break;
+            if (storage.is_typedef || storage.is_extern || storage.is_static || storage.is_inline
+                || storage.is_register) {
+                error("storage class is not allowed here");
+                break;
+            }
+            if (mem->b == NULL) {
+                error("member has no name");
+                break;
+            }
+            for (const AstNode *item = mem->b; item != NULL && !failed; item = item->next) {
+                Declared declared = declare_one(base, item);
+                if (failed)
+                    break;
+                if (declared.func != NULL) {
+                    error("not a member");
+                    break;
+                }
+                if (declared.name == NULL || declared.name->text == NULL
+                    || declared.name->kind != AST_IDENT) {
+                    if (declared.bits > 0)
+                        error("unnamed bit-field");
+                    else if (declared.name != NULL && declared.name->kind == AST_QUALIFIED)
+                        error("qualified names are a later phase");
+                    else
+                        error("member has no name");
+                    break;
+                }
+                if (declared.bits > 0
+                    && (declared.ty.is_pointer || declared.ty.is_array || declared.ty.is_record
+                        || declared.ty.is_float || !is_integer(declared.ty))) {
+                    error("bit-field is not an integer");
+                    break;
+                }
+                if (declared.bits == 0 && !complete_type(declared.ty)) {
+                    error("incomplete member");
+                    break;
+                }
+                Field field;
+                field.name = declared.name->text;
+                field.ty = declared.ty;
+                field.bits = declared.bits;
+                field.storage = declared.bits > 0
+                    ? llvm::Type::getIntNTy(context, static_cast<unsigned>(declared.bits))
+                    : declared.ty.ir;
+                for (const Field &earlier : records[key].fields) {
+                    if (earlier.name == field.name)
+                        error_name("name is already defined", field.name.c_str());
+                }
+                if (failed)
+                    break;
+                records[key].fields.push_back(field);
+            }
+        }
+        if (failed)
+            return int_ty();
+        Record &rec = records[key];
+        if (rec.fields.empty()) {
+            error("empty struct");
+            return int_ty();
+        }
+        std::vector<llvm::Type *> elems;
+        if (rec.is_union) {
+            uint64_t size = 1;
+            for (Field &field : rec.fields) {
+                field.index = 0;
+                llvm::Type *storage = field.bits > 0 ? field.storage : field.ty.ir;
+                uint64_t bytes = module.getDataLayout().getTypeAllocSize(storage).getFixedValue();
+                if (bytes > size)
+                    size = bytes;
+            }
+            elems.push_back(llvm::ArrayType::get(llvm::Type::getInt8Ty(context), size));
+        } else {
+            for (Field &field : rec.fields) {
+                field.index = static_cast<unsigned>(elems.size());
+                elems.push_back(field.bits > 0 ? field.storage : field.ty.ir);
+            }
+        }
+        if (rec.ir->isOpaque())
+            rec.ir->setBody(elems);
+        rec.complete = true;
+        rec.defining = false;
+        return record_type(rec);
+    }
+
+    Ty make_enum(const AstNode *node)
+    {
+        std::string key = node->text != NULL && node->text[0] != '\0'
+            ? std::string("enum.") + node->text
+            : ".enum.anon." + std::to_string(++anon_records);
+        if (node->a == NULL) {
+            if (!enum_types.count(key)) {
+                error("incomplete enum");
+                return int_ty();
+            }
+            return enum_type(key);
+        }
+        if (enum_types.count(key)) {
+            error("redefined type");
+            return enum_type(key);
+        }
+        int64_t next = 0;
+        for (const AstNode *item = node->a; item != NULL && !failed; item = item->next) {
+            if (item->kind != AST_ENUMERATOR || item->text == NULL) {
+                error("not an enumerator");
+                break;
+            }
+            int64_t value = next;
+            if (item->a != NULL && !const_i64(item->a, value))
+                break;
+            if (enum_consts.count(item->text) != 0) {
+                error_name("name is already defined", item->text);
+                break;
+            }
+            enum_consts[item->text] = value;
+            next = value + 1;
+        }
+        if (failed)
+            return int_ty();
+        enum_types.insert(key);
+        return enum_type(key);
+    }
+
+    std::optional<Field> find_field(const Ty &object, const char *name)
+    {
+        if (!object.is_record || name == NULL) {
+            error("not a struct");
+            return std::nullopt;
+        }
+        auto found = records.find(object.record);
+        if (found == records.end() || !found->second.complete) {
+            error("incomplete type");
+            return std::nullopt;
+        }
+        for (const Field &field : found->second.fields) {
+            if (field.name == name)
+                return field;
+        }
+        error_name("no such member", name);
+        return std::nullopt;
     }
 
     Ty parse_specs(const AstNode *list, Where where, Storage *storage = nullptr)
@@ -375,6 +824,20 @@ private:
                     error("invalid type");
                 base = Alias;
                 alias_ty = found->second;
+                if (failed)
+                    return int_ty();
+                continue;
+            }
+            if (node->kind == AST_STRUCT || node->kind == AST_UNION || node->kind == AST_ENUM
+                || node->kind == AST_CLASS) {
+                if (node->kind == AST_CLASS) {
+                    error("classes are a later phase");
+                    return int_ty();
+                }
+                if (base != Missing || shorts || longs || saw_signed || saw_unsigned || saw_int)
+                    error("invalid type");
+                base = Alias;
+                alias_ty = node->kind == AST_ENUM ? make_enum(node) : make_record(node);
                 if (failed)
                     return int_ty();
                 continue;
@@ -536,15 +999,17 @@ private:
     Ty type_from_name(const AstNode *node)
     {
         if (node != NULL && node->kind == AST_DECLARATOR) {
-            if (node->b != NULL) {
-                reject_declarator(node->b);
+            Ty base = parse_specs(node->a, Where::Param);
+            if (failed)
                 return int_ty();
-            }
-            return parse_specs(node->a, Where::Param);
+            if (node->b == NULL)
+                return base;
+            return declare_one(base, node->b).ty;
         }
-        if (node != NULL && node->kind == AST_SPECIFIER)
-            return parse_specs(node, Where::Param);
-        if (node != NULL && node->kind == AST_TYPE_NAME)
+        if (node != NULL
+            && (node->kind == AST_SPECIFIER || node->kind == AST_TYPE_NAME
+                || node->kind == AST_STRUCT || node->kind == AST_UNION
+                || node->kind == AST_ENUM || node->kind == AST_CLASS))
             return parse_specs(node, Where::Param);
         reject_node(node);
         return int_ty();
@@ -553,8 +1018,10 @@ private:
     Ty promote(Ty ty)
     {
         ty = drop(ty);
-        if (ty.is_pointer) {
-            error("pointers are a later phase");
+        if (ty.is_pointer || ty.is_array)
+            return decay(ty);
+        if (ty.is_record) {
+            error("not a scalar");
             return ty;
         }
         if (ty.is_float || ty.is_void)
@@ -566,8 +1033,9 @@ private:
 
     Ty usual(Ty left, Ty right)
     {
-        if (left.is_pointer || right.is_pointer) {
-            error("pointers are a later phase");
+        if (left.is_pointer || right.is_pointer || left.is_record || right.is_record
+            || left.is_array || right.is_array) {
+            error("invalid operands");
             return int_ty();
         }
         if (left.is_void || right.is_void) {
@@ -822,6 +1290,13 @@ private:
                 error("cannot convert void");
             return value;
         }
+        if (from.is_pointer || to.is_pointer || from.is_record || to.is_record
+            || from.is_array || to.is_array) {
+            if (from.ir == to.ir)
+                return value;
+            error("cannot convert");
+            return llvm::Constant::getNullValue(to.ir);
+        }
         if (from.ir == to.ir)
             return value;
         if (to.is_bool) {
@@ -872,7 +1347,22 @@ private:
         if (failed)
             return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
         if (from.is_pointer || to.is_pointer) {
-            error("pointers are a later phase");
+            if (from.is_pointer && to.is_pointer)
+                return value;
+            if (from.is_pointer && to.is_bool)
+                return builder.CreateICmpNE(
+                    value, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(from.ir)));
+            if (from.is_pointer && is_integer(to))
+                return builder.CreatePtrToInt(value, to.ir);
+            if (to.is_pointer && is_integer(from))
+                return builder.CreateIntToPtr(value, to.ir);
+            error("cannot convert");
+            return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
+        }
+        if (from.is_record || to.is_record || from.is_array || to.is_array) {
+            if (from.is_record && to.is_record && from.record == to.record)
+                return value;
+            error("cannot convert");
             return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
         }
         if (to.is_void || from.is_void) {
@@ -953,7 +1443,7 @@ private:
     {
         if (name.empty())
             return;
-        if (scopes.back().count(name) != 0) {
+        if (scopes.back().count(name) != 0 || enum_consts.count(name) != 0) {
             error_name("name is already defined", name.c_str());
             return;
         }
@@ -968,6 +1458,18 @@ private:
 
     llvm::Value *load_slot(const Slot &slot)
     {
+        if (slot.ty.is_array) {
+            error("not a scalar");
+            return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+        }
+        if (slot.bits > 0) {
+            llvm::Type *narrow_ty = llvm::Type::getIntNTy(context, static_cast<unsigned>(slot.bits));
+            llvm::Value *raw = builder.CreateLoad(narrow_ty, slot.addr, slot.ty.is_volatile);
+            Ty narrow = slot.ty;
+            narrow.ir = narrow_ty;
+            narrow.is_bool = false;
+            return convert(raw, narrow, slot.ty);
+        }
         return builder.CreateLoad(slot.ty.ir, slot.addr, slot.ty.is_volatile);
     }
 
@@ -977,7 +1479,123 @@ private:
             error("assignment to const");
             return;
         }
+        if (slot.bits > 0) {
+            Ty narrow = slot.ty;
+            narrow.ir = llvm::Type::getIntNTy(context, static_cast<unsigned>(slot.bits));
+            narrow.is_bool = false;
+            value = convert(value, slot.ty, narrow);
+        }
         builder.CreateStore(value, slot.addr, slot.ty.is_volatile);
+    }
+
+    RValue read_slot(const Slot &slot)
+    {
+        if (slot.ty.is_array && slot.ty.inner != NULL && slot.bits == 0) {
+            llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0);
+            RValue out;
+            out.ty = pointer_to(*slot.ty.inner);
+            out.v = builder.CreateInBoundsGEP(slot.ty.ir, slot.addr, {zero, zero});
+            return out;
+        }
+        RValue out;
+        out.v = load_slot(slot);
+        out.ty = drop(slot.ty);
+        return out;
+    }
+
+    Slot field_addr(llvm::Value *base, const Ty &object, const Field &field)
+    {
+        Slot slot;
+        slot.ty = field.ty;
+        slot.bits = field.bits;
+        if (object.is_union)
+            slot.addr = base;
+        else {
+            auto found = records.find(object.record);
+            llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+            llvm::Value *index = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), field.index);
+            slot.addr = builder.CreateInBoundsGEP(found->second.ir, base, {zero, index});
+        }
+        return slot;
+    }
+
+    Ty object_type(const AstNode *node)
+    {
+        if (failed || node == NULL) {
+            error("assignment target is not a scalar");
+            return int_ty();
+        }
+        if (node->kind == AST_IDENT) {
+            std::optional<Slot> slot = lookup(node->text);
+            if (!slot) {
+                if (node->text != NULL && enum_consts.count(node->text) != 0)
+                    error("assignment target is not a scalar");
+                else
+                    error_name("unknown name", node->text);
+                return int_ty();
+            }
+            return slot->ty;
+        }
+        if (node->kind == AST_MEMBER || node->kind == AST_ARROW) {
+            Ty base = node->kind == AST_ARROW ? decay(type_of(node->a)) : object_type(node->a);
+            if (failed)
+                return int_ty();
+            if (node->kind == AST_ARROW) {
+                if (!base.is_pointer || base.inner == NULL) {
+                    error("not a pointer");
+                    return int_ty();
+                }
+                base = *base.inner;
+            }
+            std::optional<Field> field = find_field(base, node->text);
+            if (!field)
+                return int_ty();
+            return field->ty;
+        }
+        if (node->kind == AST_INDEX) {
+            Ty base = decay(type_of(node->a));
+            type_of(node->b);
+            if (failed)
+                return int_ty();
+            if (!base.is_pointer || base.inner == NULL) {
+                error("not an array or pointer");
+                return int_ty();
+            }
+            return *base.inner;
+        }
+        if (node->kind == AST_UNARY && op_is(node, "*")) {
+            Ty base = decay(type_of(node->a));
+            if (!base.is_pointer || base.inner == NULL) {
+                error("not a pointer");
+                return int_ty();
+            }
+            return *base.inner;
+        }
+        error("assignment target is not a scalar");
+        return int_ty();
+    }
+
+    std::optional<Slot> index_slot(const AstNode *node)
+    {
+        RValue index = emit_rvalue(node->b);
+        if (failed)
+            return std::nullopt;
+        if (!is_integer(index.ty)) {
+            error("subscript is not an integer");
+            return std::nullopt;
+        }
+        llvm::Value *idx = convert(index.v, index.ty, integer(64, true, 4));
+        RValue base = emit_rvalue(node->a);
+        if (failed)
+            return std::nullopt;
+        if (!base.ty.is_pointer || base.ty.inner == NULL) {
+            error("not an array or pointer");
+            return std::nullopt;
+        }
+        Slot slot;
+        slot.ty = *base.ty.inner;
+        slot.addr = builder.CreateInBoundsGEP(base.ty.inner->ir, base.v, {idx});
+        return slot;
     }
 
     bool terminated()
@@ -1003,14 +1621,59 @@ private:
 
     std::optional<Slot> lvalue(const AstNode *node)
     {
-        if (node == NULL || node->kind != AST_IDENT || node->text == NULL) {
+        if (failed || node == NULL) {
             error("assignment target is not a scalar");
             return std::nullopt;
         }
-        std::optional<Slot> slot = lookup(node->text);
-        if (!slot)
-            error_name("unknown name", node->text);
-        return slot;
+        if (node->kind == AST_IDENT) {
+            if (node->text != NULL && enum_consts.count(node->text) != 0 && !lookup(node->text)) {
+                error("assignment target is not a scalar");
+                return std::nullopt;
+            }
+            std::optional<Slot> slot = lookup(node->text);
+            if (!slot)
+                error_name("unknown name", node->text);
+            return slot;
+        }
+        if (node->kind == AST_MEMBER) {
+            std::optional<Slot> base = lvalue(node->a);
+            if (!base)
+                return std::nullopt;
+            std::optional<Field> field = find_field(base->ty, node->text);
+            if (!field)
+                return std::nullopt;
+            return field_addr(base->addr, base->ty, *field);
+        }
+        if (node->kind == AST_ARROW) {
+            RValue ptr = emit_rvalue(node->a);
+            if (failed)
+                return std::nullopt;
+            if (!ptr.ty.is_pointer || ptr.ty.inner == NULL) {
+                error("not a pointer");
+                return std::nullopt;
+            }
+            std::optional<Field> field = find_field(*ptr.ty.inner, node->text);
+            if (!field)
+                return std::nullopt;
+            return field_addr(ptr.v, *ptr.ty.inner, *field);
+        }
+        if (node->kind == AST_INDEX)
+            return index_slot(node);
+        if (node->kind == AST_UNARY && op_is(node, "*")) {
+            RValue ptr = emit_rvalue(node->a);
+            if (failed)
+                return std::nullopt;
+            if (!ptr.ty.is_pointer || ptr.ty.inner == NULL) {
+                error("not a pointer");
+                return std::nullopt;
+            }
+            Slot slot;
+            slot.addr = ptr.v;
+            slot.ty = *ptr.ty.inner;
+            return slot;
+        }
+        error("assignment target is not a scalar");
+        return std::nullopt;
     }
 
     Ty type_of(const AstNode *node)
@@ -1032,11 +1695,15 @@ private:
         if (node->kind == AST_IDENT) {
             std::optional<Slot> slot = lookup(node->text);
             if (!slot) {
+                if (node->text != NULL && enum_consts.count(node->text) != 0)
+                    return int_ty();
                 error_name("unknown name", node->text);
                 return int_ty();
             }
             return drop(slot->ty);
         }
+        if (node->kind == AST_MEMBER || node->kind == AST_ARROW || node->kind == AST_INDEX)
+            return drop(object_type(node));
         if (node->kind == AST_SIZEOF)
             return size_ty();
         if (node->kind == AST_CAST) {
@@ -1047,12 +1714,8 @@ private:
             return type_unary(node);
         if (node->kind == AST_BINARY)
             return type_binary(node);
-        if (node->kind == AST_ASSIGN) {
-            std::optional<Slot> slot = lvalue(node->a);
-            if (!slot)
-                return int_ty();
-            return drop(slot->ty);
-        }
+        if (node->kind == AST_ASSIGN)
+            return drop(object_type(node->a));
         if (node->kind == AST_CONDITIONAL) {
             Ty left = type_of(node->b);
             Ty right = type_of(node->c);
@@ -1070,19 +1733,19 @@ private:
 
     Ty type_unary(const AstNode *node)
     {
-        if (op_is(node, "&") || op_is(node, "*")) {
-            error("pointers are a later phase");
-            return int_ty();
+        if (op_is(node, "&")) {
+            Ty object = object_type(node->a);
+            if (failed)
+                return int_ty();
+            return pointer_to(object);
         }
+        if (op_is(node, "*"))
+            return drop(object_type(node));
         if (op_is(node, "!"))
             return bool_ty();
         if (op_is(node, "++") || op_is(node, "--") || op_is(node, "post++")
-            || op_is(node, "post--")) {
-            std::optional<Slot> slot = lvalue(node->a);
-            if (!slot)
-                return int_ty();
-            return drop(slot->ty);
-        }
+            || op_is(node, "post--"))
+            return drop(object_type(node->a));
         Ty inner = type_of(node->a);
         if (op_is(node, "~") && inner.is_float)
             error("complement of a float");
@@ -1097,11 +1760,25 @@ private:
             type_of(node->a);
             return type_of(node->b);
         }
-        Ty left = type_of(node->a);
-        Ty right = type_of(node->b);
+        Ty left = decay(type_of(node->a));
+        Ty right = decay(type_of(node->b));
         if (op_is(node, "<") || op_is(node, ">") || op_is(node, "<=") || op_is(node, ">=")
             || op_is(node, "==") || op_is(node, "!="))
             return bool_ty();
+        if (left.is_pointer || right.is_pointer) {
+            bool add = op_is(node, "+");
+            bool sub = op_is(node, "-");
+            if (add && left.is_pointer && is_integer(right))
+                return left;
+            if (add && right.is_pointer && is_integer(left))
+                return right;
+            if (sub && left.is_pointer && is_integer(right))
+                return left;
+            if (sub && left.is_pointer && right.is_pointer)
+                return integer(64, true, 4);
+            error("invalid operands");
+            return int_ty();
+        }
         if (op_is(node, "<<") || op_is(node, ">>")) {
             if (left.is_float || right.is_float)
                 error("shift of a float");
@@ -1157,6 +1834,14 @@ private:
         if (node->kind == AST_CONDITIONAL)
             return eval_conditional(node);
         if (node->kind == AST_IDENT) {
+            if (node->text != NULL && enum_consts.count(node->text) != 0 && !lookup(node->text)) {
+                Const out;
+                out.ok = true;
+                out.ty = int_ty();
+                out.v = llvm::ConstantInt::get(
+                    context, llvm::APInt(32, static_cast<uint64_t>(enum_consts[node->text]), true));
+                return out;
+            }
             if (!lookup(node->text))
                 error_name("unknown name", node->text);
             return none;
@@ -1205,11 +1890,8 @@ private:
     {
         Const none;
         if (op_is(node, "&") || op_is(node, "*") || op_is(node, "++") || op_is(node, "--")
-            || op_is(node, "post++") || op_is(node, "post--")) {
-            if (op_is(node, "&") || op_is(node, "*"))
-                error("pointers are a later phase");
+            || op_is(node, "post++") || op_is(node, "post--"))
             return none;
-        }
         Const inner = eval_const(node->a);
         if (!inner.ok || inner.ty.is_void)
             return none;
@@ -1444,13 +2126,23 @@ private:
         if (node->kind == AST_IDENT) {
             std::optional<Slot> slot = lookup(node->text);
             if (!slot) {
+                if (node->text != NULL && enum_consts.count(node->text) != 0) {
+                    RValue out;
+                    out.ty = int_ty();
+                    out.v = llvm::ConstantInt::get(
+                        context, llvm::APInt(32, static_cast<uint64_t>(enum_consts[node->text]), true));
+                    return out;
+                }
                 error_name("unknown name", node->text);
                 return fallback();
             }
-            RValue out;
-            out.v = load_slot(*slot);
-            out.ty = drop(slot->ty);
-            return out;
+            return read_slot(*slot);
+        }
+        if (node->kind == AST_MEMBER || node->kind == AST_ARROW || node->kind == AST_INDEX) {
+            std::optional<Slot> slot = lvalue(node);
+            if (!slot)
+                return fallback();
+            return read_slot(*slot);
         }
         if (node->kind == AST_SIZEOF) {
             Const size = eval_sizeof(node->a);
@@ -1495,9 +2187,24 @@ private:
 
     RValue emit_unary(const AstNode *node)
     {
-        if (op_is(node, "&") || op_is(node, "*")) {
-            error("pointers are a later phase");
-            return fallback();
+        if (op_is(node, "&")) {
+            std::optional<Slot> slot = lvalue(node->a);
+            if (!slot)
+                return fallback();
+            if (slot->bits > 0) {
+                error("address of a bit-field");
+                return fallback();
+            }
+            RValue out;
+            out.ty = pointer_to(slot->ty);
+            out.v = slot->addr;
+            return out;
+        }
+        if (op_is(node, "*")) {
+            std::optional<Slot> slot = lvalue(node);
+            if (!slot)
+                return fallback();
+            return read_slot(*slot);
         }
         if (op_is(node, "++") || op_is(node, "--") || op_is(node, "post++")
             || op_is(node, "post--"))
@@ -1548,6 +2255,20 @@ private:
         }
         bool postfix = op_is(node, "post++") || op_is(node, "post--");
         bool decrement = op_is(node, "--") || op_is(node, "post--");
+        if (slot->ty.is_array) {
+            error("not a scalar");
+            return fallback();
+        }
+        if (slot->ty.is_pointer && slot->ty.inner != NULL) {
+            llvm::Value *old = load_slot(*slot);
+            llvm::Value *step = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), decrement ? -1 : 1);
+            llvm::Value *next = builder.CreateInBoundsGEP(slot->ty.inner->ir, old, {step});
+            store_slot(*slot, next, false);
+            RValue out;
+            out.ty = drop(slot->ty);
+            out.v = postfix ? old : next;
+            return out;
+        }
         llvm::Value *old = load_slot(*slot);
         Ty object = drop(slot->ty);
         Ty widened = promote(object);
@@ -1570,8 +2291,11 @@ private:
         RValue value = emit_rvalue(node);
         if (failed)
             return llvm::ConstantInt::getFalse(context);
-        if (value.ty.is_pointer) {
-            error("pointers are a later phase");
+        if (value.ty.is_pointer)
+            return builder.CreateICmpNE(
+                value.v, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(value.ty.ir)));
+        if (value.ty.is_record || value.ty.is_array) {
+            error("not a scalar");
             return llvm::ConstantInt::getFalse(context);
         }
         if (value.ty.is_void) {
@@ -1648,6 +2372,59 @@ private:
         return apply_op(node->text, left, right);
     }
 
+    RValue pointer_binary(const char *op, RValue left, RValue right, bool compare)
+    {
+        bool add = std::strcmp(op, "+") == 0;
+        bool sub = std::strcmp(op, "-") == 0;
+        if (compare) {
+            if (!left.ty.is_pointer || !right.ty.is_pointer || !same_value_type(left.ty, right.ty)) {
+                error("invalid operands");
+                return fallback();
+            }
+            llvm::CmpInst::Predicate pred = llvm::CmpInst::ICMP_EQ;
+            if (std::strcmp(op, "<") == 0)
+                pred = llvm::CmpInst::ICMP_ULT;
+            else if (std::strcmp(op, ">") == 0)
+                pred = llvm::CmpInst::ICMP_UGT;
+            else if (std::strcmp(op, "<=") == 0)
+                pred = llvm::CmpInst::ICMP_ULE;
+            else if (std::strcmp(op, ">=") == 0)
+                pred = llvm::CmpInst::ICMP_UGE;
+            else if (std::strcmp(op, "!=") == 0)
+                pred = llvm::CmpInst::ICMP_NE;
+            RValue out;
+            out.ty = bool_ty();
+            out.v = builder.CreateICmp(pred, left.v, right.v);
+            return out;
+        }
+        Ty index_ty = integer(64, true, 4);
+        if ((add || sub) && left.ty.is_pointer && left.ty.inner != NULL && is_integer(right.ty)) {
+            llvm::Value *index = convert(right.v, right.ty, index_ty);
+            if (sub)
+                index = builder.CreateNeg(index);
+            RValue out;
+            out.ty = left.ty;
+            out.v = builder.CreateInBoundsGEP(left.ty.inner->ir, left.v, {index});
+            return out;
+        }
+        if (add && right.ty.is_pointer && right.ty.inner != NULL && is_integer(left.ty)) {
+            llvm::Value *index = convert(left.v, left.ty, index_ty);
+            RValue out;
+            out.ty = right.ty;
+            out.v = builder.CreateInBoundsGEP(right.ty.inner->ir, right.v, {index});
+            return out;
+        }
+        if (sub && left.ty.is_pointer && right.ty.is_pointer && same_value_type(left.ty, right.ty)
+            && left.ty.inner != NULL) {
+            RValue out;
+            out.ty = index_ty;
+            out.v = builder.CreatePtrDiff(left.ty.inner->ir, left.v, right.v);
+            return out;
+        }
+        error("invalid operands");
+        return fallback();
+    }
+
     RValue apply_op(const char *op, RValue left, RValue right)
     {
         if (op == NULL) {
@@ -1657,6 +2434,10 @@ private:
         bool compare = std::strcmp(op, "<") == 0 || std::strcmp(op, ">") == 0
             || std::strcmp(op, "<=") == 0 || std::strcmp(op, ">=") == 0
             || std::strcmp(op, "==") == 0 || std::strcmp(op, "!=") == 0;
+        left.ty = decay(left.ty);
+        right.ty = decay(right.ty);
+        if (left.ty.is_pointer || right.ty.is_pointer)
+            return pointer_binary(op, left, right, compare);
         bool shift = std::strcmp(op, "<<") == 0 || std::strcmp(op, ">>") == 0;
         if (shift) {
             if (left.ty.is_float || right.ty.is_float || left.ty.is_void || right.ty.is_void) {
@@ -1767,6 +2548,10 @@ private:
         std::optional<Slot> slot = lvalue(node->a);
         if (!slot || failed)
             return fallback();
+        if (slot->ty.is_array) {
+            error("cannot assign an array");
+            return fallback();
+        }
         if (node->text == NULL) {
             error("not in this phase");
             return fallback();
@@ -2281,9 +3066,7 @@ private:
 
     Ty string_ty()
     {
-        Ty ty;
-        ty.ir = llvm::PointerType::get(context, 0);
-        ty.is_pointer = true;
+        Ty ty = pointer_to(integer(8, true, 1));
         return ty;
     }
 
@@ -2344,9 +3127,20 @@ private:
     {
         left = drop(left);
         right = drop(right);
+        if (left.is_pointer || right.is_pointer) {
+            return left.is_pointer && right.is_pointer && left.inner != NULL && right.inner != NULL
+                && same_value_type(*left.inner, *right.inner);
+        }
+        if (left.is_array || right.is_array) {
+            return left.is_array && right.is_array && left.array_len == right.array_len
+                && left.inner != NULL && right.inner != NULL
+                && same_value_type(*left.inner, *right.inner);
+        }
+        if (left.is_record || right.is_record)
+            return left.is_record && right.is_record && left.record == right.record;
         return left.ir == right.ir && left.is_signed == right.is_signed
             && left.is_float == right.is_float && left.is_bool == right.is_bool
-            && left.is_void == right.is_void && left.is_pointer == right.is_pointer;
+            && left.is_void == right.is_void;
     }
 
     bool storage_conflict(const Storage &storage)
@@ -2364,8 +3158,12 @@ private:
             return "void";
         if (ty.is_bool)
             return "bool";
-        if (ty.is_pointer)
-            return "ptr";
+        if (ty.is_pointer && ty.inner != NULL)
+            return type_tag(*ty.inner) + "*";
+        if (ty.is_array && ty.inner != NULL)
+            return type_tag(*ty.inner) + "[" + std::to_string(ty.array_len) + "]";
+        if (ty.is_record)
+            return ty.record;
         if (ty.is_float)
             return ty.fp_rank >= 2 ? "double" : "float";
         return std::string("i") + std::to_string(ty.ir->getIntegerBitWidth())
@@ -2408,7 +3206,8 @@ private:
 
     void install(Func incoming)
     {
-        if (scopes.front().count(incoming.source) != 0 || aliases.count(incoming.source) != 0) {
+        if (scopes.front().count(incoming.source) != 0 || aliases.count(incoming.source) != 0
+            || enum_consts.count(incoming.source) != 0) {
             error_name("name is already defined", incoming.source.c_str());
             return;
         }
@@ -2488,7 +3287,13 @@ private:
             bool viable = true;
             unsigned limit = static_cast<unsigned>(std::min(args.size(), fn.params.size()));
             for (unsigned i = 0; i < limit; i++) {
-                if (args[i].is_void || args[i].is_pointer) {
+                if (args[i].is_void) {
+                    viable = false;
+                    break;
+                }
+                bool aggregate = args[i].is_pointer || fn.params[i].is_pointer || args[i].is_record
+                    || fn.params[i].is_record || args[i].is_array || fn.params[i].is_array;
+                if (aggregate && !same_value_type(args[i], fn.params[i])) {
                     viable = false;
                     break;
                 }
@@ -2541,7 +3346,7 @@ private:
         }
         std::vector<Ty> args;
         for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
-            args.push_back(drop(type_of(arg)));
+            args.push_back(decay(type_of(arg)));
         if (failed)
             return int_ty();
         Func *fn = resolve(node->a->text, args);
@@ -2561,12 +3366,6 @@ private:
             args.push_back(emit_rvalue(arg));
         if (failed)
             return fallback();
-        for (const RValue &arg : args) {
-            if (arg.ty.is_pointer) {
-                error("pointers are a later phase");
-                return fallback();
-            }
-        }
         std::vector<Ty> types;
         for (const RValue &arg : args)
             types.push_back(arg.ty);
@@ -2598,7 +3397,8 @@ private:
 
     void record_alias(const std::string &name, Ty ty)
     {
-        if (scopes.front().count(name) != 0 || overloads.count(name) != 0) {
+        if (scopes.front().count(name) != 0 || overloads.count(name) != 0
+            || enum_consts.count(name) != 0) {
             error_name("name is already defined", name.c_str());
             return;
         }
@@ -2611,6 +3411,302 @@ private:
             return;
         }
         aliases[name] = ty;
+    }
+
+    bool plan_record(const Record &rec, const AstNode *list, std::vector<const AstNode *> &out)
+    {
+        out.assign(rec.fields.size(), nullptr);
+        int cursor = 0;
+        for (const AstNode *item = list; item != NULL && !failed; item = item->next) {
+            if (item->kind == AST_DESIGNATED) {
+                if (item->b == NULL) {
+                    error("nested designators are not in this phase");
+                    return false;
+                }
+                if (item->text == NULL) {
+                    error("array designator in a struct");
+                    return false;
+                }
+                int index = -1;
+                for (std::size_t i = 0; i < rec.fields.size(); i++) {
+                    if (rec.fields[i].name == item->text)
+                        index = static_cast<int>(i);
+                }
+                if (index < 0) {
+                    error_name("no such member", item->text);
+                    return false;
+                }
+                out[static_cast<std::size_t>(index)] = item->b;
+                cursor = index + 1;
+                continue;
+            }
+            if (cursor >= static_cast<int>(rec.fields.size())) {
+                error("too many initializers");
+                return false;
+            }
+            out[static_cast<std::size_t>(cursor++)] = item;
+        }
+        return !failed;
+    }
+
+    bool plan_array(const Ty &ty, const AstNode *list, std::vector<const AstNode *> &out)
+    {
+        out.assign(static_cast<std::size_t>(ty.array_len), nullptr);
+        int cursor = 0;
+        for (const AstNode *item = list; item != NULL && !failed; item = item->next) {
+            if (item->kind == AST_DESIGNATED) {
+                if (item->b == NULL) {
+                    error("nested designators are not in this phase");
+                    return false;
+                }
+                if (item->text != NULL) {
+                    error("struct designator in an array");
+                    return false;
+                }
+                int64_t index = 0;
+                if (!const_i64(item->a, index) || index < 0 || index >= ty.array_len) {
+                    if (!failed)
+                        error("array designator is out of range");
+                    return false;
+                }
+                out[static_cast<std::size_t>(index)] = item->b;
+                cursor = static_cast<int>(index) + 1;
+                continue;
+            }
+            if (cursor >= ty.array_len) {
+                error("too many initializers");
+                return false;
+            }
+            out[static_cast<std::size_t>(cursor++)] = item;
+        }
+        return !failed;
+    }
+
+    bool union_choice(const Record &rec, const AstNode *list, int &index, const AstNode *&value)
+    {
+        value = NULL;
+        index = 0;
+        if (list == NULL)
+            return true;
+        if (list->kind == AST_DESIGNATED) {
+            if (list->next != NULL) {
+                error("too many initializers");
+                return false;
+            }
+            if (list->b == NULL) {
+                error("nested designators are not in this phase");
+                return false;
+            }
+            if (list->text == NULL) {
+                error("array designator in a struct");
+                return false;
+            }
+            for (std::size_t i = 0; i < rec.fields.size(); i++) {
+                if (rec.fields[i].name == list->text) {
+                    index = static_cast<int>(i);
+                    value = list->b;
+                    return true;
+                }
+            }
+            error_name("no such member", list->text);
+            return false;
+        }
+        if (list->next != NULL) {
+            error("too many initializers");
+            return false;
+        }
+        value = list;
+        return true;
+    }
+
+    llvm::Constant *field_constant(const Field &field, const AstNode *init)
+    {
+        llvm::Type *storage = field.bits > 0 ? field.storage : field.ty.ir;
+        if (init == NULL)
+            return llvm::Constant::getNullValue(storage);
+        if (init->kind == AST_INIT) {
+            if (field.bits > 0) {
+                error("bit-field initializer is not scalar");
+                return llvm::Constant::getNullValue(storage);
+            }
+            return const_initializer(field.ty, init);
+        }
+        Const value = eval_const(init);
+        if (!value.ok) {
+            if (!failed)
+                error("file-scope initializer is not constant");
+            return llvm::Constant::getNullValue(storage);
+        }
+        llvm::Constant *wide = llvm::cast<llvm::Constant>(convert_const(value.v, value.ty, field.ty));
+        if (field.bits == 0)
+            return wide;
+        Ty narrow = field.ty;
+        narrow.ir = storage;
+        narrow.is_bool = false;
+        return llvm::cast<llvm::Constant>(convert_const(wide, field.ty, narrow));
+    }
+
+    llvm::Constant *const_initializer(const Ty &ty, const AstNode *init)
+    {
+        if (failed)
+            return llvm::Constant::getNullValue(ty.ir != NULL ? ty.ir : llvm::Type::getInt32Ty(context));
+        if (init != NULL && init->kind != AST_INIT) {
+            if (ty.is_array || (ty.is_record && init->kind != AST_INIT)) {
+                if (!(ty.is_record && !ty.is_array)) {
+                    error("cannot initialize an aggregate from a value");
+                    return llvm::Constant::getNullValue(ty.ir);
+                }
+            }
+            Const value = eval_const(init);
+            if (!value.ok) {
+                if (!failed)
+                    error("file-scope initializer is not constant");
+                return llvm::Constant::getNullValue(ty.ir);
+            }
+            return llvm::cast<llvm::Constant>(convert_const(value.v, value.ty, ty));
+        }
+        const AstNode *list = init == NULL ? NULL : init->a;
+        if (ty.is_record && !ty.is_union) {
+            auto found = records.find(ty.record);
+            std::vector<const AstNode *> planned;
+            if (found == records.end() || !plan_record(found->second, list, planned))
+                return llvm::Constant::getNullValue(ty.ir);
+            std::vector<llvm::Constant *> elems;
+            for (std::size_t i = 0; i < found->second.fields.size(); i++)
+                elems.push_back(field_constant(found->second.fields[i], planned[i]));
+            return llvm::ConstantStruct::get(found->second.ir, elems);
+        }
+        if (ty.is_array && ty.inner != NULL) {
+            std::vector<const AstNode *> planned;
+            if (!plan_array(ty, list, planned))
+                return llvm::Constant::getNullValue(ty.ir);
+            std::vector<llvm::Constant *> elems;
+            for (const AstNode *item : planned) {
+                if (item == NULL)
+                    elems.push_back(llvm::Constant::getNullValue(ty.inner->ir));
+                else
+                    elems.push_back(const_initializer(*ty.inner, item));
+            }
+            return llvm::ConstantArray::get(llvm::cast<llvm::ArrayType>(ty.ir), elems);
+        }
+        if (ty.is_union) {
+            auto found = records.find(ty.record);
+            const AstNode *value = NULL;
+            int index = 0;
+            if (found == records.end() || !union_choice(found->second, list, index, value))
+                return llvm::Constant::getNullValue(ty.ir);
+            if (value == NULL)
+                return llvm::Constant::getNullValue(ty.ir);
+            llvm::Constant *member = field_constant(
+                found->second.fields[static_cast<std::size_t>(index)], value);
+            auto *bytes_ty = llvm::cast<llvm::ArrayType>(found->second.ir->getElementType(0));
+            uint64_t size = bytes_ty->getNumElements();
+            unsigned width = static_cast<unsigned>(size * 8);
+            llvm::APInt bits(width, 0);
+            if (auto *integer = llvm::dyn_cast<llvm::ConstantInt>(member))
+                bits = integer->getValue().zextOrTrunc(width);
+            else if (auto *fp = llvm::dyn_cast<llvm::ConstantFP>(member))
+                bits = fp->getValueAPF().bitcastToAPInt().zextOrTrunc(width);
+            else {
+                error("union initializer is not a scalar");
+                return llvm::Constant::getNullValue(ty.ir);
+            }
+            std::vector<uint8_t> bytes;
+            for (uint64_t i = 0; i < size; i++)
+                bytes.push_back(static_cast<uint8_t>(
+                    bits.extractBits(8, static_cast<unsigned>(i * 8)).getZExtValue()));
+            llvm::Constant *raw = llvm::ConstantDataArray::get(context, llvm::ArrayRef<uint8_t>(bytes));
+            return llvm::ConstantStruct::get(found->second.ir, {raw});
+        }
+        if (list == NULL)
+            return llvm::Constant::getNullValue(ty.ir);
+        if (list->kind == AST_DESIGNATED || list->next != NULL) {
+            error("too many initializers");
+            return llvm::Constant::getNullValue(ty.ir);
+        }
+        return const_initializer(ty, list);
+    }
+
+    void store_initializer(const Slot &slot, const AstNode *init)
+    {
+        if (failed)
+            return;
+        if (init != NULL && init->kind != AST_INIT) {
+            if (slot.ty.is_array) {
+                error("cannot initialize an array from a value");
+                return;
+            }
+            RValue value = cast_to(emit_rvalue(init), slot.ty);
+            if (!failed)
+                store_slot(slot, value.v, true);
+            return;
+        }
+        const AstNode *list = init == NULL ? NULL : init->a;
+        if (slot.ty.is_record && !slot.ty.is_union) {
+            auto found = records.find(slot.ty.record);
+            std::vector<const AstNode *> planned;
+            if (found == records.end() || !plan_record(found->second, list, planned))
+                return;
+            for (std::size_t i = 0; i < found->second.fields.size(); i++) {
+                Slot field = field_addr(slot.addr, slot.ty, found->second.fields[i]);
+                if (planned[i] == NULL)
+                    store_slot(field, llvm::Constant::getNullValue(field.ty.ir), true);
+                else
+                    store_initializer(field, planned[i]);
+            }
+            return;
+        }
+        if (slot.ty.is_array && slot.ty.inner != NULL) {
+            std::vector<const AstNode *> planned;
+            if (!plan_array(slot.ty, list, planned))
+                return;
+            for (std::size_t i = 0; i < planned.size(); i++) {
+                llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0);
+                llvm::Value *index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), i);
+                Slot elem;
+                elem.ty = *slot.ty.inner;
+                elem.addr = builder.CreateInBoundsGEP(slot.ty.ir, slot.addr, {zero, index});
+                if (planned[i] == NULL)
+                    store_slot(elem, llvm::Constant::getNullValue(elem.ty.ir), true);
+                else
+                    store_initializer(elem, planned[i]);
+            }
+            return;
+        }
+        if (slot.ty.is_union) {
+            auto found = records.find(slot.ty.record);
+            const AstNode *value = NULL;
+            int index = 0;
+            if (found == records.end() || !union_choice(found->second, list, index, value))
+                return;
+            if (value == NULL) {
+                store_slot(slot, llvm::Constant::getNullValue(slot.ty.ir), true);
+                return;
+            }
+            Slot field = field_addr(slot.addr, slot.ty, found->second.fields[static_cast<std::size_t>(index)]);
+            store_initializer(field, value);
+            return;
+        }
+        if (list == NULL) {
+            store_slot(slot, llvm::Constant::getNullValue(slot.ty.ir), true);
+            return;
+        }
+        if (list->kind == AST_DESIGNATED || list->next != NULL) {
+            error("too many initializers");
+            return;
+        }
+        store_initializer(slot, list);
+    }
+
+    void place_value(const std::string &name, Ty ty, llvm::Value *addr)
+    {
+        if (ty.is_union) {
+            if (auto *global = llvm::dyn_cast<llvm::GlobalVariable>(addr))
+                global->setAlignment(llvm::Align(record_align(ty)));
+            else if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(addr))
+                alloca->setAlignment(llvm::Align(record_align(ty)));
+        }
+        bind(name, Slot{addr, ty});
     }
 
     void emit_declaration(const AstNode *node, bool file)
@@ -2637,33 +3733,41 @@ private:
                 return;
             }
             for (const AstNode *item = node->b; item != NULL && !failed; item = item->next) {
-                if (function_declarator(item) != NULL) {
-                    error("not a scalar");
+                Declared declared = declare_one(ty, item);
+                if (failed)
+                    return;
+                if (declared.func != NULL) {
+                    error("not a variable");
                     return;
                 }
-                const AstNode *init = NULL;
-                const AstNode *declarator = scalar_declarator(item, init);
-                if (declarator == NULL)
-                    return;
-                if (init != NULL) {
+                if (declared.init != NULL) {
                     error("typedef has an initializer");
                     return;
                 }
-                record_alias(declarator->text, ty);
+                if (declared.name == NULL || declared.name->kind != AST_IDENT
+                    || declared.name->text == NULL) {
+                    error("typedef has no name");
+                    return;
+                }
+                record_alias(declared.name->text, declared.ty);
             }
             return;
         }
         if (node->b == NULL) {
+            if (ty.is_record || ty.is_enum)
+                return;
             error("declaration has no name");
             return;
         }
         for (const AstNode *item = node->b; item != NULL && !failed; item = item->next) {
-            if (item->kind == AST_INIT && function_declarator(item) != NULL) {
-                error("function has an initializer");
+            Declared declared = declare_one(ty, item);
+            if (failed)
                 return;
-            }
-            const AstNode *decl = function_declarator(item);
-            if (decl != NULL) {
+            if (declared.func != NULL) {
+                if (declared.init != NULL) {
+                    error("function has an initializer");
+                    return;
+                }
                 if (!file && !storage.is_extern) {
                     error("a nested function is not allowed");
                     return;
@@ -2672,6 +3776,7 @@ private:
                     error("static is not allowed here");
                     return;
                 }
+                const AstNode *decl = item->kind == AST_INIT ? item->a : item;
                 declare_function(node->a, decl, NULL);
                 continue;
             }
@@ -2683,54 +3788,53 @@ private:
                 error("storage class is not allowed here");
                 return;
             }
-            if (ty.is_void) {
+            if (declared.ty.is_void) {
                 error("void variable");
                 return;
             }
-            const AstNode *init = NULL;
-            const AstNode *declarator = scalar_declarator(item, init);
-            if (declarator == NULL)
+            if (!complete_type(declared.ty)) {
+                error("incomplete type");
                 return;
-            std::string name = declarator->text;
+            }
+            if (declared.name == NULL || declared.name->kind != AST_IDENT
+                || declared.name->text == NULL) {
+                if (declared.name != NULL && declared.name->kind == AST_QUALIFIED)
+                    error("qualified names are a later phase");
+                else
+                    error("declaration has no name");
+                return;
+            }
+            std::string name = declared.name->text;
+            Ty object = declared.ty;
             if (file) {
                 if (scopes.front().count(name) != 0 || overloads.count(name) != 0
-                    || aliases.count(name) != 0) {
+                    || aliases.count(name) != 0 || enum_consts.count(name) != 0) {
                     error_name("name is already defined", name.c_str());
                     return;
                 }
-                bool declaration = storage.is_extern && init == NULL;
+                bool declaration_only = storage.is_extern && declared.init == NULL;
                 auto linkage = storage.is_static ? llvm::GlobalValue::InternalLinkage
                                                  : llvm::GlobalValue::ExternalLinkage;
-                llvm::Constant *initializer = declaration ? nullptr
-                                                          : llvm::Constant::getNullValue(ty.ir);
+                llvm::Constant *initializer = NULL;
+                if (!declaration_only) {
+                    if (declared.init == NULL)
+                        initializer = llvm::Constant::getNullValue(object.ir);
+                    else
+                        initializer = const_initializer(object, declared.init);
+                }
                 auto *global = new llvm::GlobalVariable(
-                    module, ty.ir, ty.is_const, linkage, initializer, name);
-                bind(name, Slot{global, ty});
-                if (init != NULL) {
-                    Const value = eval_const(init);
-                    if (!value.ok) {
-                        if (!failed)
-                            error("file-scope initializer is not constant");
-                        return;
-                    }
-                    if (value.ty.is_void) {
-                        error("void initializer");
-                        return;
-                    }
-                    global->setInitializer(llvm::cast<llvm::Constant>(
-                        convert_const(value.v, value.ty, ty)));
-                }
+                    module, object.ir, object.is_const, linkage, initializer, name);
+                place_value(name, object, global);
             } else {
-                if (init != NULL)
+                if (declared.init != NULL)
                     ensure_insert();
-                llvm::AllocaInst *addr = alloca_entry(ty.ir, name);
-                Slot slot{addr, ty};
+                llvm::AllocaInst *addr = alloca_entry(object.ir, name);
+                Slot slot{addr, object};
+                if (object.is_union)
+                    addr->setAlignment(llvm::Align(record_align(object)));
                 bind(name, slot);
-                if (init != NULL) {
-                    RValue value = cast_to(emit_rvalue(init), ty);
-                    if (!failed)
-                        store_slot(slot, value.v, true);
-                }
+                if (declared.init != NULL)
+                    store_initializer(slot, declared.init);
             }
         }
     }
@@ -2776,16 +3880,33 @@ private:
                 error("storage class is not allowed here");
                 return false;
             }
+            if (node->b != NULL) {
+                Declared declared = declare_one(param.ty, node->b);
+                if (failed)
+                    return false;
+                if (declared.func != NULL) {
+                    error("not in this phase");
+                    return false;
+                }
+                param.ty = declared.ty;
+                if (declared.name != NULL) {
+                    if (declared.name->kind != AST_IDENT || declared.name->text == NULL) {
+                        if (declared.name->kind == AST_QUALIFIED)
+                            error("qualified names are a later phase");
+                        else
+                            error("the parameter has no name");
+                        return false;
+                    }
+                    param.name = declared.name->text;
+                }
+            }
             if (param.ty.is_void) {
                 error("void parameter");
                 return false;
             }
-            if (node->b != NULL) {
-                if (node->b->kind != AST_IDENT || node->b->text == NULL) {
-                    reject_declarator(node->b);
-                    return false;
-                }
-                param.name = node->b->text;
+            if (!complete_type(param.ty)) {
+                error("incomplete type");
+                return false;
             }
             if (node->c != NULL) {
                 Const value = eval_const(node->c);
@@ -2808,14 +3929,18 @@ private:
 
     void declare_function(const AstNode *specs, const AstNode *decl, const AstNode *body)
     {
-        if (decl == NULL || decl->kind != AST_FUNCTION_DECL) {
-            if (decl != NULL && (decl->kind == AST_DECLARATOR || decl->kind == AST_POINTER))
-                error("pointers are a later phase");
-            else
-                error("not a function");
+        Storage storage;
+        Ty base = parse_specs(specs, Where::Param, &storage);
+        if (failed)
+            return;
+        Declared declared = declare_one(base, decl);
+        if (failed)
+            return;
+        if (declared.func == NULL) {
+            error("not a function");
             return;
         }
-        if (decl->c != NULL) {
+        if (declared.func->c != NULL) {
             error("method qualifiers are a later phase");
             return;
         }
@@ -2823,28 +3948,32 @@ private:
             error("function has no body");
             return;
         }
-        const AstNode *name = decl->a;
-        if (name == NULL || name->kind != AST_IDENT || name->text == NULL) {
-            if (name != NULL && name->kind == AST_QUALIFIED)
+        if (declared.name == NULL || declared.name->kind != AST_IDENT || declared.name->text == NULL) {
+            if (declared.name != NULL && declared.name->kind == AST_QUALIFIED)
                 error("qualified names are a later phase");
             else
                 error("the function has no name");
             return;
         }
-        Storage storage;
-        Ty ret = parse_specs(specs, Where::Return, &storage);
-        if (failed)
-            return;
         if (storage_conflict(storage) || storage.is_typedef || storage.is_register) {
             error("storage class is not allowed here");
             return;
         }
+        Ty ret = drop(declared.ty);
+        if (ret.is_array) {
+            error("function returns an array");
+            return;
+        }
+        if (!ret.is_void && !complete_type(ret)) {
+            error("incomplete type");
+            return;
+        }
         std::vector<Param> params;
         bool vararg = false;
-        if (!collect_params(decl->b, params, vararg))
+        if (!collect_params(declared.func->b, params, vararg))
             return;
         Func incoming;
-        incoming.source = name->text;
+        incoming.source = declared.name->text;
         incoming.ret = ret;
         incoming.vararg = vararg;
         incoming.body = body;

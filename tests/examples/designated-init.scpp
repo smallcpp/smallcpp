@@ -1,0 +1,9 @@
+struct Point {
+    int x;
+    int y;
+};
+
+int answer(void) {
+    struct Point p = { .y = 2 };
+    return p.y;
+}

@@ -885,6 +885,216 @@ static int check_string(llvm::Module &module)
     return fail("string", "no constant string hi");
 }
 
+static llvm::StructType *named_struct(llvm::Module &module, const char *name)
+{
+    for (llvm::StructType *ty : module.getIdentifiedStructTypes()) {
+        if (ty->hasName() && ty->getName() == name)
+            return ty;
+    }
+    return NULL;
+}
+
+static int check_struct(llvm::Module &module)
+{
+    llvm::StructType *point = named_struct(module, "struct.Point");
+    llvm::Function *fn = answer(module);
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    bool stored = false;
+
+    if (point == NULL || point->getNumElements() != 2)
+        return fail("struct", "struct.Point is missing");
+    if (point->elements()[0] != i32 || point->elements()[1] != i32)
+        return fail("struct", "struct.Point fields are not i32");
+    if (fn == NULL)
+        return fail("struct", "no function answer");
+    if (only_ret(*fn) == NULL || !llvm::isa<llvm::LoadInst>(only_ret(*fn)->getReturnValue()))
+        return fail("struct", "return is not a load");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 1))
+            stored = true;
+    }
+    if (!stored)
+        return fail("struct", "no store of 1");
+    return 0;
+}
+
+static int check_union(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    bool named = false;
+    bool stored = false;
+
+    for (llvm::StructType *ty : module.getIdentifiedStructTypes()) {
+        if (ty->hasName() && ty->getName().starts_with("union."))
+            named = true;
+    }
+    if (!named)
+        return fail("union", "no union type");
+    if (fn == NULL)
+        return fail("union", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 3)
+            && llvm::isa<llvm::AllocaInst>(store->getPointerOperand()))
+            stored = true;
+    }
+    if (!stored)
+        return fail("union", "the member store is not at the union address");
+    return 0;
+}
+
+static int check_enum(llvm::Module &module)
+{
+    llvm::ConstantInt *value = answer(module) == NULL ? NULL : ret_int(*answer(module));
+
+    if (value == NULL || !value->equalsInt(4))
+        return fail("enum", "Green did not lower to 4");
+    if (module.getGlobalVariable("Green", true) != NULL || module.getFunction("Green") != NULL)
+        return fail("enum", "Green is a runtime value");
+    return 0;
+}
+
+static int check_array(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
+    bool slot = false;
+    bool stored = false;
+
+    if (fn == NULL)
+        return fail("array", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(&inst);
+        if (alloca != NULL) {
+            auto *array = llvm::dyn_cast<llvm::ArrayType>(alloca->getAllocatedType());
+            if (array != NULL && array->getNumElements() == 3 && array->getElementType() == i32)
+                slot = true;
+        }
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 4))
+            stored = true;
+    }
+    if (!slot || !stored)
+        return fail("array", "no array of 3 int or no store of 4");
+    return 0;
+}
+
+static int check_pointer(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    bool stored = false;
+
+    if (fn == NULL)
+        return fail("pointer", "no function answer");
+    llvm::ReturnInst *ret = only_ret(*fn);
+    auto *outer = ret == NULL ? NULL : llvm::dyn_cast<llvm::LoadInst>(ret->getReturnValue());
+    auto *inner = outer == NULL ? NULL : llvm::dyn_cast<llvm::LoadInst>(outer->getPointerOperand());
+    if (inner == NULL)
+        return fail("pointer", "return is not a load through a pointer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 5))
+            stored = true;
+    }
+    if (!stored)
+        return fail("pointer", "no store of 5");
+    return 0;
+}
+
+static int check_array_param(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *first = module.getFunction("first");
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+
+    if (first == NULL || first->arg_size() != 1)
+        return fail("array-param", "first has no parameter");
+    if (!first->getArg(0)->getType()->isPointerTy()
+        || first->getFunctionType()->getParamType(0)->isArrayTy())
+        return fail("array-param", "empty brackets did not lower to a pointer");
+    if (call == NULL || call->getCalledFunction() != first)
+        return fail("array-param", "answer does not call first");
+    return 0;
+}
+
+static int check_bitfield(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    bool width = false;
+    bool stored = false;
+
+    for (llvm::StructType *ty : module.getIdentifiedStructTypes()) {
+        for (llvm::Type *field : ty->elements()) {
+            if (field->isIntegerTy(7))
+                width = true;
+        }
+    }
+    if (!width)
+        return fail("bitfield", "no field of width 7");
+    if (fn == NULL)
+        return fail("bitfield", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && store->getValueOperand()->getType()->isIntegerTy(7))
+            stored = true;
+    }
+    if (!stored)
+        return fail("bitfield", "no store of the 7-bit field");
+    return 0;
+}
+
+static bool gep_has_index(const llvm::Value *ptr, uint64_t want)
+{
+    auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(ptr);
+
+    if (gep == NULL)
+        return false;
+    for (const llvm::Use &index : gep->indices()) {
+        auto *constant = llvm::dyn_cast<llvm::ConstantInt>(index.get());
+        if (constant != NULL && constant->equalsInt(want))
+            return true;
+    }
+    return false;
+}
+
+static int check_designated(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+
+    if (fn == NULL)
+        return fail("designated-init", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store != NULL && const_eq(store->getValueOperand(), 2)
+            && gep_has_index(store->getPointerOperand(), 1))
+            return 0;
+    }
+    return fail("designated-init", "no store of 2 through field 1");
+}
+
+static int check_brace(llvm::Module &module)
+{
+    llvm::Function *fn = answer(module);
+    bool one = false;
+    bool two = false;
+
+    if (fn == NULL)
+        return fail("brace", "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *store = llvm::dyn_cast<llvm::StoreInst>(&inst);
+        if (store == NULL)
+            continue;
+        if (const_eq(store->getValueOperand(), 1))
+            one = true;
+        if (const_eq(store->getValueOperand(), 2))
+            two = true;
+    }
+    if (!one || !two)
+        return fail("brace", "the brace list did not store 1 and 2");
+    return 0;
+}
+
 static int check_register(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
@@ -1064,6 +1274,24 @@ int main(int argc, char **argv)
         return check_string(*module);
     if (strcmp(mode, "register") == 0)
         return check_register(*module);
+    if (strcmp(mode, "struct") == 0)
+        return check_struct(*module);
+    if (strcmp(mode, "union") == 0)
+        return check_union(*module);
+    if (strcmp(mode, "enum") == 0)
+        return check_enum(*module);
+    if (strcmp(mode, "array") == 0)
+        return check_array(*module);
+    if (strcmp(mode, "pointer") == 0)
+        return check_pointer(*module);
+    if (strcmp(mode, "array-param") == 0)
+        return check_array_param(*module);
+    if (strcmp(mode, "bitfield") == 0)
+        return check_bitfield(*module);
+    if (strcmp(mode, "designated-init") == 0)
+        return check_designated(*module);
+    if (strcmp(mode, "brace") == 0)
+        return check_brace(*module);
 
     fprintf(stderr, "unknown mode %s\n", mode);
     return 2;
