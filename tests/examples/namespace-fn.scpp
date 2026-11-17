@@ -1,0 +1,5 @@
+namespace audio {
+    int level(void) {
+        return 1;
+    }
+}

@@ -129,6 +129,17 @@ struct Param {
     llvm::Constant *fallback = nullptr;
 };
 
+struct LookupScope {
+    std::string ns;
+    std::vector<std::pair<std::string, std::string>> names;
+    std::vector<std::string> directives;
+};
+
+struct BlockUse {
+    std::vector<std::pair<std::string, std::string>> names;
+    std::vector<std::string> directives;
+};
+
 struct Func {
     std::string source;
     llvm::Function *fn = nullptr;
@@ -140,6 +151,8 @@ struct Func {
     const AstNode *body = nullptr;
     bool is_static = false;
     bool is_inline = false;
+    std::vector<std::string> home;
+    std::vector<LookupScope> lookup;
 };
 
 struct Declared {
@@ -156,6 +169,7 @@ public:
         : context(context), module(module), builder(context)
     {
         scopes.emplace_back();
+        namespaces[""] = LookupScope{};
         module.setDataLayout(
             "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");
     }
@@ -167,12 +181,7 @@ public:
             return 1;
         }
         for (const AstNode *item = root->a; item != NULL; item = item->next) {
-            if (item->kind == AST_METHOD)
-                declare_function(item->a, item->b, item->c);
-            else if (item->kind == AST_DECLARATION)
-                emit_declaration(item, true);
-            else
-                reject_node(item);
+            declare_item(item);
             if (failed)
                 return 1;
         }
@@ -203,6 +212,10 @@ private:
     std::map<std::string, int64_t> enum_consts;
     std::set<std::string> enum_types;
     int anon_records = 0;
+    std::vector<std::string> ns_stack;
+    std::map<std::string, LookupScope> namespaces;
+    std::vector<BlockUse> blocks;
+    const std::vector<LookupScope> *active_lookup = nullptr;
     std::vector<LoopFrame> loops;
     std::vector<SwitchFrame> switches;
     SwitchFrame *collecting = nullptr;
@@ -330,9 +343,11 @@ private:
             error("null is a later phase");
             break;
         case AST_NAMESPACE:
+            error("namespace is not a value");
+            break;
         case AST_USING:
         case AST_QUALIFIED:
-            error("namespaces are a later phase");
+            error("not allowed here");
             break;
         case AST_CLASS:
         case AST_BASE:
@@ -612,9 +627,12 @@ private:
 
     std::string tag_key(bool is_union, const char *text)
     {
-        if (text == NULL || text[0] == '\0')
-            return (is_union ? ".union.anon." : ".struct.anon.") + std::to_string(++anon_records);
-        return (is_union ? "union." : "struct.") + std::string(text);
+        std::string base = text == NULL || text[0] == '\0'
+            ? (is_union ? ".union.anon." : ".struct.anon.") + std::to_string(++anon_records)
+            : (is_union ? "union." : "struct.") + std::string(text);
+        if (ns_stack.empty())
+            return base;
+        return current_path() + "::" + base;
     }
 
     Ty make_record(const AstNode *node)
@@ -747,8 +765,8 @@ private:
     Ty make_enum(const AstNode *node)
     {
         std::string key = node->text != NULL && node->text[0] != '\0'
-            ? std::string("enum.") + node->text
-            : ".enum.anon." + std::to_string(++anon_records);
+            ? qualify(std::string("enum.") + node->text)
+            : qualify(".enum.anon." + std::to_string(++anon_records));
         if (node->a == NULL) {
             if (!enum_types.count(key)) {
                 error("incomplete enum");
@@ -769,11 +787,12 @@ private:
             int64_t value = next;
             if (item->a != NULL && !const_i64(item->a, value))
                 break;
-            if (enum_consts.count(item->text) != 0) {
+            std::string enumerator = qualify(item->text);
+            if (enum_consts.count(enumerator) != 0) {
                 error_name("name is already defined", item->text);
                 break;
             }
-            enum_consts[item->text] = value;
+            enum_consts[enumerator] = value;
             next = value + 1;
         }
         if (failed)
@@ -815,15 +834,15 @@ private:
 
         for (const AstNode *node = list; node != NULL; node = node->next) {
             if (node->kind == AST_TYPE_NAME) {
-                auto found = node->text == NULL ? aliases.end() : aliases.find(node->text);
-                if (found == aliases.end()) {
+                std::optional<Ty> found = lookup_alias(node->text);
+                if (!found) {
                     error_name("unknown type", node->text);
                     return int_ty();
                 }
                 if (base != Missing || shorts || longs || saw_signed || saw_unsigned || saw_int)
                     error("invalid type");
                 base = Alias;
-                alias_ty = found->second;
+                alias_ty = *found;
                 if (failed)
                     return int_ty();
                 continue;
@@ -1419,24 +1438,361 @@ private:
     void push_scope()
     {
         scopes.emplace_back();
+        blocks.emplace_back();
     }
 
     void pop_scope()
     {
         if (scopes.size() > 1)
             scopes.pop_back();
+        if (!blocks.empty())
+            blocks.pop_back();
+    }
+
+    std::string join_ns(int count) const
+    {
+        std::string key;
+        int limit = count;
+        if (limit > static_cast<int>(ns_stack.size()))
+            limit = static_cast<int>(ns_stack.size());
+        for (int i = 0; i < limit; i++) {
+            if (!key.empty())
+                key += "::";
+            key += ns_stack[static_cast<std::size_t>(i)];
+        }
+        return key;
+    }
+
+    std::string current_path() const
+    {
+        return join_ns(static_cast<int>(ns_stack.size()));
+    }
+
+    std::string qualify(const std::string &name) const
+    {
+        std::string path = current_path();
+        if (path.empty())
+            return name;
+        return path + "::" + name;
+    }
+
+    bool name_known(const std::string &key) const
+    {
+        if (key.empty())
+            return false;
+        if (scopes.empty())
+            return false;
+        return scopes[0].count(key) != 0 || overloads.count(key) != 0 || aliases.count(key) != 0
+            || enum_consts.count(key) != 0 || namespaces.count(key) != 0;
+    }
+
+    std::vector<std::string> dedup_keys(std::vector<std::string> keys) const
+    {
+        std::vector<std::string> out;
+        for (const std::string &key : keys) {
+            bool seen = false;
+            for (const std::string &earlier : out) {
+                if (earlier == key)
+                    seen = true;
+            }
+            if (!seen)
+                out.push_back(key);
+        }
+        return out;
+    }
+
+    std::vector<std::string> use_keys(const std::vector<std::pair<std::string, std::string>> &names,
+                                      const std::vector<std::string> &directives, const std::string &name) const
+    {
+        std::vector<std::string> hits;
+        for (const auto &use : names) {
+            if (use.first == name && name_known(use.second))
+                hits.push_back(use.second);
+        }
+        if (!hits.empty())
+            return dedup_keys(hits);
+        for (const std::string &dir : directives) {
+            std::string key = dir + "::" + name;
+            if (name_known(key))
+                hits.push_back(key);
+        }
+        return dedup_keys(hits);
+    }
+
+    std::vector<std::string> scope_keys(const LookupScope &scope, const std::string &name) const
+    {
+        std::string key = scope.ns.empty() ? name : scope.ns + "::" + name;
+        if (name_known(key))
+            return {key};
+        std::vector<std::string> declared = use_keys(scope.names, {}, name);
+        if (!declared.empty())
+            return declared;
+        return use_keys({}, scope.directives, name);
+    }
+
+    std::vector<LookupScope> live_chain() const
+    {
+        std::vector<LookupScope> chain;
+        for (int i = static_cast<int>(ns_stack.size()); i >= 0; --i) {
+            std::string key = join_ns(i);
+            LookupScope scope;
+            auto found = namespaces.find(key);
+            if (found != namespaces.end())
+                scope = found->second;
+            scope.ns = key;
+            chain.push_back(scope);
+        }
+        return chain;
+    }
+
+    std::vector<std::string> visible_keys(const std::string &name) const
+    {
+        for (auto block = blocks.rbegin(); block != blocks.rend(); ++block) {
+            std::vector<std::string> declared = use_keys(block->names, {}, name);
+            if (!declared.empty())
+                return declared;
+            std::vector<std::string> directed = use_keys({}, block->directives, name);
+            if (!directed.empty())
+                return directed;
+        }
+        std::vector<LookupScope> live;
+        const std::vector<LookupScope> *chain = active_lookup;
+        if (chain == NULL) {
+            live = live_chain();
+            chain = &live;
+        }
+        for (const LookupScope &scope : *chain) {
+            std::vector<std::string> hits = scope_keys(scope, name);
+            if (!hits.empty())
+                return hits;
+        }
+        return {};
+    }
+
+    void flatten_name(const AstNode *node, std::vector<const AstNode *> &parts) const
+    {
+        if (node == NULL)
+            return;
+        if (node->kind == AST_QUALIFIED) {
+            flatten_name(node->a, parts);
+            flatten_name(node->b, parts);
+            return;
+        }
+        parts.push_back(node);
+    }
+
+    std::string find_ns_component(const std::string &component)
+    {
+        for (int i = static_cast<int>(ns_stack.size()); i >= 0; --i) {
+            std::string key = join_ns(i);
+            if (!key.empty())
+                key += "::";
+            key += component;
+            if (namespaces.count(key) != 0)
+                return key;
+        }
+        error_name("unknown namespace", component.c_str());
+        return "";
+    }
+
+    std::string namespace_key(const AstNode *node)
+    {
+        std::vector<const AstNode *> parts;
+        flatten_name(node, parts);
+        if (parts.empty() || parts[0] == NULL || parts[0]->text == NULL) {
+            error("unknown namespace");
+            return "";
+        }
+        std::string path = find_ns_component(parts[0]->text);
+        if (failed)
+            return "";
+        for (std::size_t i = 1; i < parts.size(); i++) {
+            if (parts[i] == NULL || parts[i]->text == NULL) {
+                error("unknown namespace");
+                return "";
+            }
+            path += "::";
+            path += parts[i]->text;
+            if (namespaces.count(path) == 0) {
+                error_name("unknown namespace", path.c_str());
+                return "";
+            }
+        }
+        return path;
+    }
+
+    std::string entity_key(const AstNode *node)
+    {
+        std::vector<const AstNode *> parts;
+        flatten_name(node, parts);
+        if (parts.empty() || parts.back() == NULL || parts.back()->text == NULL) {
+            error("the name is missing");
+            return "";
+        }
+        if (parts.size() == 1) {
+            std::vector<std::string> keys = visible_keys(parts[0]->text);
+            if (keys.size() != 1) {
+                if (keys.empty())
+                    error_name("unknown name", parts[0]->text);
+                else
+                    error_name("ambiguous name", parts[0]->text);
+                return "";
+            }
+            return keys[0];
+        }
+        std::string path = find_ns_component(parts[0]->text);
+        if (failed)
+            return "";
+        for (std::size_t i = 1; i + 1 < parts.size(); i++) {
+            path += "::";
+            path += parts[i]->text;
+            if (namespaces.count(path) == 0) {
+                error_name("unknown namespace", path.c_str());
+                return "";
+            }
+        }
+        std::string key = path + "::" + parts.back()->text;
+        if (!name_known(key)) {
+            error_name("unknown name", key.c_str());
+            return "";
+        }
+        return key;
+    }
+
+    bool namespace_only_name(const char *name) const
+    {
+        if (name == NULL)
+            return false;
+        std::vector<std::string> keys = visible_keys(name);
+        return keys.size() == 1 && namespace_only(keys[0]);
+    }
+
+    bool namespace_only(const std::string &key) const
+    {
+        return !key.empty() && namespaces.count(key) != 0 && scopes[0].count(key) == 0
+            && overloads.count(key) == 0 && aliases.count(key) == 0 && enum_consts.count(key) == 0;
+    }
+
+    std::optional<int64_t> lookup_enum(const char *name)
+    {
+        if (name == NULL)
+            return std::nullopt;
+        for (const std::string &key : visible_keys(name)) {
+            auto found = enum_consts.find(key);
+            if (found != enum_consts.end())
+                return found->second;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Ty> lookup_alias(const char *name)
+    {
+        if (name == NULL)
+            return std::nullopt;
+        for (const std::string &key : visible_keys(name)) {
+            auto found = aliases.find(key);
+            if (found != aliases.end())
+                return found->second;
+        }
+        return std::nullopt;
+    }
+
+    void declare_item(const AstNode *item)
+    {
+        if (item == NULL || failed)
+            return;
+        if (item->kind == AST_METHOD)
+            declare_function(item->a, item->b, item->c);
+        else if (item->kind == AST_DECLARATION)
+            emit_declaration(item, true);
+        else if (item->kind == AST_NAMESPACE)
+            declare_namespace(item);
+        else if (item->kind == AST_USING)
+            add_using(item);
+        else if (item->kind == AST_CONSTRUCTOR || item->kind == AST_DESTRUCTOR)
+            error("classes are a later phase");
+        else
+            reject_node(item);
+    }
+
+    void declare_namespace(const AstNode *node)
+    {
+        if (node->text == NULL) {
+            error("namespace has no name");
+            return;
+        }
+        std::string key = qualify(node->text);
+        if (scopes[0].count(key) != 0 || overloads.count(key) != 0 || aliases.count(key) != 0
+            || enum_consts.count(key) != 0) {
+            error_name("name is already defined", node->text);
+            return;
+        }
+        if (namespaces.count(key) == 0)
+            namespaces[key] = LookupScope{};
+        ns_stack.push_back(node->text);
+        for (const AstNode *item = node->a; item != NULL && !failed; item = item->next)
+            declare_item(item);
+        ns_stack.pop_back();
+    }
+
+    void add_using(const AstNode *node)
+    {
+        bool directive = node->text != NULL && std::strcmp(node->text, "namespace") == 0;
+        if (directive) {
+            std::string target = namespace_key(node->a);
+            if (failed)
+                return;
+            if (!blocks.empty())
+                blocks.back().directives.push_back(target);
+            else
+                namespaces[current_path()].directives.push_back(target);
+            return;
+        }
+        if (node->a == NULL || node->a->kind != AST_QUALIFIED) {
+            error("using needs a qualified name");
+            return;
+        }
+        std::string target = entity_key(node->a);
+        if (failed)
+            return;
+        if (namespace_only(target)) {
+            error("namespace is not a value");
+            return;
+        }
+        std::string introduced = node->a->b != NULL && node->a->b->text != NULL ? node->a->b->text : "";
+        if (introduced.empty()) {
+            error("using needs a qualified name");
+            return;
+        }
+        if (!blocks.empty())
+            blocks.back().names.push_back({introduced, target});
+        else
+            namespaces[current_path()].names.push_back({introduced, target});
     }
 
     std::optional<Slot> lookup(const char *name)
     {
         if (name == NULL)
             return std::nullopt;
-        for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
-            auto found = scope->find(name);
-            if (found != scope->end())
+        for (std::size_t i = scopes.size(); i-- > 1;) {
+            auto found = scopes[i].find(name);
+            if (found != scopes[i].end())
                 return found->second;
         }
-        return std::nullopt;
+        const Slot *hit = NULL;
+        for (const std::string &key : visible_keys(name)) {
+            auto found = scopes[0].find(key);
+            if (found == scopes[0].end())
+                continue;
+            if (hit != NULL && hit->addr != found->second.addr) {
+                error_name("ambiguous name", name);
+                return std::nullopt;
+            }
+            hit = &found->second;
+        }
+        if (hit == NULL)
+            return std::nullopt;
+        return *hit;
     }
 
     void bind(const std::string &name, Slot slot)
@@ -1525,11 +1881,24 @@ private:
             error("assignment target is not a scalar");
             return int_ty();
         }
-        if (node->kind == AST_IDENT) {
+        if (node->kind == AST_IDENT || node->kind == AST_QUALIFIED) {
+            if (node->kind == AST_QUALIFIED) {
+                std::string key = entity_key(node);
+                if (failed)
+                    return int_ty();
+                auto found = scopes[0].find(key);
+                if (found == scopes[0].end()) {
+                    error_name("unknown name", key.c_str());
+                    return int_ty();
+                }
+                return found->second.ty;
+            }
             std::optional<Slot> slot = lookup(node->text);
             if (!slot) {
-                if (node->text != NULL && enum_consts.count(node->text) != 0)
+                if (lookup_enum(node->text))
                     error("assignment target is not a scalar");
+                else if (node->text != NULL && namespace_only_name(node->text))
+                    error("namespace is not a value");
                 else
                     error_name("unknown name", node->text);
                 return int_ty();
@@ -1626,14 +1995,33 @@ private:
             return std::nullopt;
         }
         if (node->kind == AST_IDENT) {
-            if (node->text != NULL && enum_consts.count(node->text) != 0 && !lookup(node->text)) {
+            if (lookup_enum(node->text) && !lookup(node->text)) {
                 error("assignment target is not a scalar");
+                return std::nullopt;
+            }
+            if (node->text != NULL && namespace_only_name(node->text)) {
+                error("namespace is not a value");
                 return std::nullopt;
             }
             std::optional<Slot> slot = lookup(node->text);
             if (!slot)
                 error_name("unknown name", node->text);
             return slot;
+        }
+        if (node->kind == AST_QUALIFIED) {
+            std::string key = entity_key(node);
+            if (failed)
+                return std::nullopt;
+            if (namespace_only(key)) {
+                error("namespace is not a value");
+                return std::nullopt;
+            }
+            auto found = scopes[0].find(key);
+            if (found == scopes[0].end()) {
+                error_name("unknown name", key.c_str());
+                return std::nullopt;
+            }
+            return found->second;
         }
         if (node->kind == AST_MEMBER) {
             std::optional<Slot> base = lvalue(node->a);
@@ -1695,12 +2083,31 @@ private:
         if (node->kind == AST_IDENT) {
             std::optional<Slot> slot = lookup(node->text);
             if (!slot) {
-                if (node->text != NULL && enum_consts.count(node->text) != 0)
+                if (lookup_enum(node->text))
                     return int_ty();
-                error_name("unknown name", node->text);
+                if (node->text != NULL && namespace_only_name(node->text))
+                    error("namespace is not a value");
+                else
+                    error_name("unknown name", node->text);
                 return int_ty();
             }
             return drop(slot->ty);
+        }
+        if (node->kind == AST_QUALIFIED) {
+            std::string key = entity_key(node);
+            if (failed)
+                return int_ty();
+            if (namespace_only(key)) {
+                error("namespace is not a value");
+                return int_ty();
+            }
+            auto global = scopes[0].find(key);
+            if (global != scopes[0].end())
+                return drop(global->second.ty);
+            if (enum_consts.count(key) != 0)
+                return int_ty();
+            error_name("unknown name", key.c_str());
+            return int_ty();
         }
         if (node->kind == AST_MEMBER || node->kind == AST_ARROW || node->kind == AST_INDEX)
             return drop(object_type(node));
@@ -1834,12 +2241,12 @@ private:
         if (node->kind == AST_CONDITIONAL)
             return eval_conditional(node);
         if (node->kind == AST_IDENT) {
-            if (node->text != NULL && enum_consts.count(node->text) != 0 && !lookup(node->text)) {
+            std::optional<int64_t> enumerator = lookup_enum(node->text);
+            if (enumerator && !lookup(node->text)) {
                 Const out;
                 out.ok = true;
                 out.ty = int_ty();
-                out.v = llvm::ConstantInt::get(
-                    context, llvm::APInt(32, static_cast<uint64_t>(enum_consts[node->text]), true));
+                out.v = llvm::ConstantInt::get(context, llvm::APInt(32, static_cast<uint64_t>(*enumerator), true));
                 return out;
             }
             if (!lookup(node->text))
@@ -2126,17 +2533,42 @@ private:
         if (node->kind == AST_IDENT) {
             std::optional<Slot> slot = lookup(node->text);
             if (!slot) {
-                if (node->text != NULL && enum_consts.count(node->text) != 0) {
+                std::optional<int64_t> enumerator = lookup_enum(node->text);
+                if (enumerator) {
                     RValue out;
                     out.ty = int_ty();
-                    out.v = llvm::ConstantInt::get(
-                        context, llvm::APInt(32, static_cast<uint64_t>(enum_consts[node->text]), true));
+                    out.v = llvm::ConstantInt::get(context, llvm::APInt(32, static_cast<uint64_t>(*enumerator), true));
                     return out;
                 }
-                error_name("unknown name", node->text);
+                if (node->text != NULL && namespace_only_name(node->text))
+                    error("namespace is not a value");
+                else
+                    error_name("unknown name", node->text);
                 return fallback();
             }
             return read_slot(*slot);
+        }
+        if (node->kind == AST_QUALIFIED) {
+            std::string key = entity_key(node);
+            if (failed)
+                return fallback();
+            if (namespace_only(key)) {
+                error("namespace is not a value");
+                return fallback();
+            }
+            auto global = scopes[0].find(key);
+            if (global != scopes[0].end())
+                return read_slot(global->second);
+            auto enumerator = enum_consts.find(key);
+            if (enumerator != enum_consts.end()) {
+                RValue out;
+                out.ty = int_ty();
+                out.v = llvm::ConstantInt::get(
+                    context, llvm::APInt(32, static_cast<uint64_t>(enumerator->second), true));
+                return out;
+            }
+            error_name("unknown name", key.c_str());
+            return fallback();
         }
         if (node->kind == AST_MEMBER || node->kind == AST_ARROW || node->kind == AST_INDEX) {
             std::optional<Slot> slot = lvalue(node);
@@ -2694,6 +3126,10 @@ private:
         for (; item != NULL && !failed; item = item->next) {
             if (item->kind == AST_DECLARATION)
                 emit_declaration(item, false);
+            else if (item->kind == AST_USING)
+                add_using(item);
+            else if (item->kind == AST_NAMESPACE)
+                error("namespace is not allowed here");
             else
                 emit_statement(item);
         }
@@ -3207,7 +3643,7 @@ private:
     void install(Func incoming)
     {
         if (scopes.front().count(incoming.source) != 0 || aliases.count(incoming.source) != 0
-            || enum_consts.count(incoming.source) != 0) {
+            || enum_consts.count(incoming.source) != 0 || namespaces.count(incoming.source) != 0) {
             error_name("name is already defined", incoming.source.c_str());
             return;
         }
@@ -3256,26 +3692,30 @@ private:
             rename_group(group);
     }
 
-    Func *resolve(const char *name, const std::vector<Ty> &args)
+    Func *resolve_keys(const std::vector<std::string> &keys, const std::vector<Ty> &args, const char *label)
     {
-        if (name == NULL) {
-            error("the call has no name");
-            return NULL;
+        bool any = false;
+        for (const std::string &key : keys) {
+            if (namespace_only(key)) {
+                error("namespace is not a value");
+                return NULL;
+            }
+            if (overloads.count(key) != 0)
+                any = true;
         }
-        if (lookup(name)) {
-            error_name("not a function", name);
-            return NULL;
-        }
-        auto found = overloads.find(name);
-        if (found == overloads.end()) {
-            error_name("unknown function", name);
+        if (!any) {
+            error_name("unknown function", label);
             return NULL;
         }
         Func *best = NULL;
         int best_rank = -1;
         int best_filled = 0;
         int ties = 0;
-        for (Func &fn : found->second) {
+        for (const std::string &key : keys) {
+            auto found = overloads.find(key);
+            if (found == overloads.end())
+                continue;
+            for (Func &fn : found->second) {
             unsigned required = 0;
             while (required < fn.params.size() && fn.defaults[required] == NULL)
                 required++;
@@ -3310,16 +3750,30 @@ private:
                 ties = 1;
             } else if (rank == best_rank && filled == best_filled)
                 ties++;
+            }
         }
         if (best == NULL) {
-            error_name("no matching function", name);
+            error_name("no matching function", label);
             return NULL;
         }
         if (ties != 1) {
-            error_name("ambiguous call", name);
+            error_name("ambiguous call", label);
             return NULL;
         }
         return best;
+    }
+
+    Func *resolve(const char *name, const std::vector<Ty> &args)
+    {
+        if (name == NULL) {
+            error("the call has no name");
+            return NULL;
+        }
+        if (lookup(name)) {
+            error_name("not a function", name);
+            return NULL;
+        }
+        return resolve_keys(visible_keys(name), args, name);
     }
 
     Ty vararg_ty(Ty ty)
@@ -3338,18 +3792,49 @@ private:
         return NULL;
     }
 
+    bool call_target(const AstNode *callee, std::vector<std::string> &keys, const char *&label)
+    {
+        if (callee == NULL) {
+            error("the call has no name");
+            return false;
+        }
+        if (callee->kind == AST_IDENT) {
+            label = callee->text;
+            if (label != NULL && lookup(label)) {
+                error_name("not a function", label);
+                return false;
+            }
+            keys = visible_keys(label == NULL ? "" : label);
+            return true;
+        }
+        if (callee->kind == AST_QUALIFIED) {
+            std::string key = entity_key(callee);
+            if (failed)
+                return false;
+            label = callee->b != NULL && callee->b->text != NULL ? callee->b->text : "call";
+            if (scopes[0].count(key) != 0) {
+                error_name("not a function", label);
+                return false;
+            }
+            keys.assign(1, key);
+            return true;
+        }
+        error("calls of that form are a later phase");
+        return false;
+    }
+
     Ty type_call(const AstNode *node)
     {
-        if (node->a == NULL || node->a->kind != AST_IDENT || node->a->text == NULL) {
-            error("calls of that form are a later phase");
+        std::vector<std::string> keys;
+        const char *label = "call";
+        if (!call_target(node->a, keys, label))
             return int_ty();
-        }
         std::vector<Ty> args;
         for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
             args.push_back(decay(type_of(arg)));
         if (failed)
             return int_ty();
-        Func *fn = resolve(node->a->text, args);
+        Func *fn = resolve_keys(keys, args, label);
         if (fn == NULL)
             return int_ty();
         return drop(fn->ret);
@@ -3357,10 +3842,10 @@ private:
 
     RValue emit_call(const AstNode *node)
     {
-        if (node->a == NULL || node->a->kind != AST_IDENT || node->a->text == NULL) {
-            error("calls of that form are a later phase");
+        std::vector<std::string> keys;
+        const char *label = "call";
+        if (!call_target(node->a, keys, label))
             return fallback();
-        }
         std::vector<RValue> args;
         for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
             args.push_back(emit_rvalue(arg));
@@ -3369,7 +3854,7 @@ private:
         std::vector<Ty> types;
         for (const RValue &arg : args)
             types.push_back(arg.ty);
-        Func *target = resolve(node->a->text, types);
+        Func *target = resolve_keys(keys, types, label);
         if (target == NULL || failed)
             return fallback();
         std::vector<llvm::Value *> values;
@@ -3749,7 +4234,7 @@ private:
                     error("typedef has no name");
                     return;
                 }
-                record_alias(declared.name->text, declared.ty);
+                record_alias(qualify(declared.name->text), declared.ty);
             }
             return;
         }
@@ -3805,10 +4290,13 @@ private:
                 return;
             }
             std::string name = declared.name->text;
+            if (file)
+                name = qualify(name);
             Ty object = declared.ty;
             if (file) {
                 if (scopes.front().count(name) != 0 || overloads.count(name) != 0
-                    || aliases.count(name) != 0 || enum_consts.count(name) != 0) {
+                    || aliases.count(name) != 0 || enum_consts.count(name) != 0
+                    || namespaces.count(name) != 0) {
                     error_name("name is already defined", name.c_str());
                     return;
                 }
@@ -3973,7 +4461,9 @@ private:
         if (!collect_params(declared.func->b, params, vararg))
             return;
         Func incoming;
-        incoming.source = declared.name->text;
+        incoming.source = qualify(declared.name->text);
+        incoming.home = ns_stack;
+        incoming.lookup = live_chain();
         incoming.ret = ret;
         incoming.vararg = vararg;
         incoming.body = body;
@@ -3990,9 +4480,14 @@ private:
     void emit_body(Func &fn)
     {
         scopes.resize(1);
+        blocks.clear();
         labels.clear();
         loops.clear();
         switches.clear();
+        std::vector<std::string> saved_ns = ns_stack;
+        const std::vector<LookupScope> *saved_lookup = active_lookup;
+        ns_stack = fn.home;
+        active_lookup = &fn.lookup;
         function = fn.fn;
         ret_ty = fn.ret;
         entry = llvm::BasicBlock::Create(context, "entry", function);
@@ -4032,6 +4527,9 @@ private:
         }
         pop_scope();
         scopes.resize(1);
+        blocks.clear();
+        ns_stack = saved_ns;
+        active_lookup = saved_lookup;
         function = nullptr;
         entry = nullptr;
     }

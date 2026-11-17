@@ -1,0 +1,9 @@
+namespace audio {
+    int gain(int n) {
+        return n + 1;
+    }
+}
+
+int answer(void) {
+    return audio::gain(1);
+}

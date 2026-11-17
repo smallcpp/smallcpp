@@ -1095,6 +1095,38 @@ static int check_brace(llvm::Module &module)
     return 0;
 }
 
+static int reject_namespace_value(const char *mode, llvm::Module &module)
+{
+    if (module.getGlobalVariable("audio", true) != NULL || module.getFunction("audio") != NULL)
+        return fail(mode, "the namespace is a runtime value");
+    return 0;
+}
+
+static int check_namespace_fn(llvm::Module &module)
+{
+    llvm::Function *level = module.getFunction("audio::level");
+    llvm::ConstantInt *value = level == NULL ? NULL : ret_int(*level);
+
+    if (level == NULL || level->empty())
+        return fail("namespace-fn", "no function in the namespace");
+    if (value == NULL || !value->equalsInt(1))
+        return fail("namespace-fn", "level did not return 1");
+    return reject_namespace_value("namespace-fn", module);
+}
+
+static int check_named_call(const char *mode, llvm::Module &module, const char *callee)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *target = module.getFunction(callee);
+    llvm::CallInst *call = fn == NULL ? NULL : direct_call(*fn);
+
+    if (call == NULL || target == NULL || call->getCalledFunction() != target)
+        return fail(mode, "the call did not resolve");
+    if (call->arg_size() != 1 || !const_eq(call->getArgOperand(0), 1))
+        return fail(mode, "the call argument is not 1");
+    return reject_namespace_value(mode, module);
+}
+
 static int check_register(llvm::Module &module)
 {
     llvm::Type *i32 = llvm::Type::getInt32Ty(module.getContext());
@@ -1292,6 +1324,14 @@ int main(int argc, char **argv)
         return check_designated(*module);
     if (strcmp(mode, "brace") == 0)
         return check_brace(*module);
+    if (strcmp(mode, "namespace-fn") == 0)
+        return check_namespace_fn(*module);
+    if (strcmp(mode, "qualified-call") == 0)
+        return check_named_call("qualified-call", *module, "audio::gain");
+    if (strcmp(mode, "using-name") == 0)
+        return check_named_call("using-name", *module, "audio::gain");
+    if (strcmp(mode, "using-namespace") == 0)
+        return check_named_call("using-namespace", *module, "audio::gain");
 
     fprintf(stderr, "unknown mode %s\n", mode);
     return 2;
