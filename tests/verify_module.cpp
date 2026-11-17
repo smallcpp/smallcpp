@@ -1430,6 +1430,37 @@ static int check_handler(const char *mode, llvm::Module &module, bool catch_all)
     return 0;
 }
 
+static int check_runtime_call(const char *mode, llvm::Module &module, const char *name, bool formatted)
+{
+    llvm::Function *fn = answer(module);
+    llvm::Function *target = module.getFunction(name);
+    llvm::CallInst *found = NULL;
+
+    if (target == NULL || !target->isDeclaration())
+        return fail(mode, "the runtime function is not a declaration");
+    if (fn == NULL)
+        return fail(mode, "no function answer");
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (call != NULL && call->getCalledFunction() == target)
+            found = call;
+    }
+    if (found == NULL || found->arg_size() < 1 || !found->getArgOperand(0)->getType()->isPointerTy())
+        return fail(mode, "the call is missing");
+    if (!formatted)
+        return 0;
+    for (llvm::Instruction &inst : llvm::instructions(*fn)) {
+        auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
+        if (!intrinsic_id(call, llvm::Intrinsic::experimental_stackmap))
+            continue;
+        for (llvm::Value *arg : call->args()) {
+            if (arg == found)
+                return 0;
+        }
+    }
+    return fail(mode, "the returned pointer is not in the stack map");
+}
+
 static int check_namespace_fn(llvm::Module &module)
 {
     llvm::Function *level = module.getFunction("audio::level");
@@ -1694,6 +1725,10 @@ int main(int argc, char **argv)
         return check_handler("catch-typed", *module, false);
     if (strcmp(mode, "catch-all-handler") == 0)
         return check_handler("catch-all-handler", *module, true);
+    if (strcmp(mode, "print-literal") == 0)
+        return check_runtime_call("print-literal", *module, "smallcpp_print", false);
+    if (strcmp(mode, "format-literal") == 0)
+        return check_runtime_call("format-literal", *module, "smallcpp_format", true);
 
     fprintf(stderr, "unknown mode %s\n", mode);
     return 2;
