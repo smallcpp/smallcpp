@@ -1,0 +1,11 @@
+int f(int a, long b) {
+    return 1;
+}
+
+int f(long a, int b) {
+    return 2;
+}
+
+int answer(void) {
+    return f(1, 1);
+}

@@ -7,3 +7,5 @@
 `collect_live_root` runs the shell on `examples/live-root.scpp`, links that object with the collector, and runs it. The second `new` must trace the pointer returned by the first.
 
 `run_return`, `run_print`, and `run_format` ask the shell for an executable and run it. `run_return` must exit 0. `run_print` must write `count is 1` and a newline. `run_format` must exit 0.
+
+`exec_*` runs one short program and checks its exit status, or the text it prints. `diag_*` feeds the shell a bad snippet. The compiler must exit non-zero, and the diagnostic must name the problem. `diag_bad-recover` requires the syntax error twice.

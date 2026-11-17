@@ -1,0 +1,15 @@
+class Point {
+    int x;
+public:
+    Point(int ax) : x(ax) {
+    }
+    int read(void) {
+        return x;
+    }
+};
+
+int answer(void) {
+    Point *p;
+    p = new Point(4);
+    return p->read();
+}

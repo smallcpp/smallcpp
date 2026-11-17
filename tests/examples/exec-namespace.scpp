@@ -1,0 +1,9 @@
+namespace audio {
+    int level(void) {
+        return 9;
+    }
+}
+
+int answer(void) {
+    return audio::level();
+}

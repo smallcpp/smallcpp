@@ -1,0 +1,12 @@
+class Point {
+public:
+    Point(int x);
+};
+
+Point::Other(int x) {
+    return;
+}
+
+int answer(void) {
+    return 0;
+}

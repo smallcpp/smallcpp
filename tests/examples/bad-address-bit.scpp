@@ -1,0 +1,8 @@
+struct Flags {
+    unsigned code : 3;
+};
+
+int answer(void) {
+    struct Flags f;
+    return (int)&f.code;
+}

@@ -1,0 +1,3 @@
+int answer(void)[2] {
+    return 0;
+}

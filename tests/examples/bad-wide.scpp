@@ -1,0 +1,4 @@
+int answer(void) {
+    L"hi";
+    return 0;
+}

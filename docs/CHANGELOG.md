@@ -19,6 +19,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- The suite runs a short program for each feature the shell can execute, and checks the exit status or the printed text. Features that cannot run yet still have a bitcode check. Bad snippets are separate examples. Each one must make the compiler exit non-zero, and the diagnostic must name the problem. A syntax error that recovers is reported twice.
 - The precise collector implements `smallcpp_alloc` and traces the stack maps at safepoints. `delete` stays a no-op. `tests/examples/live-root.scpp` allocates with `new`, keeps that pointer live across a second `new`, and `collect_live_root` fails unless the collector sees it.
 - The shell writes an executable when the output path does not end in `.bc`. It compiles the verified module and links the Clang runtime, the collector, and the bodies of `smallcpp_print` and `smallcpp_format`. `run_return` runs `return-zero` and requires exit status 0. `run_print` runs `print-literal` and requires the text `count is 1` followed by a newline. `run_format` runs `format-value` and requires exit status 0, which is the byte after the formatted `4`.
 - The shell lowers `print` and `format`. Each call goes to a declared runtime function with no body, `smallcpp_print` or `smallcpp_format`. A literal format string is still checked. `format` returns a pointer, and that pointer is in the stack map at the call. The examples are `print-literal` and `format-literal`. The C runtime is not implemented. The earlier compile tests still pass.

@@ -1,0 +1,15 @@
+class Box {
+    int value;
+public:
+    Box(int v) : value(v) {
+    }
+    int read(void) const {
+        return value;
+    }
+};
+
+int answer(void) {
+    Box *b;
+    b = new Box(8);
+    return b->read();
+}

@@ -1,0 +1,12 @@
+class Box {
+public:
+    int write(void) {
+        return 1;
+    }
+};
+
+int answer(void) {
+    const Box *b;
+    b = new Box();
+    return b->write();
+}

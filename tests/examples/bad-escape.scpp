@@ -1,0 +1,4 @@
+int answer(void) {
+    "\q";
+    return 0;
+}

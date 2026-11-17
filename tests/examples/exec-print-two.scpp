@@ -1,0 +1,4 @@
+int answer(void) {
+    print("{} {}\n", 2, 3);
+    return 0;
+}

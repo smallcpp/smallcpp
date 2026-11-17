@@ -1,0 +1,5 @@
+int answer(void) {
+    char c;
+    c = 'A';
+    return c;
+}

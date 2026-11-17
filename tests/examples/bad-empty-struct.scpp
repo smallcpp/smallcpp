@@ -1,0 +1,6 @@
+struct Empty {
+};
+
+int answer(void) {
+    return 0;
+}

@@ -1,0 +1,8 @@
+int answer(void) {
+    int **p;
+    int n;
+    n = 3;
+    p = new int *;
+    *p = &n;
+    return **p;
+}

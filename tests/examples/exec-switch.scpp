@@ -1,0 +1,12 @@
+int answer(void) {
+    int n;
+    n = 2;
+    switch (n) {
+    case 1:
+        return 1;
+    case 2:
+        return 7;
+    default:
+        return 0;
+    }
+}
