@@ -7,7 +7,7 @@ execute_process(
     COMMAND "${COMPILER}" "${SOURCE}" "${BITCODE}"
     RESULT_VARIABLE compile_status)
 if(NOT compile_status EQUAL 0)
-    message(FATAL_ERROR "shell did not write a verified module")
+    message(FATAL_ERROR "scpp did not write a verified module")
 endif()
 
 execute_process(

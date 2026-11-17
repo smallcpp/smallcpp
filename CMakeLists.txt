@@ -30,7 +30,7 @@ if(NOT LLVM_ENABLE_RTTI)
     target_compile_options(smallcpp_cli PUBLIC -fno-rtti)
 endif()
 
-add_executable(shell
+add_executable(scpp
     src/shell/main.cpp
     src/shell/codegen.cpp
     src/shell/link.cpp
@@ -42,8 +42,8 @@ add_executable(shell
     src/shell/lower_alloc.cpp
     src/shell/lower_except.cpp
     src/shell/lower_print.cpp)
-target_link_libraries(shell PRIVATE smallcpp_parse smallcpp_cli ${SMALLCPP_LLVM_LIBS})
-smallcpp_use_llvm(shell)
+target_link_libraries(scpp PRIVATE smallcpp_parse smallcpp_cli ${SMALLCPP_LLVM_LIBS})
+smallcpp_use_llvm(scpp)
 
 add_library(smallcpp_runtime STATIC
     src/runtime/heap.c
@@ -58,10 +58,10 @@ find_program(SMALLCPP_CLANGXX NAMES clang++ HINTS /usr/lib/llvm-22/bin)
 if(NOT SMALLCPP_CLANGXX)
     message(FATAL_ERROR "clang++ is required to link an executable")
 endif()
-target_compile_definitions(shell PRIVATE
+target_compile_definitions(scpp PRIVATE
     "SMALLCPP_VERSION=\"0.1\""
     "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
     "SMALLCPP_RUNTIME_LIB=\"$<TARGET_FILE:smallcpp_runtime>\"")
-add_dependencies(shell smallcpp_runtime)
+add_dependencies(scpp smallcpp_runtime)
 
 add_subdirectory(tests)

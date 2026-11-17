@@ -3,7 +3,7 @@ function(add_exec_status name source expect)
     add_test(
         NAME exec_${name}
         COMMAND ${CMAKE_COMMAND}
-            -DCOMPILER=$<TARGET_FILE:shell>
+            -DCOMPILER=$<TARGET_FILE:scpp>
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${source}.scpp
             -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/exec-${name}
             -DEXPECT=${expect}
@@ -130,7 +130,7 @@ add_exec_status(exec-collect-dtor exec-collect-dtor 8)
 add_test(
     NAME exec_exec-print-two
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
+        -DCOMPILER=$<TARGET_FILE:scpp>
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/exec-print-two.scpp
         -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/exec-exec-print-two
         -DEXPECT=0
@@ -141,7 +141,7 @@ add_test(
 function(add_diag name needle)
     set(command
         ${CMAKE_COMMAND}
-            -DCOMPILER=$<TARGET_FILE:shell>
+            -DCOMPILER=$<TARGET_FILE:scpp>
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${name}.scpp
             -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/${name}.bc
             "-DNEEDLE=${needle}")
@@ -156,7 +156,7 @@ endfunction()
 add_test(
     NAME diag_bad-recover
     COMMAND ${CMAKE_COMMAND}
-        -DCOMPILER=$<TARGET_FILE:shell>
+        -DCOMPILER=$<TARGET_FILE:scpp>
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/bad-recover.scpp
         -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/bad-recover.bc
         "-DNEEDLE=syntax error, unexpected ';'"
