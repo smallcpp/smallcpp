@@ -98,6 +98,7 @@ struct MethodDecl {
     bool is_virtual = false;
     bool is_ctor = false;
     bool is_dtor = false;
+    bool is_pure = false;
     int vindex = -1;
 };
 
@@ -106,7 +107,13 @@ struct VSlot {
     std::string vkey;
     std::string impl_class;
     int index = 0;
+    bool pure = false;
     llvm::Function *fn = nullptr;
+};
+
+struct VBTable {
+    std::vector<std::string> path;
+    llvm::GlobalVariable *global = nullptr;
 };
 
 struct VTable {
@@ -124,12 +131,19 @@ struct Record {
     llvm::StructType *ir = nullptr;
     std::vector<Field> fields;
     std::vector<std::string> bases;
+    std::vector<std::string> direct_virtual;
+    std::vector<std::string> vbases;
+    std::vector<uint64_t> vbase_off;
+    uint64_t complete_size = 0;
     std::vector<MethodDecl> methods;
     int vptr = -1;
+    int vbptr = -1;
     std::string primary_base;
+    bool abstract = false;
     llvm::GlobalVariable *vtable = nullptr;
     std::vector<VSlot> vslots;
     std::vector<VTable> vtables;
+    std::vector<VBTable> vbtables;
 };
 
 struct RValue {
@@ -199,6 +213,7 @@ struct Func {
     bool method_const = false;
     bool is_ctor = false;
     bool is_dtor = false;
+    bool is_pure = false;
     const AstNode *inits = nullptr;
     int vindex = -1;
 };
@@ -321,6 +336,25 @@ private:
     void build_views(const std::string &complete, const std::string &sub, std::vector<std::string> &path);
     VTable make_view(const std::string &complete, const std::string &base, const std::vector<std::string> &path);
     void emit_vptrs(llvm::Value *ptr, const std::string &key);
+    void collect_vbases(const std::string &key, std::vector<std::string> &out,
+                        std::set<std::string> &seen) const;
+    void place_vbases(const std::string &key);
+    bool field_path(const std::string &complete, const std::vector<std::string> &path) const;
+    uint64_t subobject_at(const std::string &complete, const std::vector<std::string> &path) const;
+    uint64_t vbase_at(const std::string &complete, const std::string &base) const;
+    void add_vbtable(const std::string &complete, const std::string &sub, const std::vector<std::string> &path);
+    void build_vbtables(const std::string &complete, const std::string &sub, std::vector<std::string> &path);
+    llvm::GlobalVariable *vbtable_for(const std::string &complete, const std::vector<std::string> &path);
+    void store_vbptrs(llvm::Value *complete_ptr, llvm::Value *sub_ptr, const std::string &complete,
+                      const std::string &sub, std::vector<std::string> &path);
+    void emit_vbptrs(llvm::Value *self, const std::string &key);
+    void emit_virtual_bases(llvm::Value *self, const std::string &key, const AstNode *inits);
+    bool has_constructor(const std::string &key);
+    bool virtual_destructor(const std::string &key) const;
+    bool overrides_slot(const std::string &key, const VSlot &slot);
+    llvm::Value *vbase_addr(llvm::Value *ptr, const std::string &from, const std::string &base);
+    void emit_pure_stub(Func &fn);
+    llvm::Value *ctor_flag(bool most);
     Ty make_class(const AstNode *node);
     std::optional<Field> find_field(const Ty &object, const char *name);
     std::optional<Slot> member_slot(llvm::Value *object, const Ty &type, const char *name, bool report);
@@ -482,7 +516,7 @@ private:
     void declare_qualified_method(const Declared &declared, bool is_const, bool is_virtual,
                                   const AstNode *body);
     void declare_function(const AstNode *specs, const AstNode *decl, const AstNode *body);
-    void emit_ctor_call(llvm::Value *self, const std::string &owner, const AstNode *args);
+    void emit_ctor_call(llvm::Value *self, const std::string &owner, const AstNode *args, bool most_derived);
     void emit_inits(Func &fn);
     void emit_body(Func &fn);
 };

@@ -46,6 +46,10 @@ bool Codegen::derives_from(const std::string &derived, const std::string &base) 
         if (derives_from(one, base))
             return true;
     }
+    for (const std::string &one : found->second.direct_virtual) {
+        if (derives_from(one, base))
+            return true;
+    }
     return false;
 }
 
@@ -123,7 +127,15 @@ void Codegen::install_method(const std::string &key, MethodDecl decl, Ty ret, st
     incoming.method_const = decl.is_const;
     incoming.is_ctor = decl.is_ctor;
     incoming.is_dtor = decl.is_dtor;
+    incoming.is_pure = decl.is_pure;
     incoming.inits = inits;
+    if (decl.is_ctor && !records[key].vbases.empty()) {
+        Param most;
+        most.name = ".most";
+        most.ty = int_ty();
+        most.fallback = llvm::ConstantInt::get(most.ty.ir, 1);
+        params.push_back(std::move(most));
+    }
     for (const Param &param : params) {
         incoming.params.push_back(param.ty);
         incoming.defaults.push_back(param.fallback);
@@ -219,6 +231,10 @@ bool Codegen::hides_virtual(const std::string &base, const std::string &name, co
         if (hides_virtual(one, name, vkey))
             return true;
     }
+    for (const std::string &one : found->second.direct_virtual) {
+        if (hides_virtual(one, name, vkey))
+            return true;
+    }
     return false;
 }
 
@@ -228,15 +244,21 @@ Func *Codegen::declared_virtual(const std::string &klass, const std::string &nam
     if (found == records.end())
         return NULL;
     for (const MethodDecl &method : found->second.methods) {
-        if (!method.is_virtual || method.is_ctor || method.is_dtor || method.name != name)
+        if (!method.is_virtual || method.is_ctor)
             continue;
+        if (vkey == "dtor") {
+            if (!method.is_dtor)
+                continue;
+        } else if (method.is_dtor || method.name != name) {
+            continue;
+        }
         auto group = overloads.find(method.ir_name);
         if (group == overloads.end())
             continue;
         for (Func &fn : group->second) {
             if (fn.klass != klass || fn.fn == NULL || fn.method_const != method.is_const)
                 continue;
-            if (virtual_key(fn) == vkey)
+            if (vkey == "dtor" || virtual_key(fn) == vkey)
                 return &fn;
         }
     }
@@ -457,7 +479,7 @@ void Codegen::build_vtable(const std::string &key)
     if (!rec.primary_base.empty())
         rec.vslots = records[rec.primary_base].vslots;
     for (MethodDecl &method : rec.methods) {
-        if (!method.is_virtual || method.is_ctor || method.is_dtor)
+        if (!method.is_virtual || method.is_ctor)
             continue;
         auto group = overloads.find(method.ir_name);
         if (group == overloads.end())
@@ -465,13 +487,18 @@ void Codegen::build_vtable(const std::string &key)
         for (Func &fn : group->second) {
             if (fn.klass != key || fn.fn == NULL || fn.method_const != method.is_const)
                 continue;
-            std::string vkey = virtual_key(fn);
+            if (method.is_dtor != fn.is_dtor)
+                continue;
+            std::string vkey = method.is_dtor ? "dtor" : virtual_key(fn);
             bool replaced = false;
             for (VSlot &slot : rec.vslots) {
-                if (slot.name != method.name || slot.vkey != vkey)
+                bool same = method.is_dtor ? slot.vkey == "dtor"
+                                           : slot.name == method.name && slot.vkey == vkey;
+                if (!same)
                     continue;
                 slot.fn = fn.fn;
                 slot.impl_class = key;
+                slot.pure = method.is_pure;
                 method.vindex = slot.index;
                 fn.vindex = slot.index;
                 replaced = true;
@@ -483,6 +510,7 @@ void Codegen::build_vtable(const std::string &key)
             slot.name = method.name;
             slot.vkey = vkey;
             slot.impl_class = key;
+            slot.pure = method.is_pure;
             slot.index = static_cast<int>(rec.vslots.size());
             slot.fn = fn.fn;
             method.vindex = slot.index;
@@ -497,6 +525,342 @@ void Codegen::build_vtable(const std::string &key)
     rec.vtable = emit_vtable(rec.name + ".vt", slots);
     std::vector<std::string> path;
     build_views(key, key, path);
+    rec.abstract = false;
+    for (const VSlot &slot : rec.vslots) {
+        if (slot.pure)
+            rec.abstract = true;
+    }
+    std::vector<std::string> pending_bases = rec.bases;
+    pending_bases.insert(pending_bases.end(), rec.direct_virtual.begin(), rec.direct_virtual.end());
+    for (const std::string &base : pending_bases) {
+        std::vector<std::string> walk;
+        std::set<std::string> seen;
+        walk.push_back(base);
+        while (!walk.empty()) {
+            std::string one = walk.back();
+            walk.pop_back();
+            if (!seen.insert(one).second)
+                continue;
+            auto found = records.find(one);
+            if (found == records.end())
+                continue;
+            for (const VSlot &slot : found->second.vslots) {
+                if (slot.pure && !overrides_slot(key, slot))
+                    rec.abstract = true;
+            }
+            walk.insert(walk.end(), found->second.bases.begin(), found->second.bases.end());
+            walk.insert(walk.end(), found->second.direct_virtual.begin(), found->second.direct_virtual.end());
+        }
+    }
+}
+
+void Codegen::collect_vbases(const std::string &key, std::vector<std::string> &out,
+                             std::set<std::string> &seen) const
+{
+    auto found = records.find(key);
+    if (found == records.end())
+        return;
+    for (const std::string &base : found->second.direct_virtual) {
+        if (!seen.insert(base).second)
+            continue;
+        collect_vbases(base, out, seen);
+        out.push_back(base);
+    }
+    for (const std::string &base : found->second.bases)
+        collect_vbases(base, out, seen);
+}
+
+bool Codegen::field_path(const std::string &complete, const std::vector<std::string> &path) const
+{
+    std::string at = complete;
+    for (const std::string &step : path) {
+        auto found = records.find(at);
+        if (found == records.end())
+            return false;
+        bool saw = false;
+        for (const std::string &base : found->second.bases) {
+            if (base == step)
+                saw = true;
+        }
+        if (!saw)
+            return false;
+        at = step;
+    }
+    return true;
+}
+
+uint64_t Codegen::vbase_at(const std::string &complete, const std::string &base) const
+{
+    auto found = records.find(complete);
+    if (found == records.end())
+        return 0;
+    for (std::size_t i = 0; i < found->second.vbases.size(); i++) {
+        if (found->second.vbases[i] == base && i < found->second.vbase_off.size())
+            return found->second.vbase_off[i];
+    }
+    return 0;
+}
+
+uint64_t Codegen::subobject_at(const std::string &complete, const std::vector<std::string> &path) const
+{
+    if (path.empty())
+        return 0;
+    if (field_path(complete, path))
+        return path_offset(complete, path);
+    if (path.size() == 1)
+        return vbase_at(complete, path[0]);
+    return 0;
+}
+
+void Codegen::add_vbtable(const std::string &complete, const std::string &sub,
+                          const std::vector<std::string> &path)
+{
+    auto layout = records.find(sub);
+    auto owner = records.find(complete);
+    if (layout == records.end() || owner == records.end() || layout->second.vbases.empty())
+        return;
+    int64_t base_at = static_cast<int64_t>(subobject_at(complete, path));
+    std::vector<llvm::Constant *> slots;
+    auto *i64 = llvm::Type::getInt64Ty(context);
+    for (const std::string &base : layout->second.vbases) {
+        int64_t delta = static_cast<int64_t>(vbase_at(complete, base)) - base_at;
+        slots.push_back(llvm::ConstantInt::getSigned(i64, delta));
+    }
+    auto *array = llvm::ArrayType::get(i64, slots.size());
+    std::string name = owner->second.name + ".vb";
+    for (const std::string &step : path)
+        name += "." + step;
+    auto *global = new llvm::GlobalVariable(
+        module, array, true, llvm::GlobalValue::PrivateLinkage,
+        llvm::ConstantArray::get(array, slots), name);
+    VBTable table;
+    table.path = path;
+    table.global = global;
+    owner->second.vbtables.push_back(table);
+}
+
+void Codegen::build_vbtables(const std::string &complete, const std::string &sub,
+                             std::vector<std::string> &path)
+{
+    auto found = records.find(sub);
+    if (found == records.end())
+        return;
+    if (found->second.vbptr >= 0)
+        add_vbtable(complete, sub, path);
+    std::vector<std::string> bases = found->second.bases;
+    std::vector<std::string> virtuals = found->second.direct_virtual;
+    for (const std::string &base : bases) {
+        path.push_back(base);
+        build_vbtables(complete, base, path);
+        path.pop_back();
+    }
+    for (const std::string &base : virtuals) {
+        if (records[base].vbptr < 0)
+            continue;
+        path.push_back(base);
+        add_vbtable(complete, base, path);
+        path.pop_back();
+    }
+}
+
+void Codegen::place_vbases(const std::string &key)
+{
+    Record &rec = records[key];
+    if (rec.ir == NULL)
+        return;
+    const llvm::DataLayout &layout = module.getDataLayout();
+    if (rec.vbases.empty()) {
+        rec.complete_size = layout.getTypeAllocSize(rec.ir).getFixedValue();
+        return;
+    }
+    uint64_t place = layout.getTypeAllocSize(rec.ir).getFixedValue();
+    uint64_t class_align = layout.getABITypeAlign(rec.ir).value();
+    if (class_align == 0)
+        class_align = 1;
+    rec.vbase_off.clear();
+    for (const std::string &base : rec.vbases) {
+        llvm::StructType *ty = records[base].ir;
+        uint64_t align = ty == NULL ? 1 : layout.getABITypeAlign(ty).value();
+        if (align == 0)
+            align = 1;
+        place = (place + align - 1) & ~(align - 1);
+        rec.vbase_off.push_back(place);
+        uint64_t size = ty == NULL ? 0 : layout.getTypeAllocSize(ty).getFixedValue();
+        place += size;
+    }
+    place = (place + class_align - 1) & ~(class_align - 1);
+    rec.complete_size = place;
+    std::vector<std::string> path;
+    build_vbtables(key, key, path);
+}
+
+llvm::GlobalVariable *Codegen::vbtable_for(const std::string &complete,
+                                           const std::vector<std::string> &path)
+{
+    auto found = records.find(complete);
+    if (found == records.end())
+        return NULL;
+    for (const VBTable &table : found->second.vbtables) {
+        if (table.path == path)
+            return table.global;
+    }
+    return NULL;
+}
+
+void Codegen::store_vbptrs(llvm::Value *complete_ptr, llvm::Value *sub_ptr, const std::string &complete,
+                           const std::string &sub, std::vector<std::string> &path)
+{
+    auto found = records.find(sub);
+    if (found == records.end())
+        return;
+    if (found->second.vbptr >= 0) {
+        llvm::GlobalVariable *table = vbtable_for(complete, path);
+        if (table != NULL) {
+            Ty type = record_type(found->second);
+            llvm::Value *slot = field_addr(
+                sub_ptr, type, found->second.fields[static_cast<std::size_t>(found->second.vbptr)]).addr;
+            builder.CreateStore(table, slot);
+        }
+    }
+    std::vector<std::string> bases = found->second.bases;
+    std::vector<std::string> virtuals = found->second.direct_virtual;
+    for (const std::string &base : bases) {
+        path.push_back(base);
+        store_vbptrs(complete_ptr, base_ptr(sub_ptr, sub, base), complete, base, path);
+        path.pop_back();
+    }
+    for (const std::string &base : virtuals) {
+        if (records[base].vbptr < 0)
+            continue;
+        llvm::Value *child = builder.CreateGEP(
+            llvm::Type::getInt8Ty(context), complete_ptr,
+            llvm::ConstantInt::getSigned(llvm::Type::getInt64Ty(context),
+                                         static_cast<int64_t>(vbase_at(complete, base))));
+        path.push_back(base);
+        store_vbptrs(complete_ptr, child, complete, base, path);
+        path.pop_back();
+    }
+}
+
+void Codegen::emit_vbptrs(llvm::Value *self, const std::string &key)
+{
+    std::vector<std::string> path;
+    store_vbptrs(self, self, key, key, path);
+}
+
+bool Codegen::has_constructor(const std::string &key)
+{
+    auto found = records.find(key);
+    if (found == records.end())
+        return false;
+    std::string plain = source_name(found->second);
+    auto pos = plain.rfind("::");
+    std::string last = pos == std::string::npos ? plain : plain.substr(pos + 2);
+    return overloads.count(plain + "::" + last) != 0;
+}
+
+bool Codegen::virtual_destructor(const std::string &key) const
+{
+    auto found = records.find(key);
+    if (found == records.end())
+        return false;
+    for (const MethodDecl &method : found->second.methods) {
+        if (method.is_dtor && method.is_virtual)
+            return true;
+    }
+    for (const VSlot &slot : found->second.vslots) {
+        if (slot.vkey == "dtor")
+            return true;
+    }
+    for (const std::string &base : found->second.bases) {
+        if (virtual_destructor(base))
+            return true;
+    }
+    for (const std::string &base : found->second.direct_virtual) {
+        if (virtual_destructor(base))
+            return true;
+    }
+    return false;
+}
+
+bool Codegen::overrides_slot(const std::string &key, const VSlot &slot)
+{
+    if (slot.vkey == "dtor") {
+        auto found = records.find(key);
+        if (found == records.end())
+            return false;
+        for (const MethodDecl &method : found->second.methods) {
+            if (method.is_dtor && method.is_virtual)
+                return true;
+        }
+        return false;
+    }
+    return declared_virtual(key, slot.name, slot.vkey) != NULL;
+}
+
+llvm::Value *Codegen::vbase_addr(llvm::Value *ptr, const std::string &from, const std::string &base)
+{
+    auto found = records.find(from);
+    if (found == records.end() || found->second.vbptr < 0)
+        return ptr;
+    int index = -1;
+    for (std::size_t i = 0; i < found->second.vbases.size(); i++) {
+        if (found->second.vbases[i] == base)
+            index = static_cast<int>(i);
+    }
+    if (index < 0)
+        return ptr;
+    Ty type = record_type(found->second);
+    llvm::Value *slot = field_addr(
+        ptr, type, found->second.fields[static_cast<std::size_t>(found->second.vbptr)]).addr;
+    auto *i64 = llvm::Type::getInt64Ty(context);
+    auto *ptr_ty = llvm::PointerType::get(context, 0);
+    llvm::Value *table = builder.CreateLoad(ptr_ty, slot);
+    llvm::Value *entry = builder.CreateInBoundsGEP(
+        i64, table, {llvm::ConstantInt::get(i64, static_cast<uint64_t>(index))});
+    llvm::Value *offset = builder.CreateLoad(i64, entry);
+    return builder.CreateGEP(llvm::Type::getInt8Ty(context), ptr, offset);
+}
+
+llvm::Value *Codegen::ctor_flag(bool most)
+{
+    return llvm::ConstantInt::get(int_ty().ir, most ? 1 : 0);
+}
+
+void Codegen::emit_pure_stub(Func &fn)
+{
+    if (fn.fn == NULL)
+        return;
+    auto *block = llvm::BasicBlock::Create(context, "entry", fn.fn);
+    builder.SetInsertPoint(block);
+    builder.CreateUnreachable();
+}
+
+void Codegen::emit_virtual_bases(llvm::Value *self, const std::string &key, const AstNode *inits)
+{
+    auto found = records.find(key);
+    if (found == records.end() || found->second.vbases.empty())
+        return;
+    std::vector<std::string> bases = found->second.vbases;
+    std::vector<uint64_t> offsets = found->second.vbase_off;
+    emit_vbptrs(self, key);
+    for (std::size_t i = 0; i < bases.size() && i < offsets.size(); i++) {
+        const AstNode *args = NULL;
+        std::string plain = source_name(records[bases[i]]);
+        auto pos = plain.rfind("::");
+        std::string last = pos == std::string::npos ? plain : plain.substr(pos + 2);
+        for (const AstNode *init = inits; init != NULL; init = init->next) {
+            if (init->kind == AST_MEM_INIT && init->text != NULL && last == init->text)
+                args = init->a;
+        }
+        if (args == NULL && !has_constructor(bases[i]))
+            continue;
+        llvm::Value *addr = builder.CreateGEP(
+            llvm::Type::getInt8Ty(context), self,
+            llvm::ConstantInt::getSigned(llvm::Type::getInt64Ty(context),
+                                         static_cast<int64_t>(offsets[i])));
+        emit_ctor_call(addr, bases[i], args, records[bases[i]].vbases.empty());
+    }
 }
 
 Ty Codegen::make_class(const AstNode *node)
@@ -559,13 +923,24 @@ Ty Codegen::make_class(const AstNode *node)
             error("recursive base");
             break;
         }
+        bool virtual_base = base->text != NULL && std::strcmp(base->text, "virtual") == 0;
         Field field;
         field.name = base_field_name(base_key);
         field.ty = base_ty;
         field.access = base->b != NULL && base->a != NULL && base->a->text != NULL
             ? base->a->text : "private";
-        records[key].bases.push_back(base_key);
-        records[key].fields.push_back(field);
+        if (virtual_base) {
+            records[key].direct_virtual.push_back(base_key);
+        } else {
+            records[key].bases.push_back(base_key);
+            records[key].fields.push_back(field);
+        }
+    }
+    {
+        std::vector<std::string> order;
+        std::set<std::string> seen;
+        collect_vbases(key, order, seen);
+        records[key].vbases = std::move(order);
     }
     struct Pending {
         MethodDecl decl;
@@ -586,6 +961,8 @@ Ty Codegen::make_class(const AstNode *node)
             one.decl.access = access;
             one.decl.is_ctor = mem->kind == AST_CONSTRUCTOR;
             one.decl.is_dtor = mem->kind == AST_DESTRUCTOR;
+            one.decl.is_virtual = one.decl.is_dtor && mem->b != NULL && mem->b->text != NULL
+                && std::strcmp(mem->b->text, "virtual") == 0;
             one.decl.name = one.decl.is_dtor ? std::string("~") + plain : plain;
             one.decl.ir_name = one.decl.is_dtor ? source + "::~" + plain : source + "::" + plain;
             one.ret = void_ty();
@@ -641,6 +1018,10 @@ Ty Codegen::make_class(const AstNode *node)
                     one.decl.access = access;
                     one.decl.is_const = is_const;
                     one.decl.is_virtual = storage.is_virtual;
+                    one.decl.is_pure = declared.func->d != NULL && declared.func->d->text != NULL
+                        && std::strcmp(declared.func->d->text, "pure") == 0;
+                    if (one.decl.is_pure)
+                        one.decl.is_virtual = true;
                     one.ret = drop(declared.ty);
                     pending.push_back(std::move(one));
                     continue;
@@ -702,11 +1083,27 @@ Ty Codegen::make_class(const AstNode *node)
         return int_ty();
     bool own_virtual = false;
     for (Pending &one : pending) {
+        if (one.decl.is_dtor && !one.decl.is_virtual) {
+            for (const std::string &base : records[key].bases) {
+                if (virtual_destructor(base))
+                    one.decl.is_virtual = true;
+            }
+            for (const std::string &base : records[key].direct_virtual) {
+                if (virtual_destructor(base))
+                    one.decl.is_virtual = true;
+            }
+        }
+        if (one.decl.is_dtor && one.decl.is_virtual)
+            own_virtual = true;
         if (one.decl.is_ctor || one.decl.is_dtor)
             continue;
         std::string vkey = virtual_key(one.ret, one.params, one.decl.is_const);
         bool inherited = false;
         for (const std::string &base : records[key].bases) {
+            if (hides_virtual(base, one.decl.name, vkey))
+                inherited = true;
+        }
+        for (const std::string &base : records[key].direct_virtual) {
             if (hides_virtual(base, one.decl.name, vkey))
                 inherited = true;
         }
@@ -724,7 +1121,16 @@ Ty Codegen::make_class(const AstNode *node)
         records[key].fields.insert(records[key].fields.begin(), vptr);
         records[key].vptr = 0;
     }
+    if (!records[key].vbases.empty()) {
+        Field vbptr;
+        vbptr.name = ".vbptr";
+        vbptr.ty = pointer_to(int_ty());
+        vbptr.access = "private";
+        records[key].fields.push_back(vbptr);
+        records[key].vbptr = static_cast<int>(records[key].fields.size() - 1);
+    }
     layout_class(records[key]);
+    place_vbases(key);
     records[key].methods.clear();
     for (const Pending &one : pending)
         install_method(key, one.decl, one.ret, one.params, one.body, one.inits);
@@ -775,6 +1181,18 @@ std::optional<Slot> Codegen::member_slot(llvm::Value *object, const Ty &type, co
         if (nested || failed)
             return nested;
     }
+    for (const std::string &base : rec.vbases) {
+        auto base_rec = records.find(base);
+        if (base_rec == records.end())
+            continue;
+        llvm::Value *addr = vbase_addr(object, type.record, base);
+        Ty base_ty = record_type(base_rec->second);
+        if (type.is_const)
+            base_ty.is_const = true;
+        std::optional<Slot> nested = member_slot(addr, base_ty, name, false);
+        if (nested || failed)
+            return nested;
+    }
     if (report)
         error_name("no such member", name);
     return std::nullopt;
@@ -800,6 +1218,17 @@ std::optional<Ty> Codegen::member_type(const Ty &type, const char *name)
         }
     }
     for (const std::string &base : found->second.bases) {
+        auto base_rec = records.find(base);
+        if (base_rec == records.end())
+            continue;
+        Ty base_ty = record_type(base_rec->second);
+        if (type.is_const)
+            base_ty.is_const = true;
+        std::optional<Ty> nested = member_type(base_ty, name);
+        if (nested || failed)
+            return nested;
+    }
+    for (const std::string &base : found->second.vbases) {
         auto base_rec = records.find(base);
         if (base_rec == records.end())
             continue;
@@ -852,6 +1281,11 @@ std::string Codegen::method_owner(const std::string &klass, const char *name, st
         return klass;
     }
     for (const std::string &base : found->second.bases) {
+        std::string owner = method_owner(base, name, ir_name);
+        if (!owner.empty())
+            return owner;
+    }
+    for (const std::string &base : found->second.direct_virtual) {
         std::string owner = method_owner(base, name, ir_name);
         if (!owner.empty())
             return owner;
@@ -947,6 +1381,10 @@ llvm::Value *Codegen::adjust_to(llvm::Value *ptr, const std::string &from, const
             break;
         Slot slot = field_addr(ptr, record_type(found->second), *field);
         return adjust_to(slot.addr, base, owner);
+    }
+    for (const std::string &base : found->second.vbases) {
+        if (base == owner || derives_from(base, owner))
+            return adjust_to(vbase_addr(ptr, from, base), base, owner);
     }
     error("not a base");
     return ptr;
@@ -1160,7 +1598,8 @@ void Codegen::declare_qualified_method(const Declared &declared, bool is_const, 
     install_method(key, decl, drop(declared.ty), std::move(params), body, NULL);
 }
 
-void Codegen::emit_ctor_call(llvm::Value *self, const std::string &owner, const AstNode *args)
+void Codegen::emit_ctor_call(llvm::Value *self, const std::string &owner, const AstNode *args,
+                             bool most_derived)
 {
     std::string plain = source_name(records[owner]);
     auto pos = plain.rfind("::");
@@ -1185,8 +1624,12 @@ void Codegen::emit_ctor_call(llvm::Value *self, const std::string &owner, const 
     unsigned limit = provided < user ? provided : user;
     for (unsigned i = 0; i < limit; i++)
         operands.push_back(convert(values[i].v, values[i].ty, target->params[i + 1]));
-    for (unsigned i = limit; i < user; i++)
-        operands.push_back(target->defaults[i + 1]);
+    for (unsigned i = limit; i < user; i++) {
+        if (i + 1 < target->names.size() && target->names[i + 1] == ".most")
+            operands.push_back(ctor_flag(most_derived));
+        else
+            operands.push_back(target->defaults[i + 1]);
+    }
     builder.CreateCall(target->fn->getFunctionType(), target->fn, operands);
 }
 
@@ -1201,6 +1644,21 @@ void Codegen::emit_inits(Func &fn)
     RValue ptr = read_slot(*self);
     if (failed || !ptr.ty.is_pointer || ptr.ty.inner == NULL)
         return;
+    if (!rec.vbases.empty()) {
+        std::optional<Slot> most = lookup(".most");
+        llvm::Value *flag = most ? load_slot(*most) : ctor_flag(true);
+        llvm::BasicBlock *yes = new_block("vbases");
+        llvm::BasicBlock *no = new_block("vbases.skip");
+        llvm::BasicBlock *next = new_block("inits");
+        llvm::Value *is_most = builder.CreateICmpNE(flag, ctor_flag(false));
+        builder.CreateCondBr(is_most, yes, no);
+        builder.SetInsertPoint(yes);
+        emit_virtual_bases(ptr.v, fn.klass, fn.inits);
+        builder.CreateBr(next);
+        builder.SetInsertPoint(no);
+        builder.CreateBr(next);
+        builder.SetInsertPoint(next);
+    }
     for (const AstNode *init = fn.inits; init != NULL && !failed; init = init->next) {
         if (init->kind != AST_MEM_INIT || init->text == NULL) {
             error("not an initializer");
@@ -1217,14 +1675,24 @@ void Codegen::emit_inits(Func &fn)
         if (!base_key.empty()) {
             llvm::Value *sub = adjust_to(ptr.v, fn.klass, base_key);
             if (!failed)
-                emit_ctor_call(sub, base_key, init->a);
+                emit_ctor_call(sub, base_key, init->a, false);
             continue;
         }
+        bool virtual_init = false;
+        for (const std::string &base : rec.vbases) {
+            std::string plain = source_name(records[base]);
+            auto pos = plain.rfind("::");
+            std::string last = pos == std::string::npos ? plain : plain.substr(pos + 2);
+            if (last == init->text)
+                virtual_init = true;
+        }
+        if (virtual_init)
+            continue;
         std::optional<Slot> field = member_slot(ptr.v, *ptr.ty.inner, init->text, true);
         if (!field)
             return;
         if (class_type(field->ty)) {
-            emit_ctor_call(field->addr, field->ty.record, init->a);
+            emit_ctor_call(field->addr, field->ty.record, init->a, false);
             continue;
         }
         if (init->a == NULL || init->a->next != NULL) {

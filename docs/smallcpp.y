@@ -5,7 +5,9 @@
  * program that stays in that subset is acceptable to a modern C compiler
  * and a modern C++ compiler. smallcpp adds classes, inheritance,
  * exceptions, namespaces, and precise garbage collection. A class may
- * list more than one base. catch (...) catches every exception type.
+ * list more than one base. A base may be virtual, so two paths share one
+ * subobject. A virtual method may be pure, written = 0. A destructor
+ * may be virtual. catch (...) catches every exception type.
  * That ... is not a parameter. A constructor is a method whose name is
  * the class name and that has no return type. A destructor is
  * ~ClassName(), also with no return type. A constructor may have an
@@ -252,9 +254,11 @@ static struct AstNode *ctor_spelling(char *spelling, struct AstNode *params,
     return ast_make(AST_CONSTRUCTOR, spelling, params, inits, body, NULL);
 }
 
-static struct AstNode *make_dtor(struct AstNode *name, struct AstNode *body)
+static struct AstNode *make_dtor(struct AstNode *name, struct AstNode *body, int is_virtual)
 {
-    return ast_make(AST_DESTRUCTOR, steal_text(name), body, NULL, NULL, NULL);
+    return ast_make(AST_DESTRUCTOR, steal_text(name), body,
+                    is_virtual ? ast_named(AST_SPECIFIER, "virtual") : NULL,
+                    NULL, NULL);
 }
 
 static struct AstNode *dtor_call(struct AstNode *object, struct AstNode *name, int arrow)
@@ -353,6 +357,9 @@ static struct AstNode *designate(struct AstNode *designators, struct AstNode *va
 /* Dangling else binds to the nearest if, as in both C99 and C++11. */
 %precedence LOWER_THAN_ELSE
 %precedence ELSE
+/* A function's = 0 is a pure specifier, not an initializer. */
+%precedence LOWER_THAN_PURE
+%precedence '='
 
 /*
  * new int * p is a pointer type, and new int[n] is an array. The short
@@ -383,6 +390,7 @@ static struct AstNode *designate(struct AstNode *designators, struct AstNode *va
 %type <node> selection_statement iteration_statement jump_statement
 %type <node> try_statement catch_clause_list catch_clause throw_statement
 %type <node> base_specifier base_specifier_list constructor_member destructor_member
+%type <node> pure_specifier_opt
 %type <node> constructor_definition destructor_definition ctor_initializer_opt
 %type <node> mem_initializer_list mem_initializer using_declaration using_name
 %type <node> primary_expression nested_name postfix_expression format_expression
@@ -624,6 +632,9 @@ base_specifier_list
 base_specifier
     : access_keyword name { $$ = ast_make(AST_BASE, NULL, $1, $2, NULL, NULL); }
     | name { $$ = ast_make(AST_BASE, NULL, $1, NULL, NULL, NULL); }
+    | VIRTUAL access_keyword name { $$ = ast_make(AST_BASE, strdup("virtual"), $2, $3, NULL, NULL); }
+    | access_keyword VIRTUAL name { $$ = ast_make(AST_BASE, strdup("virtual"), $1, $3, NULL, NULL); }
+    | VIRTUAL name { $$ = ast_make(AST_BASE, strdup("virtual"), $2, NULL, NULL, NULL); }
     ;
 
 access_keyword
@@ -667,12 +678,22 @@ destructor_member
     : '~' name '(' ')' compound_statement {
         if (!text_is($2, smallcpp_current_class()))
             yyerror("destructor name does not match the class");
-        $$ = make_dtor($2, $5);
+        $$ = make_dtor($2, $5, 0);
       }
     | '~' name '(' ')' ';' {
         if (!text_is($2, smallcpp_current_class()))
             yyerror("destructor name does not match the class");
-        $$ = make_dtor($2, NULL);
+        $$ = make_dtor($2, NULL, 0);
+      }
+    | VIRTUAL '~' name '(' ')' compound_statement {
+        if (!text_is($3, smallcpp_current_class()))
+            yyerror("destructor name does not match the class");
+        $$ = make_dtor($3, $6, 1);
+      }
+    | VIRTUAL '~' name '(' ')' ';' {
+        if (!text_is($3, smallcpp_current_class()))
+            yyerror("destructor name does not match the class");
+        $$ = make_dtor($3, NULL, 1);
       }
     ;
 
@@ -696,13 +717,13 @@ destructor_definition
         if (!names_equal($1, $4))
             yyerror("destructor name does not match the class");
         ast_free($1);
-        $$ = make_dtor($4, $7);
+        $$ = make_dtor($4, $7, 0);
       }
     | name SCOPE '~' name '(' ')' ';' {
         if (!names_equal($1, $4))
             yyerror("destructor name does not match the class");
         ast_free($1);
-        $$ = make_dtor($4, NULL);
+        $$ = make_dtor($4, NULL, 0);
       }
     ;
 
@@ -798,11 +819,23 @@ direct_declarator
     | direct_declarator '[' constant_expression ']' {
         $$ = ast_make(AST_ARRAY, NULL, $1, $3, NULL, NULL);
       }
-    | direct_declarator '(' ')' cv_qualifier_opt {
-        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, NULL, $4, NULL);
+    | direct_declarator '(' ')' cv_qualifier_opt pure_specifier_opt {
+        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, NULL, $4, $5);
       }
-    | direct_declarator '(' parameter_type_list ')' cv_qualifier_opt {
-        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, $5, NULL);
+    | direct_declarator '(' parameter_type_list ')' cv_qualifier_opt pure_specifier_opt {
+        $$ = ast_make(AST_FUNCTION_DECL, NULL, $1, $3, $5, $6);
+      }
+    ;
+
+/* A pure virtual method is = 0. Any other constant is rejected. */
+pure_specifier_opt
+    : %empty %prec LOWER_THAN_PURE { $$ = NULL; }
+    | '=' CONSTANT {
+        int pure = $2 != NULL && strcmp($2, "0") == 0;
+        if (!pure)
+            yyerror("pure specifier is = 0");
+        free($2);
+        $$ = pure ? ast_named(AST_SPECIFIER, "pure") : NULL;
       }
     ;
 

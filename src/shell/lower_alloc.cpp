@@ -101,8 +101,14 @@ RValue Codegen::emit_new(const AstNode *node)
         return fallback();
     }
     Ty object = elem.is_array ? *elem.inner : elem;
+    if (class_type(object) && records[object.record].abstract) {
+        error("abstract class");
+        return fallback();
+    }
     auto *i64 = llvm::Type::getInt64Ty(context);
     uint64_t bytes = module.getDataLayout().getTypeAllocSize(object.ir).getFixedValue();
+    if (class_type(object) && records[object.record].complete_size != 0)
+        bytes = records[object.record].complete_size;
     llvm::Value *count = llvm::ConstantInt::get(i64, 1);
     for (const AstNode *bound : bounds) {
         RValue value = emit_rvalue(bound);
@@ -141,12 +147,18 @@ RValue Codegen::emit_new(const AstNode *node)
             unsigned limit = provided < user ? provided : user;
             for (unsigned i = 0; i < limit; i++)
                 values.push_back(convert(args[i].v, args[i].ty, ctor->params[i + 1]));
-            for (unsigned i = limit; i < user; i++)
-                values.push_back(ctor->defaults[i + 1]);
+            for (unsigned i = limit; i < user; i++) {
+                if (i + 1 < ctor->names.size() && ctor->names[i + 1] == ".most")
+                    values.push_back(ctor_flag(true));
+                else
+                    values.push_back(ctor->defaults[i + 1]);
+            }
             builder.CreateCall(ctor->fn->getFunctionType(), ctor->fn, values);
         } else if (node->b != NULL) {
             error("no matching constructor");
             return fallback();
+        } else if (!records[object.record].vbases.empty()) {
+            emit_virtual_bases(result, object.record, NULL);
         }
     } else if (node->b != NULL) {
         error("the type has no constructor");
@@ -224,7 +236,16 @@ void Codegen::emit_delete(const AstNode *node)
     llvm::Value *skip = builder.CreateICmpEQ(ptr.v, null, "delete.null");
     builder.CreateCondBr(skip, done_bb, call_bb);
     builder.SetInsertPoint(call_bb);
-    builder.CreateCall(dtor->fn->getFunctionType(), dtor->fn, {ptr.v});
+    llvm::Value *callee = dtor->fn;
+    if (dtor->vindex >= 0 && ptr.ty.inner->is_record) {
+        auto *ptr_ty = llvm::PointerType::get(context, 0);
+        llvm::Value *table = builder.CreateLoad(ptr_ty, vptr_addr(ptr.v, ptr.ty.inner->record));
+        llvm::Value *index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),
+                                                    static_cast<uint64_t>(dtor->vindex));
+        llvm::Value *slot = builder.CreateInBoundsGEP(ptr_ty, table, {index});
+        callee = builder.CreateLoad(ptr_ty, slot);
+    }
+    builder.CreateCall(dtor->fn->getFunctionType(), callee, {ptr.v});
     builder.CreateBr(done_bb);
     builder.SetInsertPoint(done_bb);
 }

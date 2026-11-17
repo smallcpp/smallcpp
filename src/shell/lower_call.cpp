@@ -539,6 +539,10 @@ void Codegen::declare_function(const AstNode *specs, const AstNode *decl, const 
         error("virtual is not allowed here");
         return;
     }
+    if (declared.func->d != NULL) {
+        error("pure specifier is not allowed here");
+        return;
+    }
     if (body != NULL && body->kind != AST_COMPOUND) {
         error("function has no body");
         return;
