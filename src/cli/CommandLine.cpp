@@ -127,6 +127,7 @@ void CommandLine::parse(const std::vector<std::string> &arguments)
     provided_.clear();
     counts_.clear();
     positional_values_.clear();
+    events_.clear();
     action_ = CommandLineAction::None;
     for (const auto &option : options_) {
         if (option.default_value)
@@ -151,6 +152,7 @@ void CommandLine::parse(const std::vector<std::string> &arguments)
             provided_[option.name] = true;
             if (option.value_type == CommandLineValueType::Counter)
                 ++counts_[option.name];
+            events_.push_back(CommandLineEvent{option.name, {}});
             return false;
         }
         std::string argument;
@@ -165,6 +167,7 @@ void CommandLine::parse(const std::vector<std::string> &arguments)
             throw std::invalid_argument("option " + display_name(option)
                                         + " requires a non-empty argument");
         record_value(option, argument, true);
+        events_.push_back(CommandLineEvent{option.name, argument});
         return false;
     };
 
@@ -191,6 +194,19 @@ void CommandLine::parse(const std::vector<std::string> &arguments)
             continue;
         }
         if (!positional_only && argument.size() > 1 && argument[0] == '-') {
+            const auto separator = argument.find('=');
+            const auto word = argument.substr(1, separator == std::string::npos
+                                                       ? std::string::npos
+                                                       : separator - 1);
+            if (const CommandLineOption *single = find_long(word);
+                single != nullptr && single->single_dash) {
+                const std::optional<std::string> attached = separator == std::string::npos
+                    ? std::nullopt
+                    : std::optional<std::string>(argument.substr(separator + 1));
+                if (process(*single, attached, index, arguments))
+                    return;
+                continue;
+            }
             for (std::size_t offset = 1; offset < argument.size(); ++offset) {
                 const auto *option = find_short(argument[offset]);
                 if (option == nullptr)
@@ -277,6 +293,11 @@ const std::vector<std::string> &CommandLine::positional_values() const noexcept
     return positional_values_;
 }
 
+const std::vector<CommandLineEvent> &CommandLine::events() const noexcept
+{
+    return events_;
+}
+
 CommandLineAction CommandLine::action() const noexcept
 {
     return action_;
@@ -295,16 +316,22 @@ std::string CommandLine::help_text() const
     output << "\n\n" << description_ << "\n\nOptions:\n";
     for (const auto &option : options_) {
         output << "  ";
-        if (option.short_name != '\0')
-            output << '-' << option.short_name;
-        else
-            output << "  ";
-        if (!option.long_name.empty()) {
+        if (option.single_dash) {
             if (option.short_name != '\0')
-                output << ", ";
+                output << '-' << option.short_name << ", ";
+            output << '-' << option.long_name;
+        } else {
+            if (option.short_name != '\0')
+                output << '-' << option.short_name;
             else
                 output << "  ";
-            output << "--" << option.long_name;
+            if (!option.long_name.empty()) {
+                if (option.short_name != '\0')
+                    output << ", ";
+                else
+                    output << "  ";
+                output << "--" << option.long_name;
+            }
         }
         if ((option.value_type == CommandLineValueType::String
              || option.value_type == CommandLineValueType::Number)

@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+extern "C" char **environ;
+
 namespace smallcpp {
 namespace {
 namespace fs = std::filesystem;
@@ -41,6 +43,7 @@ struct Tok {
 
 struct Macro {
     bool function = false;
+    bool from_env = false;
     std::vector<std::string> params;
     std::vector<Tok> body;
 };
@@ -51,6 +54,7 @@ struct Cursor {
     int line = 1;
     bool bol = true;
     std::string file;
+    std::string physical;
 };
 
 struct Cond {
@@ -67,13 +71,26 @@ public:
     std::string run()
     {
         load_lines(request_.input);
-        for (const std::string &define : request_.defines)
-            install_command_define(define);
+        if (!request_.ignore_environment)
+            import_environment();
+        for (const CliMacro &item : request_.cli_macros) {
+            if (item.undef)
+                command_undef(item.text);
+            else
+                install_command_define(item.text);
+        }
         std::error_code canon_error;
         const fs::path canon = fs::canonical(request_.input, canon_error);
         if (!canon_error)
             include_stack_.push_back(canon.string());
-        std::vector<Tok> tokens = lex_file(request_.input);
+        std::vector<Tok> tokens;
+        for (const std::string &file : request_.force_includes) {
+            const std::string path = resolve_force_include(file);
+            std::vector<Tok> part = lex_file(path);
+            tokens.insert(tokens.end(), part.begin(), part.end());
+        }
+        std::vector<Tok> main_tokens = lex_file(request_.input);
+        tokens.insert(tokens.end(), main_tokens.begin(), main_tokens.end());
         std::string previous;
         for (int pass = 0; pass < kPassLimit; ++pass) {
             std::vector<Tok> next = pass_tokens(tokens, request_.input, 1);
@@ -401,9 +418,12 @@ private:
             fail(site, "cannot define " + name);
         auto found = macros_.find(name);
         if (found != macros_.end()) {
-            if (!same_body(found->second, macro))
+            if (found->second.from_env && !macro.from_env)
+                macros_.erase(found);
+            else if (!same_body(found->second, macro))
                 fail(site, "macro is already defined: " + name);
-            return;
+            else
+                return;
         }
         if (!macro.body.empty())
             macro.body.front().space_before = false;
@@ -428,12 +448,8 @@ private:
         const auto eq = text.find('=');
         const std::string name = eq == std::string::npos ? text : text.substr(0, eq);
         const std::string body = eq == std::string::npos ? "1" : text.substr(eq + 1);
-        if (name.empty() || !is_ident_start(static_cast<unsigned char>(name[0])))
+        if (!valid_ident(name))
             fail(request_.input, 1, 1, "invalid -D name");
-        for (char c : name) {
-            if (!is_ident_char(static_cast<unsigned char>(c)))
-                fail(request_.input, 1, 1, "invalid -D name");
-        }
         Tok site;
         site.kind = Kind::Ident;
         site.text = name;
@@ -441,16 +457,71 @@ private:
         site.line = 1;
         site.column = 1;
         Macro macro;
-        if (!body.empty()) {
-            macro.body = lex(body, request_.input);
-            for (auto it = macro.body.begin(); it != macro.body.end();) {
-                if (it->kind == Kind::Newline)
-                    it = macro.body.erase(it);
-                else
-                    ++it;
-            }
-        }
+        macro.body = replacement_tokens(body);
         define_macro(std::move(macro), site);
+    }
+
+    bool valid_ident(const std::string &name) const
+    {
+        if (name.empty() || !is_ident_start(static_cast<unsigned char>(name[0])))
+            return false;
+        for (unsigned char c : name) {
+            if (!is_ident_char(c))
+                return false;
+        }
+        return true;
+    }
+
+    std::vector<Tok> replacement_tokens(const std::string &body)
+    {
+        if (body.empty())
+            return {};
+        std::vector<Tok> tokens = lex(body, request_.input);
+        for (auto it = tokens.begin(); it != tokens.end();) {
+            if (it->kind == Kind::Newline)
+                it = tokens.erase(it);
+            else
+                ++it;
+        }
+        return tokens;
+    }
+
+    void command_undef(const std::string &name)
+    {
+        if (!valid_ident(name))
+            fail(request_.input, 1, 1, "invalid -U name");
+        if (name == "__LINE__" || name == "__FILE__")
+            fail(request_.input, 1, 1, "cannot undefine " + name);
+        macros_.erase(name);
+    }
+
+    void import_environment()
+    {
+        if (environ == nullptr)
+            return;
+        for (char **entry = environ; *entry != nullptr; ++entry) {
+            const std::string text(*entry);
+            const auto eq = text.find('=');
+            if (eq == std::string::npos || eq == 0)
+                continue;
+            const std::string name = text.substr(0, eq);
+            if (!valid_ident(name))
+                continue;
+            Tok site;
+            site.kind = Kind::Ident;
+            site.text = name;
+            site.file = request_.input;
+            site.line = 1;
+            site.column = 1;
+            Macro macro;
+            macro.from_env = true;
+            try {
+                macro.body = replacement_tokens(text.substr(eq + 1));
+            } catch (const std::runtime_error &) {
+                fail(request_.input, 1, 1, "invalid environment macro: " + name);
+            }
+            define_macro(std::move(macro), site);
+        }
     }
 
     Tok make_number(long long value, const Tok &site) const
@@ -1175,13 +1246,15 @@ private:
         fs::path header(name);
         if (header.is_absolute()) {
             candidates.push_back(header);
-        } else if (!angle) {
-            candidates.push_back(fs::path(from).parent_path() / header);
-            for (const std::string &dir : request_.includes)
-                candidates.push_back(fs::path(dir) / header);
         } else {
+            if (!angle)
+                candidates.push_back(fs::path(from).parent_path() / header);
             for (const std::string &dir : request_.includes)
                 candidates.push_back(fs::path(dir) / header);
+            if (!request_.nostdinc) {
+                candidates.push_back(fs::path("/usr/local/include") / header);
+                candidates.push_back(fs::path("/usr/include") / header);
+            }
         }
         for (const fs::path &candidate : candidates) {
             std::error_code error;
@@ -1192,6 +1265,24 @@ private:
                 return full.string();
         }
         return {};
+    }
+
+    std::string resolve_force_include(const std::string &name)
+    {
+        std::error_code cwd_error;
+        const fs::path cwd = fs::current_path(cwd_error);
+        const std::string from = cwd_error ? std::string("preproc-include")
+                                           : (cwd / "preproc-include").string();
+        Tok site;
+        site.kind = Kind::Ident;
+        site.text = "include";
+        site.file = request_.input;
+        site.line = 1;
+        site.column = 1;
+        const std::string path = find_header(name, false, from);
+        if (path.empty())
+            fail(site, "cannot include " + name);
+        return path;
     }
 
     std::vector<Tok> include_header(const std::string &name, bool angle, const Tok &site,
@@ -1401,11 +1492,17 @@ private:
         Cursor cursor;
         cursor.in = &in;
         cursor.file = file;
+        cursor.physical = file;
         cursor.line = start_line;
         std::vector<Tok> out;
         std::vector<Cond> stack;
         while (cursor.i < in.size()) {
             const Tok &tok = in[cursor.i];
+            if (!tok.file.empty() && tok.file != cursor.physical) {
+                cursor.physical = tok.file;
+                cursor.file = tok.file;
+                cursor.line = tok.line;
+            }
             if (tok.kind == Kind::Newline) {
                 const bool active = emitting(stack);
                 if (active)
@@ -1434,7 +1531,7 @@ private:
             ++cursor.i;
         }
         if (!stack.empty())
-            fail(file, cursor.line, 1, "missing #endif");
+            fail(cursor.file.empty() ? file : cursor.file, cursor.line, 1, "missing #endif");
         return out;
     }
 };
