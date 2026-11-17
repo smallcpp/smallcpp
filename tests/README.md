@@ -4,6 +4,8 @@
 
 `compile_return` runs `scpp` on `examples/return-zero.scpp`, then checks that the written bitcode module verifies and defines `int answer`. Each other `compile_*` test runs `scpp` on one short example and checks that one feature in the bitcode.
 
+`cc_ast_text` runs `scpp_cc --ast-text` and checks the structured text. `cc_ast_dot` runs `scpp_cc --ast-dot` and checks the Graphviz file. `cc_ast_both` requests the text, the DOT file, and bitcode together.
+
 `collect_live_root` runs `scpp` on `examples/live-root.scpp`, links that object with the collector, and runs it. The second `new` must trace the pointer returned by the first.
 
 `run_return`, `run_print`, and `run_format` ask `scpp` for an executable and run it. `run_return` must exit 0. `run_print` must write `count is 1` and a newline. `run_format` must exit 0.
