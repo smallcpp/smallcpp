@@ -113,6 +113,9 @@ add_exec_status(nullptr nullptr 1)
 add_exec_status(struct struct 1)
 add_exec_status(sizeof sizeof 4)
 add_exec_status(empty-list empty-list 1)
+add_exec_status(exec-catch exec-catch 7)
+add_exec_status(exec-catch-all exec-catch-all 6)
+add_exec_status(exec-rethrow exec-rethrow 4)
 
 add_test(
     NAME exec_exec-print-two

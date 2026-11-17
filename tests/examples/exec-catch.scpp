@@ -1,0 +1,8 @@
+int answer(void) {
+    try {
+        throw 7;
+    } catch (int error) {
+        return error;
+    }
+    return 0;
+}

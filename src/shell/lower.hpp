@@ -223,6 +223,7 @@ private:
     Ty this_ty;
     std::vector<llvm::BasicBlock *> handlers;
     int in_handler = 0;
+    std::vector<char> catch_open;
     std::vector<LoopFrame> loops;
     std::vector<SwitchFrame> switches;
     SwitchFrame *collecting = nullptr;
@@ -372,6 +373,12 @@ private:
     llvm::Function *personality();
     llvm::Function *throw_fn();
     llvm::Function *rethrow_fn();
+    llvm::Function *allocate_exception();
+    llvm::Function *begin_catch_fn();
+    llvm::Function *end_catch_fn();
+    llvm::Function *typeid_fn();
+    void note_unwind();
+    void close_open_catches();
     llvm::Constant *type_info(const Ty &ty);
     void emit_throw(const AstNode *node);
     void emit_try(const AstNode *node);
