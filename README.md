@@ -1,6 +1,6 @@
 # smallcpp
 
-Initial C++ CMake scaffold. `scpp` runs `preproc`, then `scpp_cc`, and then Clang when the result is an executable. `scpp_cc` parses one `.scpp` file and lowers it to a verified LLVM module. Several `.scpp` files on one `scpp` command are compiled separately and linked into one executable. `--emit-llvm`, or a path ending in `.bc`, writes that IR. `-c` writes an object and does not link. Those two forms still take one source, and that translation unit does not have to define `main`. Any other path is an executable linked with the Clang runtime, the collector, and `print` and `format`. The program defines `int main`. The runtime does not supply `main`. An executable with no `main` is an error. `scpp` does not print IR as text.
+Initial C++ CMake scaffold. `scpp` runs `preproc`, then `scpp_cc`, and then Clang when the result is an executable. `scpp_cc` parses one `.scpp` file and lowers it to a verified LLVM module. Several `.scpp` files on one `scpp` command are compiled separately and linked into one executable. One source and no `-o` writes `a.out`. `-k` keeps every generated file. Without it, `scpp` deletes intermediate files after a successful build. `preproc` deletes nothing. `--emit-llvm` writes LLVM IR for every input and stops. `-E` writes preprocessor output for every input and stops. With more than one input, the output base name is the input base name. `-c` writes one object and does not link. `-l` names a library and may be repeated. `-I` and `-L` accept a `:` separated list and search it in order. A path ending in `.bc` is LLVM IR. An executable defines `int main`. The runtime does not supply `main`. An executable with no `main` is an error. `-c`, `--emit-llvm`, and `-E` do not require `main`. `scpp` does not print IR as text.
 
 ## Build
 
@@ -8,7 +8,10 @@ Initial C++ CMake scaffold. `scpp` runs `preproc`, then `scpp_cc`, and then Clan
 cmake -S . -B build
 cmake --build build
 cmake --build build --target test
+./bin/scpp tests/examples/return-zero.scpp
 ./bin/scpp --emit-llvm tests/examples/return-zero.scpp program.bc
+./bin/scpp --emit-llvm tests/examples/return-zero.scpp tests/examples/extern.scpp
+./bin/scpp -E tests/examples/return-zero.scpp
 ./bin/scpp tests/examples/return-zero.scpp program
 ./bin/scpp -c -o program.o tests/examples/return-zero.scpp
 ./bin/scpp -o ledger tests/examples/ledger/money.scpp tests/examples/ledger/account.scpp tests/examples/ledger/book.scpp tests/examples/ledger/report.scpp tests/examples/ledger/main.scpp
