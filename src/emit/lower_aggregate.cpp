@@ -48,7 +48,7 @@ std::string Codegen::tag_key(bool is_union, const char *text)
 
 Ty Codegen::make_record(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     bool is_union = node->kind == AST_UNION;
     std::string key = tag_key(is_union, node->text);
     if (node->a == NULL) {
@@ -176,7 +176,7 @@ Ty Codegen::make_record(const AstNode *node)
 
 Ty Codegen::make_enum(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     std::string key = node->text != NULL && node->text[0] != '\0'
         ? qualify(std::string("enum.") + node->text)
         : qualify(".enum.anon." + std::to_string(++anon_records));
@@ -522,7 +522,7 @@ llvm::Constant *Codegen::const_initializer(const Ty &ty, const AstNode *init)
 
 void Codegen::store_initializer(const Slot &slot, const AstNode *init)
 {
-    SourceNote here(focus, init);
+    SourceNote here(*this, init);
     if (failed)
         return;
     if (init != NULL && init->kind != AST_INIT) {

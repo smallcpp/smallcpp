@@ -179,6 +179,10 @@ void Codegen::install(Func incoming)
             existing.body = incoming.body;
             existing.names = incoming.names;
             existing.inits = incoming.inits;
+            if (incoming.line > 0)
+                existing.line = incoming.line;
+            if (!incoming.debug_name.empty())
+                existing.debug_name = incoming.debug_name;
             if (!incoming.klass.empty()) {
                 existing.klass = incoming.klass;
                 existing.method_const = incoming.method_const;
@@ -344,7 +348,7 @@ bool Codegen::call_target(const AstNode *callee, std::vector<std::string> &keys,
 
 Ty Codegen::type_call(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     MethodCall method;
     if (prepare_method(node->a, method))
         return type_method_call(node, method);
@@ -367,7 +371,7 @@ Ty Codegen::type_call(const AstNode *node)
 
 RValue Codegen::emit_call(const AstNode *node)
 {
-    SourceNote here(focus, node);
+    SourceNote here(*this, node);
     MethodCall method;
     if (prepare_method(node->a, method))
         return emit_method_call(node, method);
@@ -519,7 +523,7 @@ bool Codegen::collect_params(const AstNode *list, std::vector<Param> &out, bool 
 
 void Codegen::declare_function(const AstNode *specs, const AstNode *decl, const AstNode *body)
 {
-    SourceNote here(focus, decl != NULL ? decl : specs);
+    SourceNote here(*this, decl != NULL ? decl : specs);
     Storage storage;
     Ty base = parse_specs(specs, Where::Param, &storage);
     if (failed)
@@ -582,6 +586,9 @@ void Codegen::declare_function(const AstNode *specs, const AstNode *decl, const 
     incoming.ret = ret;
     incoming.vararg = vararg;
     incoming.body = body;
+    incoming.debug_name = declared.name->text;
+    incoming.line = declared.name->line > 0 ? declared.name->line
+        : (body != NULL && body->line > 0 ? body->line : 1);
     incoming.is_static = storage.is_static;
     incoming.is_inline = storage.is_inline;
     for (const Param &param : params) {

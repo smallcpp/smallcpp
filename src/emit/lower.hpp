@@ -205,6 +205,8 @@ struct Func {
     bool vararg = false;
     Ty ret;
     const AstNode *body = nullptr;
+    std::string debug_name;
+    int line = 0;
     bool is_static = false;
     bool is_inline = false;
     std::vector<std::string> home;
@@ -218,21 +220,14 @@ struct Func {
     int vindex = -1;
 };
 
+class Codegen;
+
 struct SourceNote {
-    const AstNode *&slot;
+    Codegen &cg;
     const AstNode *previous;
 
-    SourceNote(const AstNode *&slot, const AstNode *node)
-        : slot(slot), previous(slot)
-    {
-        if (node != NULL && node->line > 0)
-            slot = node;
-    }
-
-    ~SourceNote()
-    {
-        slot = previous;
-    }
+    SourceNote(Codegen &cg, const AstNode *node);
+    ~SourceNote();
 };
 
 struct Declared {
@@ -243,10 +238,19 @@ struct Declared {
     int bits = 0;
 };
 
+namespace llvm {
+class DIBuilder;
+class DIFile;
+class DIType;
+}
+
 class Codegen {
 public:
     Codegen(llvm::LLVMContext &context, llvm::Module &module);
+    ~Codegen();
     int run(const AstNode *root);
+    void enable_debug(const char *path);
+    void finish_debug();
 
 private:
     llvm::LLVMContext &context;
@@ -287,6 +291,21 @@ private:
         bool arrow = false;
         bool implicit = false;
     };
+
+    friend struct SourceNote;
+
+    void set_focus(const AstNode *node);
+    void begin_function_debug(Func &fn);
+    void declare_param(llvm::AllocaInst *addr, const std::string &name, const Ty &ty, unsigned arg_no,
+                       unsigned line);
+    void declare_local(llvm::AllocaInst *addr, const std::string &name, const Ty &ty);
+    llvm::DIType *debug_type(const Ty &ty);
+    llvm::DIType *debug_record(const Ty &ty);
+    std::string debug_basic_name(const Ty &ty) const;
+
+    llvm::DIBuilder *di = nullptr;
+    llvm::DIFile *di_file = nullptr;
+    std::map<std::string, llvm::DIType *> di_types;
 
     void error(const char *message);
     void error_name(const char *message, const char *name);
@@ -538,3 +557,15 @@ private:
     void emit_inits(Func &fn);
     void emit_body(Func &fn);
 };
+
+inline SourceNote::SourceNote(Codegen &cg, const AstNode *node)
+    : cg(cg), previous(cg.focus)
+{
+    if (node != NULL && node->line > 0)
+        cg.set_focus(node);
+}
+
+inline SourceNote::~SourceNote()
+{
+    cg.set_focus(previous);
+}

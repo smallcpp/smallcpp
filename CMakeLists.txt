@@ -67,7 +67,8 @@ add_library(smallcpp_emit STATIC
     src/emit/lower_class.cpp
     src/emit/lower_alloc.cpp
     src/emit/lower_except.cpp
-    src/emit/lower_print.cpp)
+    src/emit/lower_print.cpp
+    src/emit/debug.cpp)
 target_include_directories(smallcpp_emit PUBLIC ${CMAKE_SOURCE_DIR}/src/emit)
 target_link_libraries(smallcpp_emit PUBLIC smallcpp_parse ${SMALLCPP_LLVM_LIBS})
 smallcpp_use_llvm(smallcpp_emit)
