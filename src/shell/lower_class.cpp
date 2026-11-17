@@ -865,6 +865,7 @@ void Codegen::emit_virtual_bases(llvm::Value *self, const std::string &key, cons
 
 Ty Codegen::make_class(const AstNode *node)
 {
+    SourceNote here(focus, node);
     const char *plain = node_name(node->a);
     if (plain == NULL || plain[0] == '\0') {
         error("anonymous class");

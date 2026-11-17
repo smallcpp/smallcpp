@@ -5,6 +5,10 @@
 #include <cstring>
 
 extern "C" {
+#include "diagnostic.h"
+}
+
+extern "C" {
 #include "smallcpp.tab.h"
 
 extern FILE *yyin;
@@ -15,7 +19,10 @@ static int error_count;
 
 void yyerror(const char *message)
 {
-    std::fprintf(stderr, "%s\n", message);
+    int line = yylloc.first_line > 0 ? yylloc.first_line : 1;
+    int column = yylloc.first_column > 0 ? yylloc.first_column : 1;
+
+    smallcpp_diag_report(line, column, message);
     error_count++;
 }
 }
@@ -36,6 +43,7 @@ int main(int argc, char **argv)
     yylloc.first_column = 1;
     yylloc.last_line = 1;
     yylloc.last_column = 1;
+    smallcpp_diag_load(argv[1]);
     yyin = std::fopen(argv[1], "r");
     if (yyin == NULL) {
         std::perror(argv[1]);

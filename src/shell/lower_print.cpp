@@ -5,6 +5,7 @@
 
 RValue Codegen::emit_native(const AstNode *node)
 {
+    SourceNote here(focus, node);
     bool formatting = node->kind == AST_FORMAT;
     llvm::FunctionType *type = llvm::FunctionType::get(
         formatting ? llvm::PointerType::get(context, 0) : llvm::Type::getVoidTy(context), true);

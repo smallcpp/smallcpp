@@ -4,8 +4,8 @@
  * The identifier after class is recorded so a later use is TYPEDEF_NAME.
  * A typedef name is recorded the same way: the identifier outside
  * parentheses, up to the semicolon.
- * An invalid character is reported with its line and column and then
- * skipped, so scanning continues.
+ * An invalid character is reported with its file, line, column, and
+ * source line, and then skipped, so scanning continues.
  * "..." is one token. A parameter list uses it as a variadic parameter.
  * catch (...) uses the same token, and the grammar does not make it a
  * parameter.

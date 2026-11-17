@@ -253,6 +253,7 @@ std::optional<Ty> Codegen::lookup_alias(const char *name)
 
 void Codegen::declare_item(const AstNode *item)
 {
+    SourceNote here(focus, item);
     if (item == NULL || failed)
         return;
     if (item->kind == AST_METHOD)
@@ -271,6 +272,7 @@ void Codegen::declare_item(const AstNode *item)
 
 void Codegen::declare_namespace(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (node->text == NULL) {
         error("namespace has no name");
         return;
@@ -291,6 +293,7 @@ void Codegen::declare_namespace(const AstNode *node)
 
 void Codegen::add_using(const AstNode *node)
 {
+    SourceNote here(focus, node);
     bool directive = node->text != NULL && std::strcmp(node->text, "namespace") == 0;
     if (directive) {
         std::string target = namespace_key(node->a);

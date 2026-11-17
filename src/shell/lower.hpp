@@ -218,6 +218,23 @@ struct Func {
     int vindex = -1;
 };
 
+struct SourceNote {
+    const AstNode *&slot;
+    const AstNode *previous;
+
+    SourceNote(const AstNode *&slot, const AstNode *node)
+        : slot(slot), previous(slot)
+    {
+        if (node != NULL && node->line > 0)
+            slot = node;
+    }
+
+    ~SourceNote()
+    {
+        slot = previous;
+    }
+};
+
 struct Declared {
     const AstNode *name = nullptr;
     const AstNode *func = nullptr;
@@ -239,6 +256,7 @@ private:
     llvm::BasicBlock *entry = nullptr;
     Ty ret_ty;
     bool failed = false;
+    const AstNode *focus = nullptr;
     std::vector<std::map<std::string, Slot>> scopes;
     std::map<std::string, std::vector<Func>> overloads;
     std::map<std::string, Ty> aliases;

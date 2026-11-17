@@ -344,6 +344,7 @@ bool Codegen::call_target(const AstNode *callee, std::vector<std::string> &keys,
 
 Ty Codegen::type_call(const AstNode *node)
 {
+    SourceNote here(focus, node);
     MethodCall method;
     if (prepare_method(node->a, method))
         return type_method_call(node, method);
@@ -366,6 +367,7 @@ Ty Codegen::type_call(const AstNode *node)
 
 RValue Codegen::emit_call(const AstNode *node)
 {
+    SourceNote here(focus, node);
     MethodCall method;
     if (prepare_method(node->a, method))
         return emit_method_call(node, method);
@@ -517,6 +519,7 @@ bool Codegen::collect_params(const AstNode *list, std::vector<Param> &out, bool 
 
 void Codegen::declare_function(const AstNode *specs, const AstNode *decl, const AstNode *body)
 {
+    SourceNote here(focus, decl != NULL ? decl : specs);
     Storage storage;
     Ty base = parse_specs(specs, Where::Param, &storage);
     if (failed)

@@ -3,17 +3,28 @@
  */
 #include "lower.hpp"
 
+extern "C" {
+#include "diagnostic.h"
+}
+
 void Codegen::error(const char *message)
 {
-    if (!failed)
-        std::fprintf(stderr, "%s\n", message);
+    if (!failed) {
+        int line = focus != NULL && focus->line > 0 ? focus->line : 1;
+        int column = focus != NULL && focus->column > 0 ? focus->column : 1;
+        smallcpp_diag_report(line, column, message);
+    }
     failed = true;
 }
 
 void Codegen::error_name(const char *message, const char *name)
 {
-    if (!failed)
-        std::fprintf(stderr, "%s: %s\n", message, name != NULL ? name : "");
+    if (!failed) {
+        std::string text = std::string(message) + ": " + (name != NULL ? name : "");
+        int line = focus != NULL && focus->line > 0 ? focus->line : 1;
+        int column = focus != NULL && focus->column > 0 ? focus->column : 1;
+        smallcpp_diag_report(line, column, text.c_str());
+    }
     failed = true;
 }
 
@@ -99,6 +110,7 @@ bool Codegen::is_integer(const Ty &ty)
 
 void Codegen::reject_node(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (node == NULL) {
         error("not in this phase");
         return;
@@ -171,6 +183,7 @@ void Codegen::reject_node(const AstNode *node)
 
 void Codegen::reject_declarator(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (node == NULL)
         error("declaration has no name");
     else if (node->kind == AST_QUALIFIED)
@@ -300,6 +313,7 @@ int Codegen::const_i64(const AstNode *node, int64_t &out)
 
 Ty Codegen::walk_declarator(Ty base, const AstNode *node, Declared &out)
 {
+    SourceNote here(focus, node);
     if (failed)
         return base;
     if (node == NULL)
@@ -376,6 +390,7 @@ Declared Codegen::declare_one(Ty base, const AstNode *node)
 
 Ty Codegen::parse_specs(const AstNode *list, Where where, Storage *storage)
 {
+    SourceNote here(focus, list);
     int longs = 0;
     int shorts = 0;
     bool saw_signed = false;
@@ -571,6 +586,7 @@ bool Codegen::is_type_form(const AstNode *node)
 
 Ty Codegen::type_from_name(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (node != NULL && node->kind == AST_DECLARATOR) {
         Ty base = parse_specs(node->a, Where::Param);
         if (failed)
@@ -1074,6 +1090,7 @@ RValue Codegen::read_slot(const Slot &slot)
 
 Ty Codegen::object_type(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (failed || node == NULL) {
         error("assignment target is not a scalar");
         return int_ty();
@@ -1267,6 +1284,7 @@ std::optional<Slot> Codegen::lvalue(const AstNode *node)
 
 Ty Codegen::type_of(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (failed || node == NULL)
         return int_ty();
     if (node->kind == AST_THIS) {
@@ -1374,6 +1392,7 @@ Ty Codegen::type_of(const AstNode *node)
 
 Ty Codegen::type_unary(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (op_is(node, "&")) {
         Ty object = object_type(node->a);
         if (failed)
@@ -1395,6 +1414,7 @@ Ty Codegen::type_unary(const AstNode *node)
 
 Ty Codegen::type_binary(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (op_is(node, "&&") || op_is(node, "||"))
         return bool_ty();
     if (op_is(node, ",")) {
@@ -1749,6 +1769,7 @@ Const Codegen::eval_conditional(const AstNode *node)
 
 RValue Codegen::emit_rvalue(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (failed || node == NULL)
         return fallback();
     if (node->kind == AST_NULL) {
@@ -2190,6 +2211,7 @@ RValue Codegen::apply_op(const char *op, RValue left, RValue right)
 
 RValue Codegen::emit_assign(const AstNode *node)
 {
+    SourceNote here(focus, node);
     std::optional<Slot> slot = lvalue(node->a);
     if (!slot || failed)
         return fallback();
@@ -2269,6 +2291,7 @@ RValue Codegen::emit_conditional(const AstNode *node)
 
 void Codegen::emit_statement(const AstNode *node)
 {
+    SourceNote here(focus, node);
     if (failed || node == NULL)
         return;
     switch (node->kind) {
@@ -2730,6 +2753,7 @@ void Codegen::place_value(const std::string &name, Ty ty, llvm::Value *addr)
 
 void Codegen::emit_declaration(const AstNode *node, bool file)
 {
+    SourceNote here(focus, node);
     Storage storage;
     Ty ty = parse_specs(node->a, file ? Where::File : Where::Local, &storage);
     if (failed)

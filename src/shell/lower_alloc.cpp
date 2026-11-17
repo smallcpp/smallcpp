@@ -23,6 +23,7 @@ llvm::Function *Codegen::allocator()
 
 Ty Codegen::new_element(const AstNode *node, std::vector<const AstNode *> &bounds)
 {
+    SourceNote here(focus, node);
     if (node == NULL) {
         error("new has no type");
         return int_ty();
@@ -89,6 +90,7 @@ llvm::Value *Codegen::allocate(llvm::Value *bytes, llvm::Value *count)
 
 RValue Codegen::emit_new(const AstNode *node)
 {
+    SourceNote here(focus, node);
     std::vector<const AstNode *> bounds;
     const AstNode *allocated = node->a;
     if (allocated != NULL && allocated->kind == AST_POINTER)
@@ -220,6 +222,7 @@ void Codegen::bind_destructor(llvm::Value *object, const Ty &ty)
 
 void Codegen::emit_delete(const AstNode *node)
 {
+    SourceNote here(focus, node);
     RValue ptr = emit_rvalue(node->a);
     if (failed)
         return;

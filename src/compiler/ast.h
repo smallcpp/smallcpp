@@ -76,10 +76,14 @@ typedef struct AstNode {
     struct AstNode *c;
     struct AstNode *d;
     struct AstNode *next;
+    int line;
+    int column;
 } AstNode;
 
 /* text is owned by the node. Children are a, b, c, and d. next links a list. */
 AstNode *ast_make(AstKind kind, char *text, AstNode *a, AstNode *b, AstNode *c, AstNode *d);
+/* Record the start of a construct. A child that already has a line keeps it. */
+AstNode *ast_place(AstNode *node, int line, int column);
 AstNode *ast_text(AstKind kind, char *owned);
 AstNode *ast_named(AstKind kind, const char *spelling);
 AstNode *ast_binary(AstNode *lhs, const char *op, AstNode *rhs);
