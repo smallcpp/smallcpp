@@ -23,7 +23,17 @@ endfunction()
 
 add_subdirectory(src/compiler)
 
-add_executable(shell src/shell/main.cpp src/shell/codegen.cpp)
+add_executable(shell
+    src/shell/main.cpp
+    src/shell/codegen.cpp
+    src/shell/lower_scalar.cpp
+    src/shell/lower_call.cpp
+    src/shell/lower_aggregate.cpp
+    src/shell/lower_namespace.cpp
+    src/shell/lower_class.cpp
+    src/shell/lower_alloc.cpp
+    src/shell/lower_except.cpp
+    src/shell/lower_print.cpp)
 target_link_libraries(shell PRIVATE smallcpp_parse ${SMALLCPP_LLVM_LIBS})
 smallcpp_use_llvm(shell)
 

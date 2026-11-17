@@ -4,6 +4,10 @@ All notable changes to smallcpp are recorded in this file.
 
 ## Unreleased
 
+### Changed
+
+- The shell code generator is split by phase. `src/shell/codegen.cpp` drives lowering. Types and scalars, calls, aggregates, namespaces, classes, allocation, exceptions, and print and format each have their own file: `lower_scalar.cpp`, `lower_call.cpp`, `lower_aggregate.cpp`, `lower_namespace.cpp`, `lower_class.cpp`, `lower_alloc.cpp`, `lower_except.cpp`, and `lower_print.cpp`. `src/shell/lower.hpp` holds the types those files share. Lowering behavior is unchanged.
+
 ### Fixed
 
 - Merging the syntax tree into the error-recovery grammar dropped `%locations` and `%define parse.error custom` while leaving `yyreport_syntax_error` and the scanner's column tracking in place. The generated parser did not compile, so `cmake --build` stopped before the build finished. Those directives are restored, and `docs/smallcpp.y` and `docs/smallcpp.l` match `src/compiler` again.
