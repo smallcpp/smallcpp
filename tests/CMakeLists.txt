@@ -1,3 +1,32 @@
+add_executable(command_line_test command_line_test.cpp)
+target_link_libraries(command_line_test PRIVATE smallcpp_cli)
+add_test(NAME command_line COMMAND command_line_test)
+
+add_test(
+    NAME shell_help
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:shell>
+        -DNEEDLE=Usage:
+        -DCLI_ARGS=--help
+        -DEXPECT_STATUS=0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectCli.cmake)
+add_test(
+    NAME shell_version
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:shell>
+        -DNEEDLE=shell: v0.1
+        -DCLI_ARGS=--version
+        -DEXPECT_STATUS=0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectCli.cmake)
+add_test(
+    NAME shell_unknown_option
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:shell>
+        -DNEEDLE=unknown option
+        -DCLI_ARGS=--not-an-option
+        -DEXPECT_STATUS=2
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectCli.cmake)
+
 add_executable(parse_test parse_main.c)
 target_link_libraries(parse_test PRIVATE smallcpp_parse)
 
@@ -47,6 +76,15 @@ add_parse_example(parse_brace_init brace-init.scpp FALSE)
 add_executable(verify_module verify_module.cpp)
 target_link_libraries(verify_module PRIVATE ${SMALLCPP_LLVM_LIBS})
 smallcpp_use_llvm(verify_module)
+
+add_test(
+    NAME compile_output_option
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:shell>
+        -DVERIFY=$<TARGET_FILE:verify_module>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DBITCODE=${CMAKE_CURRENT_BINARY_DIR}/output-option.bc
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectOutputOption.cmake)
 
 add_test(
     NAME compile_return

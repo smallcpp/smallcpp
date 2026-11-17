@@ -23,6 +23,13 @@ endfunction()
 
 add_subdirectory(src/compiler)
 
+add_library(smallcpp_cli STATIC src/cli/CommandLine.cpp)
+target_include_directories(smallcpp_cli PUBLIC ${CMAKE_SOURCE_DIR}/src/cli)
+target_compile_features(smallcpp_cli PUBLIC cxx_std_17)
+if(NOT LLVM_ENABLE_RTTI)
+    target_compile_options(smallcpp_cli PUBLIC -fno-rtti)
+endif()
+
 add_executable(shell
     src/shell/main.cpp
     src/shell/codegen.cpp
@@ -35,7 +42,7 @@ add_executable(shell
     src/shell/lower_alloc.cpp
     src/shell/lower_except.cpp
     src/shell/lower_print.cpp)
-target_link_libraries(shell PRIVATE smallcpp_parse ${SMALLCPP_LLVM_LIBS})
+target_link_libraries(shell PRIVATE smallcpp_parse smallcpp_cli ${SMALLCPP_LLVM_LIBS})
 smallcpp_use_llvm(shell)
 
 add_library(smallcpp_runtime STATIC
@@ -52,6 +59,7 @@ if(NOT SMALLCPP_CLANGXX)
     message(FATAL_ERROR "clang++ is required to link an executable")
 endif()
 target_compile_definitions(shell PRIVATE
+    "SMALLCPP_VERSION=\"0.1\""
     "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
     "SMALLCPP_RUNTIME_LIB=\"$<TARGET_FILE:smallcpp_runtime>\"")
 add_dependencies(shell smallcpp_runtime)
