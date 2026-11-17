@@ -920,8 +920,13 @@ llvm::Value *Codegen::convert(llvm::Value *value, const Ty &from, const Ty &to)
     if (failed)
         return llvm::Constant::getNullValue(to.ir != NULL ? to.ir : llvm::Type::getInt32Ty(context));
     if (from.is_pointer || to.is_pointer) {
-        if (from.is_pointer && to.is_pointer)
+        if (from.is_pointer && to.is_pointer) {
+            if (from.inner != NULL && to.inner != NULL && class_type(*from.inner) && class_type(*to.inner)
+                && from.inner->record != to.inner->record
+                && derives_from(from.inner->record, to.inner->record))
+                return adjust_to(value, from.inner->record, to.inner->record);
             return value;
+        }
         if (from.is_pointer && to.is_bool)
             return builder.CreateICmpNE(
                 value, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(from.ir)));

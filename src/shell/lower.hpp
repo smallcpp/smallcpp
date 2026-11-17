@@ -101,6 +101,20 @@ struct MethodDecl {
     int vindex = -1;
 };
 
+struct VSlot {
+    std::string name;
+    std::string vkey;
+    std::string impl_class;
+    int index = 0;
+    llvm::Function *fn = nullptr;
+};
+
+struct VTable {
+    std::string base;
+    std::vector<std::string> path;
+    llvm::GlobalVariable *global = nullptr;
+};
+
 struct Record {
     std::string name;
     bool is_union = false;
@@ -112,7 +126,10 @@ struct Record {
     std::vector<std::string> bases;
     std::vector<MethodDecl> methods;
     int vptr = -1;
+    std::string primary_base;
     llvm::GlobalVariable *vtable = nullptr;
+    std::vector<VSlot> vslots;
+    std::vector<VTable> vtables;
 };
 
 struct RValue {
@@ -283,6 +300,27 @@ private:
                         const AstNode *body, const AstNode *inits);
     void layout_class(Record &rec);
     void build_vtable(const std::string &key);
+    bool polymorphic(const std::string &key) const;
+    bool vptr_at_start(const std::string &key) const;
+    std::string virtual_key(const Ty &ret, const std::vector<Param> &params, bool is_const);
+    std::string virtual_key(const Func &fn);
+    bool hides_virtual(const std::string &base, const std::string &name, const std::string &vkey) const;
+    Func *declared_virtual(const std::string &klass, const std::string &name, const std::string &vkey);
+    Func *overrider_along(const std::string &klass, const std::vector<std::string> &path, std::size_t step,
+                          const std::string &name, const std::string &vkey);
+    uint64_t path_offset(const std::string &derived, const std::vector<std::string> &path) const;
+    uint64_t thunk_delta(const std::string &complete, const std::vector<std::string> &path,
+                         const std::string &impl) const;
+    llvm::GlobalVariable *emit_vtable(const std::string &name, const std::vector<llvm::Constant *> &slots);
+    llvm::Function *make_thunk(llvm::Function *impl, uint64_t delta, const std::string &name);
+    llvm::Value *base_ptr(llvm::Value *ptr, const std::string &from, const std::string &base);
+    llvm::Value *vptr_addr(llvm::Value *ptr, const std::string &key);
+    llvm::GlobalVariable *view_for(const std::string &complete, const std::vector<std::string> &path);
+    void lay_bases(llvm::Value *ptr, const std::string &complete, const std::string &sub,
+                   std::vector<std::string> &path);
+    void build_views(const std::string &complete, const std::string &sub, std::vector<std::string> &path);
+    VTable make_view(const std::string &complete, const std::string &base, const std::vector<std::string> &path);
+    void emit_vptrs(llvm::Value *ptr, const std::string &key);
     Ty make_class(const AstNode *node);
     std::optional<Field> find_field(const Ty &object, const char *name);
     std::optional<Slot> member_slot(llvm::Value *object, const Ty &type, const char *name, bool report);

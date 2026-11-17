@@ -3,6 +3,8 @@
  */
 #include "lower.hpp"
 
+#include "llvm/IR/DataLayout.h"
+
 std::string Codegen::class_key_of(const char *plain) const
 {
     if (plain == NULL)
@@ -140,19 +142,6 @@ void Codegen::install_method(const std::string &key, MethodDecl decl, Ty ret, st
 
 void Codegen::layout_class(Record &rec)
 {
-    bool any_virtual = false;
-    for (const MethodDecl &method : rec.methods) {
-        if (method.is_virtual)
-            any_virtual = true;
-    }
-    if (any_virtual) {
-        Field vptr;
-        vptr.name = ".vptr";
-        vptr.ty = pointer_to(int_ty());
-        vptr.access = "private";
-        rec.fields.insert(rec.fields.begin(), vptr);
-        rec.vptr = 0;
-    }
     if (rec.fields.empty()) {
         Field pad;
         pad.name = ".pad";
@@ -171,35 +160,343 @@ void Codegen::layout_class(Record &rec)
     rec.defining = false;
 }
 
+bool Codegen::polymorphic(const std::string &key) const
+{
+    auto found = records.find(key);
+    if (found == records.end())
+        return false;
+    if (found->second.vptr >= 0 || found->second.vtable != NULL || !found->second.vslots.empty())
+        return true;
+    for (const std::string &base : found->second.bases) {
+        if (polymorphic(base))
+            return true;
+    }
+    return false;
+}
+
+bool Codegen::vptr_at_start(const std::string &key) const
+{
+    auto found = records.find(key);
+    if (found == records.end())
+        return false;
+    if (found->second.vptr == 0)
+        return true;
+    if (found->second.primary_base.empty() || found->second.bases.empty())
+        return false;
+    if (found->second.bases[0] != found->second.primary_base)
+        return false;
+    return vptr_at_start(found->second.primary_base);
+}
+
+std::string Codegen::virtual_key(const Ty &ret, const std::vector<Param> &params, bool is_const)
+{
+    std::string text = is_const ? "c:" : "m:";
+    text += type_tag(ret);
+    for (const Param &param : params)
+        text += "," + type_tag(param.ty);
+    return text;
+}
+
+std::string Codegen::virtual_key(const Func &fn)
+{
+    std::string text = fn.method_const ? "c:" : "m:";
+    text += type_tag(fn.ret);
+    for (std::size_t i = 1; i < fn.params.size(); i++)
+        text += "," + type_tag(fn.params[i]);
+    return text;
+}
+
+bool Codegen::hides_virtual(const std::string &base, const std::string &name, const std::string &vkey) const
+{
+    auto found = records.find(base);
+    if (found == records.end())
+        return false;
+    for (const VSlot &slot : found->second.vslots) {
+        if (slot.name == name && slot.vkey == vkey)
+            return true;
+    }
+    for (const std::string &one : found->second.bases) {
+        if (hides_virtual(one, name, vkey))
+            return true;
+    }
+    return false;
+}
+
+Func *Codegen::declared_virtual(const std::string &klass, const std::string &name, const std::string &vkey)
+{
+    auto found = records.find(klass);
+    if (found == records.end())
+        return NULL;
+    for (const MethodDecl &method : found->second.methods) {
+        if (!method.is_virtual || method.is_ctor || method.is_dtor || method.name != name)
+            continue;
+        auto group = overloads.find(method.ir_name);
+        if (group == overloads.end())
+            continue;
+        for (Func &fn : group->second) {
+            if (fn.klass != klass || fn.fn == NULL || fn.method_const != method.is_const)
+                continue;
+            if (virtual_key(fn) == vkey)
+                return &fn;
+        }
+    }
+    return NULL;
+}
+
+Func *Codegen::overrider_along(const std::string &klass, const std::vector<std::string> &path, std::size_t step,
+                               const std::string &name, const std::string &vkey)
+{
+    Func *here = declared_virtual(klass, name, vkey);
+    if (here != NULL)
+        return here;
+    if (step >= path.size())
+        return NULL;
+    return overrider_along(path[step], path, step + 1, name, vkey);
+}
+
+uint64_t Codegen::path_offset(const std::string &derived, const std::vector<std::string> &path) const
+{
+    uint64_t offset = 0;
+    std::string at = derived;
+    for (const std::string &step : path) {
+        auto found = records.find(at);
+        if (found == records.end() || found->second.ir == NULL)
+            return offset;
+        const llvm::StructLayout *layout = module.getDataLayout().getStructLayout(found->second.ir);
+        const Field *field = NULL;
+        for (const Field &one : found->second.fields) {
+            if (one.name == base_field_name(step))
+                field = &one;
+        }
+        if (field == NULL)
+            return offset;
+        offset += layout->getElementOffset(field->index);
+        at = step;
+    }
+    return offset;
+}
+
+uint64_t Codegen::thunk_delta(const std::string &complete, const std::vector<std::string> &path,
+                              const std::string &impl) const
+{
+    uint64_t sub = path_offset(complete, path);
+    if (impl.empty() || impl == complete)
+        return sub;
+    std::vector<std::string> prefix;
+    for (const std::string &step : path) {
+        prefix.push_back(step);
+        if (step == impl)
+            return sub - path_offset(complete, prefix);
+    }
+    return sub;
+}
+
+llvm::GlobalVariable *Codegen::emit_vtable(const std::string &name, const std::vector<llvm::Constant *> &slots)
+{
+    if (slots.empty())
+        return NULL;
+    auto *elem = llvm::PointerType::get(context, 0);
+    auto *array = llvm::ArrayType::get(elem, slots.size());
+    return new llvm::GlobalVariable(
+        module, array, true, llvm::GlobalValue::PrivateLinkage,
+        llvm::ConstantArray::get(array, slots), name);
+}
+
+llvm::Function *Codegen::make_thunk(llvm::Function *impl, uint64_t delta, const std::string &name)
+{
+    if (impl == NULL || delta == 0)
+        return impl;
+    llvm::FunctionType *type = impl->getFunctionType();
+    auto *thunk = llvm::Function::Create(type, llvm::GlobalValue::InternalLinkage, name, &module);
+    auto *block = llvm::BasicBlock::Create(context, "entry", thunk);
+    llvm::IRBuilder<> ir(block);
+    llvm::Value *self = thunk->getArg(0);
+    llvm::Value *adjusted = ir.CreateGEP(
+        llvm::Type::getInt8Ty(context), self,
+        llvm::ConstantInt::getSigned(llvm::Type::getInt64Ty(context), -static_cast<int64_t>(delta)));
+    std::vector<llvm::Value *> args;
+    args.push_back(adjusted);
+    for (unsigned i = 1; i < thunk->arg_size(); i++)
+        args.push_back(thunk->getArg(i));
+    llvm::CallInst *call = ir.CreateCall(impl, args);
+    if (type->getReturnType()->isVoidTy())
+        ir.CreateRetVoid();
+    else
+        ir.CreateRet(call);
+    return thunk;
+}
+
+llvm::Value *Codegen::base_ptr(llvm::Value *ptr, const std::string &from, const std::string &base)
+{
+    auto found = records.find(from);
+    if (found == records.end())
+        return ptr;
+    Ty type = record_type(found->second);
+    for (const Field &field : found->second.fields) {
+        if (field.name == base_field_name(base))
+            return field_addr(ptr, type, field).addr;
+    }
+    return ptr;
+}
+
+llvm::Value *Codegen::vptr_addr(llvm::Value *ptr, const std::string &key)
+{
+    auto found = records.find(key);
+    if (found == records.end())
+        return ptr;
+    Record &rec = found->second;
+    if (rec.vptr >= 0) {
+        Ty type = record_type(rec);
+        return field_addr(ptr, type, rec.fields[static_cast<std::size_t>(rec.vptr)]).addr;
+    }
+    if (!rec.primary_base.empty())
+        return vptr_addr(base_ptr(ptr, key, rec.primary_base), rec.primary_base);
+    return ptr;
+}
+
+llvm::GlobalVariable *Codegen::view_for(const std::string &complete, const std::vector<std::string> &path)
+{
+    auto found = records.find(complete);
+    if (found == records.end())
+        return NULL;
+    for (const VTable &table : found->second.vtables) {
+        if (table.path == path)
+            return table.global;
+    }
+    return NULL;
+}
+
+void Codegen::lay_bases(llvm::Value *ptr, const std::string &complete, const std::string &sub,
+                        std::vector<std::string> &path)
+{
+    auto found = records.find(sub);
+    if (found == records.end())
+        return;
+    for (const std::string &base : found->second.bases) {
+        if (!polymorphic(base))
+            continue;
+        path.push_back(base);
+        llvm::Value *child = base_ptr(ptr, sub, base);
+        if (base != found->second.primary_base) {
+            llvm::GlobalVariable *table = view_for(complete, path);
+            if (table != NULL)
+                builder.CreateStore(table, vptr_addr(child, base));
+        }
+        lay_bases(child, complete, base, path);
+        path.pop_back();
+    }
+}
+
+VTable Codegen::make_view(const std::string &complete, const std::string &base,
+                          const std::vector<std::string> &path)
+{
+    VTable table;
+    table.base = base;
+    table.path = path;
+    auto layout = records.find(base);
+    if (layout == records.end())
+        return table;
+    auto *null_fn = llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
+    std::vector<llvm::Constant *> slots;
+    int index = 0;
+    for (const VSlot &slot : layout->second.vslots) {
+        Func *over = overrider_along(complete, path, 0, slot.name, slot.vkey);
+        llvm::Function *fn = over != NULL ? over->fn : slot.fn;
+        std::string impl = over != NULL ? over->klass : slot.impl_class;
+        uint64_t delta = fn == NULL ? 0 : thunk_delta(complete, path, impl);
+        if (fn != NULL && delta != 0) {
+            fn = make_thunk(fn, delta,
+                            records[complete].name + ".thunk."
+                                + std::to_string(records[complete].vtables.size()) + "."
+                                + std::to_string(index));
+        }
+        slots.push_back(fn != NULL ? static_cast<llvm::Constant *>(fn) : null_fn);
+        index++;
+    }
+    table.global = emit_vtable(
+        records[complete].name + ".vt." + std::to_string(records[complete].vtables.size()), slots);
+    return table;
+}
+
+void Codegen::build_views(const std::string &complete, const std::string &sub, std::vector<std::string> &path)
+{
+    auto found = records.find(sub);
+    if (found == records.end())
+        return;
+    std::vector<std::string> bases = found->second.bases;
+    std::string primary = found->second.primary_base;
+    for (const std::string &base : bases) {
+        if (!polymorphic(base))
+            continue;
+        path.push_back(base);
+        if (base != primary)
+            records[complete].vtables.push_back(make_view(complete, base, path));
+        build_views(complete, base, path);
+        path.pop_back();
+    }
+}
+
+void Codegen::emit_vptrs(llvm::Value *ptr, const std::string &key)
+{
+    auto found = records.find(key);
+    if (found == records.end() || ptr == NULL)
+        return;
+    if (found->second.vtable == NULL && found->second.vtables.empty())
+        return;
+    if (found->second.vtable != NULL)
+        builder.CreateStore(found->second.vtable, vptr_addr(ptr, key));
+    std::vector<std::string> path;
+    lay_bases(ptr, key, key, path);
+}
+
 void Codegen::build_vtable(const std::string &key)
 {
     Record &rec = records[key];
-    std::vector<llvm::Constant *> slots;
-    int index = 0;
+    if (!rec.bases.empty() && vptr_at_start(rec.bases[0]))
+        rec.primary_base = rec.bases[0];
+    if (!rec.primary_base.empty())
+        rec.vslots = records[rec.primary_base].vslots;
     for (MethodDecl &method : rec.methods) {
-        if (!method.is_virtual)
+        if (!method.is_virtual || method.is_ctor || method.is_dtor)
             continue;
-        auto found = overloads.find(method.ir_name);
-        if (found == overloads.end())
+        auto group = overloads.find(method.ir_name);
+        if (group == overloads.end())
             continue;
-        for (Func &fn : found->second) {
-            if (fn.klass != key || fn.fn == NULL || fn.vindex >= 0)
+        for (Func &fn : group->second) {
+            if (fn.klass != key || fn.fn == NULL || fn.method_const != method.is_const)
                 continue;
-            if (fn.method_const != method.is_const)
+            std::string vkey = virtual_key(fn);
+            bool replaced = false;
+            for (VSlot &slot : rec.vslots) {
+                if (slot.name != method.name || slot.vkey != vkey)
+                    continue;
+                slot.fn = fn.fn;
+                slot.impl_class = key;
+                method.vindex = slot.index;
+                fn.vindex = slot.index;
+                replaced = true;
+                break;
+            }
+            if (replaced)
                 continue;
-            method.vindex = index;
-            fn.vindex = index;
-            slots.push_back(fn.fn);
-            index++;
+            VSlot slot;
+            slot.name = method.name;
+            slot.vkey = vkey;
+            slot.impl_class = key;
+            slot.index = static_cast<int>(rec.vslots.size());
+            slot.fn = fn.fn;
+            method.vindex = slot.index;
+            fn.vindex = slot.index;
+            rec.vslots.push_back(slot);
         }
     }
-    if (slots.empty())
-        return;
-    auto *elem = llvm::PointerType::get(context, 0);
-    auto *array = llvm::ArrayType::get(elem, slots.size());
-    rec.vtable = new llvm::GlobalVariable(
-        module, array, true, llvm::GlobalValue::PrivateLinkage,
-        llvm::ConstantArray::get(array, slots), rec.name + ".vt");
+    auto *null_fn = llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
+    std::vector<llvm::Constant *> slots;
+    for (const VSlot &slot : rec.vslots)
+        slots.push_back(slot.fn != NULL ? static_cast<llvm::Constant *>(slot.fn) : null_fn);
+    rec.vtable = emit_vtable(rec.name + ".vt", slots);
+    std::vector<std::string> path;
+    build_views(key, key, path);
 }
 
 Ty Codegen::make_class(const AstNode *node)
@@ -403,9 +700,29 @@ Ty Codegen::make_class(const AstNode *node)
     }
     if (failed)
         return int_ty();
-    for (const Pending &one : pending) {
+    bool own_virtual = false;
+    for (Pending &one : pending) {
+        if (one.decl.is_ctor || one.decl.is_dtor)
+            continue;
+        std::string vkey = virtual_key(one.ret, one.params, one.decl.is_const);
+        bool inherited = false;
+        for (const std::string &base : records[key].bases) {
+            if (hides_virtual(base, one.decl.name, vkey))
+                inherited = true;
+        }
+        if (inherited)
+            one.decl.is_virtual = true;
         if (one.decl.is_virtual)
-            records[key].methods.push_back(one.decl);
+            own_virtual = true;
+    }
+    bool share_vptr = !records[key].bases.empty() && vptr_at_start(records[key].bases[0]);
+    if (own_virtual && !share_vptr) {
+        Field vptr;
+        vptr.name = ".vptr";
+        vptr.ty = pointer_to(int_ty());
+        vptr.access = "private";
+        records[key].fields.insert(records[key].fields.begin(), vptr);
+        records[key].vptr = 0;
     }
     layout_class(records[key]);
     records[key].methods.clear();
@@ -749,18 +1066,13 @@ RValue Codegen::emit_method_call(const AstNode *node, const MethodCall &call)
     for (unsigned i = limit; i < user; i++)
         values.push_back(target->defaults[i + 1]);
     llvm::Value *callee = target->fn;
-    if (!call.qualified && target->vindex >= 0) {
-        Record &owner = records[call.owner];
-        if (owner.vptr >= 0) {
-            Ty owner_ty = record_type(owner);
-            Slot vslot = field_addr(self, owner_ty, owner.fields[static_cast<std::size_t>(owner.vptr)]);
-            auto *ptr_ty = llvm::PointerType::get(context, 0);
-            llvm::Value *table = builder.CreateLoad(ptr_ty, vslot.addr);
-            llvm::Value *index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),
-                                                        static_cast<uint64_t>(target->vindex));
-            llvm::Value *slot = builder.CreateInBoundsGEP(ptr_ty, table, {index});
-            callee = builder.CreateLoad(ptr_ty, slot);
-        }
+    if (!call.qualified && target->vindex >= 0 && records.count(call.owner) != 0) {
+        auto *ptr_ty = llvm::PointerType::get(context, 0);
+        llvm::Value *table = builder.CreateLoad(ptr_ty, vptr_addr(self, call.owner));
+        llvm::Value *index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),
+                                                    static_cast<uint64_t>(target->vindex));
+        llvm::Value *slot = builder.CreateInBoundsGEP(ptr_ty, table, {index});
+        callee = builder.CreateLoad(ptr_ty, slot);
     }
     if (failed)
         return fallback();
@@ -889,10 +1201,6 @@ void Codegen::emit_inits(Func &fn)
     RValue ptr = read_slot(*self);
     if (failed || !ptr.ty.is_pointer || ptr.ty.inner == NULL)
         return;
-    if (rec.vtable != NULL && rec.vptr >= 0) {
-        Slot vslot = field_addr(ptr.v, *ptr.ty.inner, rec.fields[static_cast<std::size_t>(rec.vptr)]);
-        builder.CreateStore(rec.vtable, vslot.addr);
-    }
     for (const AstNode *init = fn.inits; init != NULL && !failed; init = init->next) {
         if (init->kind != AST_MEM_INIT || init->text == NULL) {
             error("not an initializer");
@@ -927,4 +1235,6 @@ void Codegen::emit_inits(Func &fn)
         if (!failed)
             store_slot(*field, convert(value.v, value.ty, field->ty), true);
     }
+    if (!failed)
+        emit_vptrs(ptr.v, fn.klass);
 }

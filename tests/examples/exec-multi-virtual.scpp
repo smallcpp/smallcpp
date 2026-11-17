@@ -1,0 +1,39 @@
+class Left {
+public:
+    Left() {
+    }
+    virtual int left(void) {
+        return 1;
+    }
+};
+
+class Right {
+public:
+    Right() {
+    }
+    virtual int right(void) {
+        return 2;
+    }
+};
+
+class Both : public Left, public Right {
+public:
+    Both() {
+    }
+    int left(void) {
+        return 3;
+    }
+    int right(void) {
+        return 4;
+    }
+};
+
+int answer(void) {
+    Both *object;
+    Left *left;
+    Right *right;
+    object = new Both();
+    left = object;
+    right = object;
+    return left->left() + right->right();
+}
