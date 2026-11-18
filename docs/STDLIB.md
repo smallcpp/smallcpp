@@ -125,6 +125,45 @@ Direct C calls do not throw. They return the C failure value and set
 `errno`. `<sqlite>`, `<gtk>`, and `<cli>` throw `Exception` for the
 failures named in their sections.
 
+## `<typeinfo>`
+
+`#include <typeinfo>`. `typeid(expression)` and `typeid(Type)` yield a
+`const TypeInfo *`. `==` and `!=` compare those pointers. A polymorphic
+object seen through a base pointer uses the dynamic type from the vtable.
+
+```smallcpp
+#include <typeinfo>
+
+class Base {
+public:
+    virtual int id(void);
+};
+
+int Base::id(void) {
+    return 1;
+}
+
+class Derived : public Base {
+public:
+    int id(void);
+};
+
+int Derived::id(void) {
+    return 2;
+}
+
+int main(void) {
+    Base *object;
+    const TypeInfo *info;
+
+    object = new Derived();
+    info = typeid(*object);
+    if (info == typeid(Derived))
+        print("derived\n");
+    return 0;
+}
+```
+
 ## Direct headers
 
 `errno` is the calling thread's error number, defined by `<errno>` from
