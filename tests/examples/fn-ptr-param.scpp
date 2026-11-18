@@ -1,0 +1,14 @@
+long add(int left, int right) {
+    return (long)left + (long)right;
+}
+
+int seen(long (*fn)(int, int)) {
+    if (fn == add)
+        return 1;
+    return 0;
+}
+
+int main(void) {
+    print("fn-ptr-param {}\n", seen(add));
+    return 0;
+}

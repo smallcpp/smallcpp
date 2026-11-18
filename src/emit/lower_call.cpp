@@ -72,6 +72,21 @@ bool Codegen::same_value_type(Ty left, Ty right)
 {
     left = drop(left);
     right = drop(right);
+    if (left.is_function || right.is_function) {
+        if (!left.is_function || !right.is_function || left.func_vararg != right.func_vararg)
+            return false;
+        if (left.inner == NULL || right.inner == NULL
+            || !same_value_type(*left.inner, *right.inner))
+            return false;
+        if (left.sig == NULL || right.sig == NULL
+            || left.sig->params.size() != right.sig->params.size())
+            return false;
+        for (std::size_t i = 0; i < left.sig->params.size(); i++) {
+            if (!same_value_type(left.sig->params[i], right.sig->params[i]))
+                return false;
+        }
+        return true;
+    }
     if (left.is_pointer || right.is_pointer) {
         if (!left.is_pointer || !right.is_pointer || left.inner == NULL || right.inner == NULL)
             return false;
@@ -104,6 +119,23 @@ std::string Codegen::type_tag(const Ty &ty)
 {
     if (ty.is_void)
         return "void";
+    if (ty.is_function) {
+        std::string text = ty.inner != NULL ? type_tag(*ty.inner) : std::string("void");
+        text += "(";
+        if (ty.sig != NULL) {
+            for (std::size_t i = 0; i < ty.sig->params.size(); i++) {
+                if (i != 0)
+                    text += ",";
+                text += type_tag(ty.sig->params[i]);
+            }
+            if (ty.func_vararg && !ty.sig->params.empty())
+                text += ",";
+        }
+        if (ty.func_vararg)
+            text += "...";
+        text += ")";
+        return text;
+    }
     if (ty.is_bool)
         return "bool";
     if (ty.is_pointer && ty.inner != NULL)
@@ -205,7 +237,10 @@ void Codegen::append_omitted(std::vector<llvm::Value *> &out, const Func &fn,
         if (param.ir != NULL)
             ir = param.ir;
         if (expr != NULL) {
+            const Ty *saved = expect;
+            expect = &param;
             RValue value = emit_rvalue(expr);
+            expect = saved;
             if (failed || value.v == NULL) {
                 out.push_back(llvm::Constant::getNullValue(ir));
                 return;
@@ -461,9 +496,310 @@ bool Codegen::call_target(const AstNode *callee, std::vector<std::string> &keys,
     return false;
 }
 
+void Codegen::split_function(const AstNode *node, const AstNode *&inner, const AstNode *&params)
+{
+    inner = NULL;
+    params = NULL;
+    if (node == NULL)
+        return;
+    if (node->a != NULL && declarator_form(node->a)) {
+        inner = node->a;
+        params = node->b;
+        return;
+    }
+    params = node->a;
+}
+
+Ty Codegen::make_function(Ty ret, const std::vector<Param> &params, bool vararg)
+{
+    Ty ty;
+    ty.is_function = true;
+    ty.func_vararg = vararg;
+    ty.inner = std::make_shared<Ty>(drop(ret));
+    ty.sig = std::make_shared<FnSig>();
+    std::vector<llvm::Type *> args;
+    for (const Param &param : params) {
+        ty.sig->params.push_back(param.ty);
+        if (param.ty.ir != NULL)
+            args.push_back(param.ty.ir);
+    }
+    llvm::Type *result = llvm::Type::getVoidTy(context);
+    if (ret.ir != NULL)
+        result = ret.ir;
+    ty.ir = llvm::FunctionType::get(result, args, vararg);
+    return ty;
+}
+
+Ty Codegen::function_from_decl(Ty ret, const AstNode *node)
+{
+    const AstNode *inner = NULL;
+    const AstNode *params_node = NULL;
+    split_function(node, inner, params_node);
+    (void)inner;
+    if (ret.is_array) {
+        error("function returns an array");
+        return ret;
+    }
+    if (ret.is_function) {
+        error("function returns a function");
+        return ret;
+    }
+    if (!ret.is_void && !complete_type(ret)) {
+        error("incomplete type");
+        return ret;
+    }
+    std::vector<Param> params;
+    bool vararg = false;
+    if (!collect_params(params_node, params, vararg))
+        return ret;
+    return make_function(ret, params, vararg);
+}
+
+Ty Codegen::signature_ty(const Func &fn)
+{
+    std::vector<Param> params;
+    for (const Ty &one : fn.params) {
+        Param param;
+        param.ty = one;
+        params.push_back(param);
+    }
+    return make_function(fn.ret, params, fn.vararg);
+}
+
+bool Codegen::fn_pointer(const Ty &ty)
+{
+    return ty.is_pointer && ty.inner != NULL && ty.inner->is_function;
+}
+
+bool Codegen::function_keys(const AstNode *node, std::vector<std::string> &keys, const char *&label)
+{
+    keys.clear();
+    if (node == NULL || failed)
+        return false;
+    if (node->kind == AST_IDENT) {
+        if (node->text == NULL || lookup(node->text))
+            return false;
+        label = node->text;
+        keys = visible_keys(node->text);
+    } else if (node->kind == AST_QUALIFIED) {
+        std::string key = entity_key(node);
+        if (failed || scopes[0].count(key) != 0)
+            return false;
+        label = "function";
+        if (node->b != NULL && node->b->text != NULL)
+            label = node->b->text;
+        keys.assign(1, key);
+    } else
+        return false;
+    for (const std::string &key : keys) {
+        if (overloads.count(key) != 0)
+            return true;
+    }
+    return false;
+}
+
+Func *Codegen::pick_address(const std::vector<std::string> &keys, const char *label)
+{
+    std::vector<Func *> found;
+    for (const std::string &key : keys) {
+        auto group = overloads.find(key);
+        if (group == overloads.end())
+            continue;
+        for (Func &fn : group->second)
+            found.push_back(&fn);
+    }
+    if (found.empty()) {
+        error_name("unknown function", label);
+        return NULL;
+    }
+    const Ty *want = NULL;
+    if (expect != NULL && fn_pointer(*expect))
+        want = expect->inner.get();
+    if (want != NULL) {
+        std::vector<Func *> matched;
+        for (Func *fn : found) {
+            if (same_value_type(*want, signature_ty(*fn)))
+                matched.push_back(fn);
+        }
+        if (matched.size() == 1)
+            return matched[0];
+        if (matched.empty()) {
+            error_name("no matching function", label);
+            return NULL;
+        }
+        error_name("ambiguous call", label);
+        return NULL;
+    }
+    if (found.size() == 1)
+        return found[0];
+    error_name("overloaded function needs a signature", label);
+    return NULL;
+}
+
+RValue Codegen::take_function(const std::vector<std::string> &keys, const char *label)
+{
+    Func *fn = pick_address(keys, label);
+    if (fn == NULL || fn->fn == NULL)
+        return fallback();
+    RValue out;
+    out.ty = pointer_to(signature_ty(*fn));
+    out.v = fn->fn;
+    return out;
+}
+
+bool Codegen::pointer_callee(const AstNode *callee, Ty &ptr_ty)
+{
+    if (callee == NULL || failed)
+        return false;
+    if (callee->kind == AST_IDENT) {
+        std::optional<Slot> slot = lookup(callee->text);
+        if (!slot && !failed)
+            slot = implicit_member(callee->text);
+        if (!slot || !fn_pointer(slot->ty))
+            return false;
+        ptr_ty = drop(slot->ty);
+        return true;
+    }
+    if (callee->kind == AST_QUALIFIED)
+        return false;
+    if (callee->kind == AST_UNARY && op_is(callee, "*")) {
+        Ty base = decay(type_of(callee->a));
+        if (failed || !fn_pointer(base))
+            return false;
+        ptr_ty = base;
+        return true;
+    }
+    if (callee->kind == AST_MEMBER || callee->kind == AST_ARROW) {
+        Ty obj = callee->kind == AST_ARROW ? decay(type_of(callee->a)) : object_type(callee->a);
+        if (failed)
+            return false;
+        if (callee->kind == AST_ARROW) {
+            if (!obj.is_pointer || obj.inner == NULL)
+                return false;
+            obj = *obj.inner;
+        }
+        std::optional<Ty> member = member_type(obj, callee->text);
+        if (failed || !member || !fn_pointer(*member))
+            return false;
+        ptr_ty = drop(*member);
+        return true;
+    }
+    if (callee->kind == AST_CAST || callee->kind == AST_CONDITIONAL
+        || callee->kind == AST_ASSIGN || callee->kind == AST_CALL) {
+        Ty ty = decay(type_of(callee));
+        if (failed || !fn_pointer(ty))
+            return false;
+        ptr_ty = ty;
+        return true;
+    }
+    return false;
+}
+
+RValue Codegen::load_callee(const AstNode *callee)
+{
+    if (callee == NULL)
+        return fallback();
+    if (callee->kind == AST_IDENT) {
+        std::optional<Slot> slot = lookup(callee->text);
+        if (!slot)
+            slot = implicit_member(callee->text);
+        if (!slot) {
+            if (!failed)
+                error("not a function");
+            return fallback();
+        }
+        return read_slot(*slot);
+    }
+    if (callee->kind == AST_UNARY && op_is(callee, "*"))
+        return emit_rvalue(callee->a);
+    if (callee->kind == AST_QUALIFIED) {
+        std::string key = entity_key(callee);
+        if (failed)
+            return fallback();
+        auto global = scopes[0].find(key);
+        if (global == scopes[0].end()) {
+            error_name("unknown name", key.c_str());
+            return fallback();
+        }
+        return read_slot(global->second);
+    }
+    if (callee->kind == AST_MEMBER || callee->kind == AST_ARROW) {
+        std::optional<Slot> slot = lvalue(callee);
+        if (!slot)
+            return fallback();
+        return read_slot(*slot);
+    }
+    return emit_rvalue(callee);
+}
+
+RValue Codegen::emit_indirect(const AstNode *node, const Ty &ptr_ty)
+{
+    RValue callee = load_callee(node->a);
+    if (failed || callee.v == NULL)
+        return fallback();
+    const Ty *fn = ptr_ty.inner.get();
+    if (fn == NULL || !fn->is_function || fn->ir == NULL) {
+        error("not a function");
+        return fallback();
+    }
+    std::vector<const AstNode *> args;
+    for (const AstNode *arg = node->b; arg != NULL; arg = arg->next)
+        args.push_back(arg);
+    unsigned fixed = fn->sig != NULL ? static_cast<unsigned>(fn->sig->params.size()) : 0;
+    unsigned provided = static_cast<unsigned>(args.size());
+    if (provided < fixed || (!fn->func_vararg && provided > fixed)) {
+        error("argument count");
+        return fallback();
+    }
+    const Ty *saved = expect;
+    std::vector<llvm::Value *> values;
+    for (unsigned i = 0; i < provided; i++) {
+        Ty param = int_ty();
+        bool known = i < fixed && fn->sig != NULL;
+        if (known) {
+            param = fn->sig->params[i];
+            expect = &param;
+        } else
+            expect = nullptr;
+        RValue arg = emit_rvalue(args[i]);
+        expect = saved;
+        if (failed)
+            return fallback();
+        if (known) {
+            bool aggregate = arg.ty.is_pointer || param.is_pointer || arg.ty.is_record
+                || param.is_record || arg.ty.is_array || param.is_array;
+            if (aggregate && !same_value_type(arg.ty, param)) {
+                error("cannot convert");
+                return fallback();
+            }
+            values.push_back(convert(arg.v, arg.ty, param));
+        } else {
+            Ty widened = vararg_ty(arg.ty);
+            values.push_back(convert(arg.v, arg.ty, widened));
+        }
+        if (failed)
+            return fallback();
+    }
+    expect = saved;
+    auto *ftype = llvm::cast<llvm::FunctionType>(fn->ir);
+    llvm::Value *call = builder.CreateCall(ftype, callee.v, values);
+    RValue out;
+    out.ty = fn->inner != NULL ? drop(*fn->inner) : void_ty();
+    out.v = out.ty.is_void ? nullptr : call;
+    return out;
+}
+
 Ty Codegen::type_call(const AstNode *node)
 {
     SourceNote here(*this, node);
+    Ty ptr_ty;
+    if (pointer_callee(node->a, ptr_ty)) {
+        if (ptr_ty.inner != NULL && ptr_ty.inner->inner != NULL)
+            return drop(*ptr_ty.inner->inner);
+        return void_ty();
+    }
+    if (failed)
+        return int_ty();
     MethodCall method;
     if (prepare_method(node->a, method))
         return type_method_call(node, method);
@@ -474,8 +810,11 @@ Ty Codegen::type_call(const AstNode *node)
     if (!call_target(node->a, keys, label))
         return int_ty();
     std::vector<Ty> args;
+    const Ty *saved = expect;
+    expect = nullptr;
     for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
         args.push_back(decay(type_of(arg)));
+    expect = saved;
     if (failed)
         return int_ty();
     Func *fn = resolve_keys(keys, args, label);
@@ -487,6 +826,11 @@ Ty Codegen::type_call(const AstNode *node)
 RValue Codegen::emit_call(const AstNode *node)
 {
     SourceNote here(*this, node);
+    Ty ptr_ty;
+    if (pointer_callee(node->a, ptr_ty))
+        return emit_indirect(node, ptr_ty);
+    if (failed)
+        return fallback();
     MethodCall method;
     if (prepare_method(node->a, method))
         return emit_method_call(node, method);
@@ -497,8 +841,11 @@ RValue Codegen::emit_call(const AstNode *node)
     if (!call_target(node->a, keys, label))
         return fallback();
     std::vector<RValue> args;
+    const Ty *saved = expect;
+    expect = nullptr;
     for (const AstNode *arg = node->b; arg != NULL && !failed; arg = arg->next)
         args.push_back(emit_rvalue(arg));
+    expect = saved;
     if (failed)
         return fallback();
     std::vector<Ty> types;
@@ -596,10 +943,12 @@ bool Codegen::collect_params(const AstNode *list, std::vector<Param> &out, bool 
             if (failed)
                 return false;
             if (declared.func != NULL) {
-                error("not in this phase");
-                return false;
-            }
-            param.ty = declared.ty;
+                Ty fn = function_from_decl(param.ty, declared.func);
+                if (failed)
+                    return false;
+                param.ty = pointer_to(fn);
+            } else
+                param.ty = declared.ty;
             if (declared.name != NULL) {
                 if (declared.name->kind != AST_IDENT || declared.name->text == NULL) {
                     if (declared.name->kind == AST_QUALIFIED)
@@ -679,6 +1028,10 @@ void Codegen::declare_function(const AstNode *specs, const AstNode *decl, const 
     Ty ret = drop(declared.ty);
     if (ret.is_array) {
         error("function returns an array");
+        return;
+    }
+    if (ret.is_function) {
+        error("function returns a function");
         return;
     }
     if (!ret.is_void && !complete_type(ret)) {

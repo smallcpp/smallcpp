@@ -1,0 +1,14 @@
+long add(int left, int right) {
+    return (long)left + (long)right;
+}
+
+int main(void) {
+    long (*fn)(int, int);
+
+    fn = add;
+    if (fn == add)
+        print("fn-ptr-local 1\n");
+    else
+        print("fn-ptr-local 0\n");
+    return 0;
+}
