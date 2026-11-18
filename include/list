@@ -1,0 +1,82 @@
+#ifndef SMALLCPP_LIST
+#define SMALLCPP_LIST
+
+/* LIST(Name, Type) defines a doubly linked list of Type.
+ * Include this header as <list>. add appends. at walks
+ * from the head. from_end walks from the tail. Expand
+ * the macro in one translation unit.
+ *
+ *     LIST(IntList, int)
+ *     IntList *items;
+ *     items = new IntList();
+ *     items->add(1);
+ */
+#include <exceptions>
+
+#define LIST(Name, Type) \
+class Name##Node { \
+public: \
+    Type value; \
+    Name##Node *prev; \
+    Name##Node *next; \
+}; \
+class Name { \
+public: \
+    Name##Node *head; \
+    Name##Node *tail; \
+    long count; \
+    Name(); \
+    void add(Type value); \
+    Type at(long index); \
+    Type from_end(long index); \
+    long size(void); \
+}; \
+Name::Name() { \
+    head = nullptr; \
+    tail = nullptr; \
+    count = 0; \
+} \
+void Name::add(Type value) { \
+    Name##Node *node; \
+    node = new Name##Node(); \
+    node->value = value; \
+    node->next = nullptr; \
+    node->prev = tail; \
+    if (tail == nullptr) \
+        head = node; \
+    else \
+        tail->next = node; \
+    tail = node; \
+    count = count + 1; \
+} \
+Type Name::at(long index) { \
+    Name##Node *node; \
+    long i; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    node = head; \
+    i = 0; \
+    while (i < index) { \
+        node = node->next; \
+        i = i + 1; \
+    } \
+    return node->value; \
+} \
+Type Name::from_end(long index) { \
+    Name##Node *node; \
+    long i; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    node = tail; \
+    i = 0; \
+    while (i < index) { \
+        node = node->prev; \
+        i = i + 1; \
+    } \
+    return node->value; \
+} \
+long Name::size(void) { \
+    return count; \
+}
+
+#endif

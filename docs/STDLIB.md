@@ -91,9 +91,13 @@ matches the platform `long`. A C function that returns `int` is declared
 with `int`, including the functions that use a nonzero value as a
 condition. Declaring one of those as `bool` would be a different ABI.
 
-There is no `String`, `list`, `buffer`, `dict`, `int64`, `uint64`, or
-`fp64` type. Text is `const char *`. A counted sequence is a pointer plus
-a `long` or an `unsigned long`. Bytes are `void *` plus a length.
+There is no `buffer`, `dict`, `int64`, `uint64`, or `fp64` type.
+`String` is a growable array of `char`. `Array` is a growable array of
+bytes. A program defines a `Vector`, `List`, `Tree`, or `Hash` with the
+macros `VECTOR`, `LIST`, `TREE`, and `HASH`, one class for one type.
+A `const char *` that is not a `String` is still a C string. A counted
+sequence that is not one of those classes is a pointer plus a `long`
+or an `unsigned long`. Bytes are `void *` plus a length.
 
 ## `<exceptions>`
 
@@ -160,6 +164,175 @@ int main(void) {
     info = typeid(*object);
     if (info == typeid(Derived))
         print("derived\n");
+    return 0;
+}
+```
+
+## Collections
+
+The collections are a small stand-in for a growable string, an array, a
+list, a tree, and a hash table. They are not the C++ standard template
+library. There are no templates, references, `auto`, lambdas, or
+operator overloads. The language has no template syntax. A macro defines
+the class for the type the program names.
+
+A program allocates each object with `new`. A local declaration does not
+run a constructor. Include `<string>` and `<array>` in one translation
+unit, because those headers define the methods. Expand `VECTOR`, `LIST`,
+`TREE`, or `HASH` for one class name in one translation unit.
+
+An index that is out of range throws `Exception` with message `index`.
+`new` memory is collected. Growing an array abandons the old buffer.
+The collector reclaims it. `delete` does not free it.
+
+### `<array>`
+
+`Array` is a growable array of bytes. `stride` is the element size.
+`count` is how many elements are in use. `room` is how many elements
+`bytes` can hold. The first allocation holds 4 elements.
+
+```text
+class Array {
+public:
+    char *bytes;
+    long count;
+    long room;
+    long stride;
+    Array(long element);
+    void reserve(long need);
+    char *address(long index);
+    long size(void);
+};
+```
+
+`Array(long)` stores that stride, or 1 when the argument is less than 1.
+`reserve` grows `room` by doubling until it can hold `need` elements and
+copies the bytes already in use. `address` returns the element at
+`index`. `size` returns `count`. `Vector` and `Hash` use `Array` as a
+base. `String` does too, with a stride of 1.
+
+### `<string>`
+
+`String` is a growable array of `char` with a trailing null. `add`
+copies characters. It does not keep the caller's pointer. An empty
+string is valid. `add(const char *)` throws `Exception` when the pointer
+is null.
+
+```text
+class String : public Array {
+public:
+    String();
+    void add(char value);
+    void add(const char *text);
+    long capacity(void);
+    char at(long index);
+    const char *chars(void);
+};
+```
+
+`size`, inherited from `Array`, is the character count. `capacity` is
+the allocated byte count, including the null. `chars` returns the
+buffer. It stays valid until the next `add` that grows the string.
+
+```smallcpp
+#include <string>
+
+int main(void) {
+    String *text;
+
+    text = new String();
+    text->add("hello");
+    text->add(" world");
+    print("{:s}\n", text->chars());
+    return 0;
+}
+```
+
+### `<vector>`
+
+`VECTOR(Name, Type)` defines a class `Name` that stores `Type` by
+assignment. The class extends `Array`. `sizeof(Type)` is the stride.
+
+```text
+class Name : public Array {
+public:
+    Name();
+    void add(Type value);
+    Type at(long index);
+};
+```
+
+`size` is `Array::size`. A program writes the macro once:
+
+```smallcpp
+#include <vector>
+
+VECTOR(IntVec, int)
+
+int main(void) {
+    IntVec *values;
+
+    values = new IntVec();
+    values->add(10);
+    print("{}\n", values->at(0));
+    return 0;
+}
+```
+
+### `<list>`
+
+`LIST(Name, Type)` defines a doubly linked list. `add` appends. `at`
+walks from the head. `from_end` walks from the tail. `size` is the
+number of nodes.
+
+```smallcpp
+#include <list>
+
+LIST(IntList, int)
+```
+
+`IntList *items; items = new IntList(); items->add(4);` then
+`items->at(0)` is 4 and `items->from_end(0)` is the last value.
+
+### `<tree>`
+
+`TREE(Name, Type)` defines a balanced binary tree. `Type` is ordered
+with `<`. A value that compares equal to one already in the tree is left
+in place. `add` inserts. `root` returns the root value, or throws
+`Exception` with message `empty` when the tree has no nodes. `at` walks
+the values in order. `size` is the number of nodes.
+
+```smallcpp
+#include <tree>
+
+TREE(IntTree, int)
+```
+
+Inserting 1, then 2, then 3 leaves 2 at the root. `at(0)`, `at(1)`, and
+`at(2)` are 1, 2, and 3.
+
+### `<hash>`
+
+`HASH(Name, Key, Value)` defines an open hash table. The slots live in
+an `Array`. `Key` is matched with `==` and hashed as its bytes. `put`
+inserts or replaces. `find` writes `*out` and returns 1, or returns 0
+when the key is absent. A null `out` throws `Exception` with message
+`hash`. `size` is the number of stored keys.
+
+```smallcpp
+#include <hash>
+
+HASH(IntMap, int, int)
+
+int main(void) {
+    IntMap *map;
+    int found;
+
+    map = new IntMap();
+    map->put(1, 10);
+    found = 0;
+    map->find(1, &found);
+    print("{}\n", found);
     return 0;
 }
 ```
