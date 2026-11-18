@@ -2,19 +2,25 @@
 #define SMALLCPP_TREE
 
 /* TREE(Name, Type) defines a balanced binary tree of Type.
- * Include this header as <tree>. Type is ordered with <.
+ * Include this header as <tree>. Order is a callback,
+ * long (*)(Type, Type). Negative means the first value
+ * comes first, zero means equal, and positive means the
+ * first value comes later, like strcmp. Null uses the
+ * default. The default calls String.cmp when Type is
+ * const char * or String *. Any other type uses <.
  * add inserts. An equal value is left in place. root() is
  * the root value. at walks in order and counts a negative
  * index from the end. find returns that in-order index for
- * the first == match, or -1. replace removes the indexed
- * value and inserts the new one so < stays valid.
+ * the first zero result, or -1. replace removes the indexed
+ * value and inserts the new one so the order stays valid.
  * insert accepts an index the way a sequence does, then
- * places the value with <, the same as add. remove deletes
- * the in-order value at the index. next returns the value
- * at a caller-owned cursor and writes the following index.
- * The cursor starts at 0. A null cursor, or a cursor past
- * either end, throws Exception with message index.
- * Expand the macro in one translation unit.
+ * places the value with the callback, the same as add.
+ * remove deletes the in-order value at the index. next
+ * returns the value at a caller-owned cursor and writes
+ * the following index. The cursor starts at 0. A null
+ * cursor, or a cursor past either end, throws Exception
+ * with message index. Expand the macro in one translation
+ * unit.
  *
  *     TREE(IntTree, int)
  *     IntTree *nodes;
@@ -22,6 +28,8 @@
  *     nodes->add(1);
  */
 #include <exceptions>
+#include <string>
+#include <typeinfo>
 
 #define TREE(Name, Type) \
 class Name##Node { \
@@ -34,6 +42,7 @@ public: \
 class Name { \
     Name##Node *top; \
     long count; \
+    long (*cmp)(Type, Type); \
     int height_of(Name##Node *node); \
     int taller(Name##Node *left, Name##Node *right); \
     void measure(Name##Node *node); \
@@ -47,8 +56,10 @@ class Name { \
         long *seen, long *out); \
     int pick(Name##Node *node, long *seen, \
         long index, Type *out); \
+    long order(Type left, Type right); \
 public: \
     Name(); \
+    Name(long (*callback)(Type, Type)); \
     void add(Type value); \
     Type at(long index); \
     Type root(void); \
@@ -62,6 +73,32 @@ public: \
 Name::Name() { \
     top = nullptr; \
     count = 0; \
+    cmp = nullptr; \
+} \
+Name::Name(long (*callback)(Type, Type)) { \
+    top = nullptr; \
+    count = 0; \
+    cmp = callback; \
+} \
+long Name::order(Type left, Type right) { \
+    String *tool; \
+    if (cmp != nullptr) \
+        return cmp(left, right); \
+    if (typeid(Type) == typeid(const char *)) { \
+        tool = new String(); \
+        return tool->cmp((const char *)left, \
+            (const char *)right); \
+    } \
+    if (typeid(Type) == typeid(String *)) { \
+        tool = new String(); \
+        return tool->cmp((String *)left, \
+            (String *)right); \
+    } \
+    if (left < right) \
+        return (long)-1; \
+    if (right < left) \
+        return (long)1; \
+    return (long)0; \
 } \
 int Name::height_of(Name##Node *node) { \
     if (node == nullptr) \
@@ -112,23 +149,27 @@ Name##Node *Name::plant(Name##Node *node, Type value) { \
         count = count + 1; \
         return node; \
     } \
-    if (value < node->value) \
+    if (order(value, node->value) < 0) \
         node->left = plant(node->left, value); \
-    else if (node->value < value) \
+    else if (order(node->value, value) < 0) \
         node->right = plant(node->right, value); \
     else \
         return node; \
     measure(node); \
     balance = factor(node); \
-    if (balance > 1 && value < node->left->value) \
+    if (balance > 1 \
+        && order(value, node->left->value) < 0) \
         return rotate_right(node); \
-    if (balance < -1 && node->right->value < value) \
+    if (balance < -1 \
+        && order(node->right->value, value) < 0) \
         return rotate_left(node); \
-    if (balance > 1 && node->left->value < value) { \
+    if (balance > 1 \
+        && order(node->left->value, value) < 0) { \
         node->left = rotate_left(node->left); \
         return rotate_right(node); \
     } \
-    if (balance < -1 && value < node->right->value) { \
+    if (balance < -1 \
+        && order(value, node->right->value) < 0) { \
         node->right = rotate_right(node->right); \
         return rotate_left(node); \
     } \
@@ -156,9 +197,9 @@ Name##Node *Name::drop(Name##Node *node, Type value) { \
     Name##Node *least; \
     if (node == nullptr) \
         return nullptr; \
-    if (value < node->value) \
+    if (order(value, node->value) < 0) \
         node->left = drop(node->left, value); \
-    else if (node->value < value) \
+    else if (order(node->value, value) < 0) \
         node->right = drop(node->right, value); \
     else if (node->left == nullptr || node->right == nullptr) { \
         count = count - 1; \
@@ -182,7 +223,7 @@ int Name::locate(Name##Node *node, Type value, \
     found = locate(node->left, value, seen, out); \
     if (found) \
         return 1; \
-    if (node->value == value) { \
+    if (order(node->value, value) == 0) { \
         *out = *seen; \
         return 1; \
     } \
@@ -241,7 +282,7 @@ void Name::replace(long index, Type value) { \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
     old = at(index); \
-    if (old == value) \
+    if (order(old, value) == 0) \
         return; \
     top = drop(top, old); \
     add(value); \

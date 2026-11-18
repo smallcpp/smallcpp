@@ -184,6 +184,10 @@ add_exec_line(fn-ptr-local fn-ptr-local 0 "fn-ptr-local 1")
 add_exec_line(fn-ptr-assign fn-ptr-assign 0 "fn-ptr-assign 7")
 add_exec_line(fn-ptr-call fn-ptr-call 0 "fn-ptr-call 7")
 add_exec_line(fn-ptr-pass fn-ptr-pass 0 "fn-ptr-pass 7")
+add_exec_line(tree-text tree-text 0 "tree-text a b c 1")
+add_exec_line(hash-text hash-text 0 "hash-text 1 4 2")
+add_exec_line(tree-order tree-order 0 "tree-order 3 2 1 2")
+add_exec_line(hash-equal hash-equal 0 "hash-equal 1 30 1")
 
 add_test(
     NAME exec_exec-print-two

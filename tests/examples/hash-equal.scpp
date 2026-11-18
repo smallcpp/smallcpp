@@ -1,0 +1,27 @@
+#include <hash>
+
+HASH(AbsMap, int, int)
+
+long same_abs(int left, int right) {
+    if (left < 0)
+        left = -left;
+    if (right < 0)
+        right = -right;
+    if (left == right)
+        return (long)0;
+    return (long)1;
+}
+
+int main(void) {
+    AbsMap *map;
+    int value;
+    int ok;
+
+    map = new AbsMap(same_abs);
+    map->put(1, 10);
+    map->replace(-1, 30);
+    value = 0;
+    ok = map->find(1, &value);
+    print("hash-equal {} {} {}\n", ok, value, (int)map->size());
+    return 0;
+}

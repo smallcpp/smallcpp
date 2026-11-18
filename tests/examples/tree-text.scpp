@@ -1,0 +1,23 @@
+#include <tree>
+
+TREE(TextTree, const char *)
+
+int main(void) {
+    TextTree *nodes;
+    char key[2];
+    long found;
+
+    nodes = new TextTree();
+    nodes->insert(0, "b");
+    nodes->insert(0, "a");
+    nodes->insert(0, "c");
+    key[0] = 'b';
+    key[1] = 0;
+    found = nodes->find(key);
+    print("tree-text {:s} {:s} {:s} {}\n",
+        nodes->at(0),
+        nodes->at(1),
+        nodes->at(2),
+        (int)found);
+    return 0;
+}

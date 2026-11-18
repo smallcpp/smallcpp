@@ -3,7 +3,13 @@
 
 /* HASH(Name, Key, Value) defines an open hash table.
  * Include this header as <hash>. The slots live in an
- * Array. Key is matched with == and hashed as bytes.
+ * Array. Equality is a callback, long (*)(Key, Key).
+ * Zero means equal. Null uses the default. The default
+ * calls String.cmp when Key is const char * or
+ * String *. Any other type uses ==. There is no hash
+ * callback. A null callback hashes const char * and
+ * String * by their characters and hashes any other
+ * key as bytes. A callback scans every filled slot.
  * put inserts or replaces. replace does the same.
  * remove deletes a key and leaves a missing key as it
  * was. find writes *out and returns 1, or returns 0.
@@ -21,6 +27,8 @@
  */
 #include <array>
 #include <exceptions>
+#include <string>
+#include <typeinfo>
 
 #define HASH(Name, Key, Value) \
 enum Name##State { \
@@ -34,12 +42,16 @@ public: \
     int state; \
 }; \
 class Name : public Array { \
+    long (*cmp)(Key, Key); \
     long bucket(Key *key); \
+    long text_code(const char *text); \
+    int same(Key left, Key right); \
     void place(Key key, Value value); \
     void rehash(long next); \
     void zero(void); \
 public: \
     Name(); \
+    Name(long (*callback)(Key, Key)); \
     void put(Key key, Value value); \
     int find(Key key, Value *out); \
     void replace(Key key, Value value); \
@@ -47,7 +59,54 @@ public: \
     int next(long *cursor, Key *key, Value *value); \
 }; \
 Name::Name() : Array((long)sizeof(Name##Slot)) { \
+    cmp = nullptr; \
     zero(); \
+} \
+Name::Name(long (*callback)(Key, Key)) : Array((long)sizeof(Name##Slot)) { \
+    cmp = callback; \
+    zero(); \
+} \
+int Name::same(Key left, Key right) { \
+    String *tool; \
+    if (cmp != nullptr) { \
+        if (cmp(left, right) == 0) \
+            return 1; \
+        return 0; \
+    } \
+    if (typeid(Key) == typeid(const char *)) { \
+        tool = new String(); \
+        if (tool->cmp((const char *)left, \
+            (const char *)right) == 0) \
+            return 1; \
+        return 0; \
+    } \
+    if (typeid(Key) == typeid(String *)) { \
+        tool = new String(); \
+        if (tool->cmp((String *)left, \
+            (String *)right) == 0) \
+            return 1; \
+        return 0; \
+    } \
+    if (left == right) \
+        return 1; \
+    return 0; \
+} \
+long Name::text_code(const char *text) { \
+    unsigned long code; \
+    unsigned char byte; \
+    long i; \
+    if (text == nullptr) \
+        text = ""; \
+    code = 0; \
+    i = 0; \
+    while (text[i] != 0) { \
+        byte = (unsigned char)text[i]; \
+        code = code * 131 + byte; \
+        i = i + 1; \
+    } \
+    if (room < 1) \
+        return 0; \
+    return (long)(code % (unsigned long)room); \
 } \
 void Name::zero(void) { \
     long i; \
@@ -63,6 +122,15 @@ long Name::bucket(Key *key) { \
     unsigned char *raw; \
     unsigned long code; \
     long i; \
+    String *text; \
+    if (typeid(Key) == typeid(const char *)) \
+        return text_code(*(const char **)key); \
+    if (typeid(Key) == typeid(String *)) { \
+        text = *(String **)key; \
+        if (text == nullptr) \
+            return text_code(""); \
+        return text_code(text->c_str()); \
+    } \
     raw = (unsigned char *)key; \
     code = 0; \
     i = 0; \
@@ -78,12 +146,35 @@ void Name::place(Key key, Value value) { \
     Name##Slot *table; \
     long slot; \
     long n; \
+    long empty; \
     table = (Name##Slot *)bytes; \
+    if (cmp != nullptr) { \
+        slot = 0; \
+        empty = -1; \
+        while (slot < room) { \
+            if (table[slot].state == Name##FILLED \
+                && same(table[slot].key, key)) { \
+                table[slot].value = value; \
+                return; \
+            } \
+            if (empty < 0 \
+                && table[slot].state == Name##EMPTY) \
+                empty = slot; \
+            slot = slot + 1; \
+        } \
+        if (empty < 0) \
+            throw *new Exception("hash"); \
+        table[empty].key = key; \
+        table[empty].value = value; \
+        table[empty].state = Name##FILLED; \
+        count = count + 1; \
+        return; \
+    } \
     slot = bucket(&key); \
     n = 0; \
     while (n < room) { \
         if (table[slot].state == Name##FILLED \
-            && table[slot].key == key) { \
+            && same(table[slot].key, key)) { \
             table[slot].value = value; \
             return; \
         } \
@@ -130,12 +221,24 @@ int Name::find(Key key, Value *out) { \
     if (out == nullptr) \
         throw *new Exception("hash"); \
     table = (Name##Slot *)bytes; \
+    if (cmp != nullptr) { \
+        slot = 0; \
+        while (slot < room) { \
+            if (table[slot].state == Name##FILLED \
+                && same(table[slot].key, key)) { \
+                *out = table[slot].value; \
+                return 1; \
+            } \
+            slot = slot + 1; \
+        } \
+        return 0; \
+    } \
     slot = bucket(&key); \
     n = 0; \
     while (n < room) { \
         if (table[slot].state == Name##EMPTY) \
             return 0; \
-        if (table[slot].key == key) { \
+        if (same(table[slot].key, key)) { \
             *out = table[slot].value; \
             return 1; \
         } \
@@ -154,12 +257,26 @@ void Name::remove(Key key) { \
     long slot; \
     long n; \
     table = (Name##Slot *)bytes; \
+    if (cmp != nullptr) { \
+        slot = 0; \
+        while (slot < room) { \
+            if (table[slot].state == Name##FILLED \
+                && same(table[slot].key, key)) { \
+                table[slot].state = Name##EMPTY; \
+                rehash(room); \
+                return; \
+            } \
+            slot = slot + 1; \
+        } \
+        return; \
+    } \
     slot = bucket(&key); \
     n = 0; \
     while (n < room) { \
         if (table[slot].state == Name##EMPTY) \
             return; \
-        if (table[slot].state == Name##FILLED && table[slot].key == key) { \
+        if (table[slot].state == Name##FILLED \
+            && same(table[slot].key, key)) { \
             table[slot].state = Name##EMPTY; \
             rehash(room); \
             return; \
