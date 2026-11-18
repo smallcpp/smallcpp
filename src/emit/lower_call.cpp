@@ -685,7 +685,8 @@ bool Codegen::pointer_callee(const AstNode *callee, Ty &ptr_ty)
         return true;
     }
     if (callee->kind == AST_CAST || callee->kind == AST_CONDITIONAL
-        || callee->kind == AST_ASSIGN || callee->kind == AST_CALL) {
+        || callee->kind == AST_ASSIGN || callee->kind == AST_CALL
+        || callee->kind == AST_INDEX) {
         Ty ty = decay(type_of(callee));
         if (failed || !fn_pointer(ty))
             return false;
@@ -782,7 +783,7 @@ RValue Codegen::emit_indirect(const AstNode *node, const Ty &ptr_ty)
     }
     expect = saved;
     auto *ftype = llvm::cast<llvm::FunctionType>(fn->ir);
-    llvm::Value *call = builder.CreateCall(ftype, callee.v, values);
+    llvm::Value *call = call_maybe_unwind(ftype, callee.v, values);
     RValue out;
     out.ty = fn->inner != NULL ? drop(*fn->inner) : void_ty();
     out.v = out.ty.is_void ? nullptr : call;
@@ -872,7 +873,8 @@ RValue Codegen::emit_call(const AstNode *node)
     }
     if (failed)
         return fallback();
-    llvm::Value *call = builder.CreateCall(callee->getFunctionType(), callee, values);
+    llvm::Value *call = call_maybe_unwind(
+            callee->getFunctionType(), callee, values);
     RValue out;
     out.ty = ret;
     out.v = out.ty.is_void ? nullptr : call;

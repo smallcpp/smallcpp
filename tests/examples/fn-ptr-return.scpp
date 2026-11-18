@@ -1,0 +1,17 @@
+int add(int left, int right) {
+    return left + right;
+}
+
+int (*pick(void))(int, int) {
+    return add;
+}
+
+int main(void) {
+    int (*fn)(int, int);
+    int shown;
+
+    fn = pick();
+    shown = fn(2, 5);
+    print("fn-ptr-return {}\n", shown);
+    return 0;
+}

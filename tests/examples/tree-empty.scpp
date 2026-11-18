@@ -1,0 +1,18 @@
+#include <exceptions>
+#include <tree>
+
+TREE(IntTree, int)
+
+int main(void) {
+    IntTree *nodes;
+
+    nodes = new IntTree();
+    try {
+        nodes->root();
+        print("tree-empty miss\n");
+        return 1;
+    } catch (Exception error) {
+        print("tree-empty {:s}\n", error.message);
+    }
+    return 0;
+}

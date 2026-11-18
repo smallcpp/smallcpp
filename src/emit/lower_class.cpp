@@ -993,6 +993,8 @@ Ty Codegen::make_class(const AstNode *node)
             bool vararg = false;
             if (one.decl.is_ctor && !collect_params(mem->a, one.params, vararg))
                 break;
+            if (one.decl.is_dtor && !collect_params(mem->c, one.params, vararg))
+                break;
             if (vararg) {
                 error("variadic method is not in this phase");
                 break;
@@ -1539,7 +1541,8 @@ RValue Codegen::emit_method_call(const AstNode *node, const MethodCall &call)
     }
     if (failed)
         return fallback();
-    llvm::Value *result = builder.CreateCall(callee_fn->getFunctionType(), callee, values);
+    llvm::Value *result = call_maybe_unwind(
+            callee_fn->getFunctionType(), callee, values);
     RValue out;
     out.ty = ret;
     out.v = out.ty.is_void ? nullptr : result;
@@ -1569,6 +1572,8 @@ void Codegen::declare_special(const AstNode *node)
     std::vector<Param> params;
     bool vararg = false;
     if (decl.is_ctor && !collect_params(node->a, params, vararg))
+        return;
+    if (decl.is_dtor && !collect_params(node->c, params, vararg))
         return;
     if (vararg) {
         error("variadic method is not in this phase");
@@ -1654,7 +1659,7 @@ void Codegen::emit_ctor_call(llvm::Value *self, const std::string &owner, const 
     append_omitted(operands, *target, limit + 1, count, most_derived ? 1 : 0);
     if (failed)
         return;
-    builder.CreateCall(callee->getFunctionType(), callee, operands);
+    call_maybe_unwind(callee->getFunctionType(), callee, operands);
 }
 
 void Codegen::emit_inits(Func &fn)

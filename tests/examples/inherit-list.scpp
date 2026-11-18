@@ -1,0 +1,23 @@
+#include <list>
+
+LIST(IntList, int)
+
+class More : public IntList {
+public:
+    More() : IntList() {
+    }
+};
+
+int main(void) {
+    More *items;
+    int count;
+    int first;
+
+    items = new More();
+    items->add(4);
+    items->add(5);
+    count = (int)items->size();
+    first = items->at(0);
+    print("inherit-list {} {}\n", count, first);
+    return 0;
+}

@@ -74,6 +74,21 @@ llvm::Function *Codegen::typeid_fn()
         &module, llvm::Intrinsic::eh_typeid_for, {ptr});
 }
 
+llvm::Value *Codegen::call_maybe_unwind(
+        llvm::FunctionType *type,
+        llvm::Value *callee,
+        const std::vector<llvm::Value *> &args)
+{
+    if (handlers.empty())
+        return builder.CreateCall(type, callee, args);
+    note_unwind();
+    llvm::BasicBlock *normal = new_block("invoke.cont");
+    llvm::Value *result = builder.CreateInvoke(
+        type, callee, normal, handlers.back(), args);
+    builder.SetInsertPoint(normal);
+    return result;
+}
+
 void Codegen::note_unwind()
 {
     if (function == NULL)

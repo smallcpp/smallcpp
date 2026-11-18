@@ -1,0 +1,12 @@
+#include <hash>
+
+HASH(IntMap, int, int)
+
+int main(void) {
+    IntMap *map;
+
+    map = new IntMap();
+    map->put(7, 11);
+    print("array-hash {}\n", (int)map->size());
+    return 0;
+}

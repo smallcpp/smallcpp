@@ -154,7 +154,7 @@ RValue Codegen::emit_new(const AstNode *node)
             append_omitted(values, *ctor, limit + 1, count, 1);
             if (failed)
                 return fallback();
-            builder.CreateCall(callee->getFunctionType(), callee, values);
+            call_maybe_unwind(callee->getFunctionType(), callee, values);
         } else if (node->b != NULL) {
             error("no matching constructor");
             return fallback();
@@ -189,6 +189,44 @@ llvm::Function *Codegen::dtor_done_fn()
     return declare_runtime("smallcpp_dtor_done", type);
 }
 
+llvm::Function *Codegen::collector_dtor(Func *dtor)
+{
+    if (dtor == NULL || dtor->fn == NULL)
+        return NULL;
+    if (dtor->params.size() <= 1)
+        return dtor->fn;
+    std::string name = dtor->source + ".collect";
+    llvm::Function *found = module.getFunction(name);
+    if (found != NULL)
+        return found;
+    auto *ptr = llvm::PointerType::get(context, 0);
+    auto *type = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(context), {ptr}, false);
+    llvm::Function *thunk = llvm::Function::Create(
+        type, llvm::GlobalValue::InternalLinkage, name, &module);
+    llvm::IRBuilder<>::InsertPoint saved = builder.saveIP();
+    llvm::Function *saved_fn = function;
+    llvm::BasicBlock *saved_entry = entry;
+    std::vector<llvm::BasicBlock *> saved_handlers = std::move(handlers);
+    handlers.clear();
+    function = thunk;
+    entry = llvm::BasicBlock::Create(context, "entry", thunk);
+    builder.SetInsertPoint(entry);
+    std::vector<llvm::Value *> values;
+    values.push_back(&*thunk->arg_begin());
+    append_omitted(
+            values, *dtor, 1, static_cast<unsigned>(dtor->params.size()), -1);
+    if (!failed) {
+        builder.CreateCall(dtor->fn->getFunctionType(), dtor->fn, values);
+        builder.CreateRetVoid();
+    }
+    function = saved_fn;
+    entry = saved_entry;
+    handlers = std::move(saved_handlers);
+    builder.restoreIP(saved);
+    return thunk;
+}
+
 Func *Codegen::destructor_of(const Ty &ty)
 {
     if (!class_type(ty))
@@ -213,10 +251,11 @@ Func *Codegen::destructor_of(const Ty &ty)
 void Codegen::bind_destructor(llvm::Value *object, const Ty &ty)
 {
     Func *dtor = destructor_of(ty);
-    if (object == NULL || dtor == NULL || dtor->fn == NULL)
+    llvm::Function *thunk = collector_dtor(dtor);
+    if (object == NULL || thunk == NULL)
         return;
     llvm::Function *set = set_dtor_fn();
-    builder.CreateCall(set->getFunctionType(), set, {object, dtor->fn});
+    builder.CreateCall(set->getFunctionType(), set, {object, thunk});
 }
 
 void Codegen::emit_delete(const AstNode *node)
@@ -247,7 +286,13 @@ void Codegen::emit_delete(const AstNode *node)
         llvm::Value *slot = builder.CreateInBoundsGEP(ptr_ty, table, {index});
         callee = builder.CreateLoad(ptr_ty, slot);
     }
-    builder.CreateCall(dtor->fn->getFunctionType(), callee, {ptr.v});
+    std::vector<llvm::Value *> values;
+    values.push_back(ptr.v);
+    append_omitted(
+            values, *dtor, 1, static_cast<unsigned>(dtor->params.size()), -1);
+    if (failed)
+        return;
+    call_maybe_unwind(dtor->fn->getFunctionType(), callee, values);
     builder.CreateBr(done_bb);
     builder.SetInsertPoint(done_bb);
 }

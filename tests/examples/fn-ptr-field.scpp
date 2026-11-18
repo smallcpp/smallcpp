@@ -1,0 +1,17 @@
+int add(int left, int right) {
+    return left + right;
+}
+
+struct Pair {
+    int (*fn)(int, int);
+};
+
+int main(void) {
+    struct Pair pair;
+    int shown;
+
+    pair.fn = add;
+    shown = pair.fn(2, 5);
+    print("fn-ptr-field {}\n", shown);
+    return 0;
+}

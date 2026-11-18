@@ -484,6 +484,7 @@ private:
     llvm::Function *set_dtor_fn();
     llvm::Function *dtor_done_fn();
     Func *destructor_of(const Ty &ty);
+    llvm::Function *collector_dtor(Func *dtor);
     void bind_destructor(llvm::Value *object, const Ty &ty);
     void emit_delete(const AstNode *node);
     Ty new_element(const AstNode *node, std::vector<const AstNode *> &bounds);
@@ -515,6 +516,10 @@ private:
     void note_unwind();
     void close_open_catches();
     llvm::Constant *type_info(const Ty &ty);
+    llvm::Value *call_maybe_unwind(
+            llvm::FunctionType *type,
+            llvm::Value *callee,
+            const std::vector<llvm::Value *> &args);
     void emit_throw(const AstNode *node);
     void emit_try(const AstNode *node);
     void emit_statement(const AstNode *node);
