@@ -3,7 +3,8 @@
 
 /* TREE(Name, Type) defines a balanced binary tree of Type.
  * Include this header as <tree>. Type is ordered with <.
- * add inserts. root() is the root value. at walks in order.
+ * add inserts. root() is the root value. at walks in order
+ * and counts a negative index from the end.
  * Expand the macro in one translation unit.
  *
  *     TREE(IntTree, int)
@@ -136,6 +137,8 @@ void Name::add(Type value) { \
 Type Name::at(long index) { \
     Type found; \
     long seen; \
+    if (index < 0) \
+        index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
     seen = 0; \

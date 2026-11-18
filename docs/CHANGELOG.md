@@ -6,6 +6,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Changed
 
+- `Array::address`, `String::at`, and `at` from `VECTOR`, `LIST`, and `TREE` count a negative index from the end. `-1` is the last element. `-2` is the one before it. An index past either end throws `Exception` with message `index`. `from_end` takes a non-negative index. `neg-index` prints `neg-index b a 30 20`.
 - An unknown call is no longer rejected while compiling. `missing()` is an external function, and the link fails when that symbol is not defined. `diag_bad-unknown-call` requires the link error.
 - The base exception class is `Exception`. The spelling `exception` did not match the class naming rule. Include it as `<exceptions>`. `Exception()` stores a null message. `Exception(const char *)` stores that C string in `message`. The pointer is not copied.
 - The preprocessor file and the object file take the input file's base name. `hello.scpp` writes `hello.i` and `hello.o` before the link, for one file and for each file of several. Those names replace `output.i`, `output.o`, and `output.N.o`. `-k` and deletion are unchanged. `-E` and `--emit-llvm` still name their results from the input base name.

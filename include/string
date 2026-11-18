@@ -4,7 +4,8 @@
 /* Growable array of char. Include this header as <string>.
  * size() is the character count. capacity() is the allocated
  * bytes, including the trailing null. add copies characters.
- * A null pointer is not a string. An empty string is valid.
+ * at counts a negative index from the end. A null pointer
+ * is not a string. An empty string is valid.
  * A program allocates a String with new. */
 #include <array>
 #include <exceptions>
@@ -47,6 +48,8 @@ long String::capacity(void) {
 }
 
 char String::at(long index) {
+    if (index < 0)
+        index = count + index;
     if (index < 0 || index >= count)
         throw *new Exception("index");
     return bytes[index];

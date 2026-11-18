@@ -3,8 +3,9 @@
 
 /* LIST(Name, Type) defines a doubly linked list of Type.
  * Include this header as <list>. add appends. at walks
- * from the head. from_end walks from the tail. Expand
- * the macro in one translation unit.
+ * from the head and counts a negative index from the end.
+ * from_end walks from the tail with a non-negative index.
+ * Expand the macro in one translation unit.
  *
  *     LIST(IntList, int)
  *     IntList *items;
@@ -52,6 +53,8 @@ void Name::add(Type value) { \
 Type Name::at(long index) { \
     Name##Node *node; \
     long i; \
+    if (index < 0) \
+        index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
     node = head; \
