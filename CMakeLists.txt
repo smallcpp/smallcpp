@@ -31,6 +31,13 @@ if(NOT SMALLCPP_SQLITE3_H OR NOT SMALLCPP_SQLITE3_LIB)
         "sqlite3 development files are required to build smallcpp_sqlite")
 endif()
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GTK4 gtk4)
+if(NOT GTK4_FOUND)
+    message(FATAL_ERROR
+        "GTK 4 development files are required to build smallcpp_gtk")
+endif()
+
 add_subdirectory(src/compiler)
 
 add_library(smallcpp_cli STATIC src/cli/CommandLine.cpp)
@@ -135,5 +142,32 @@ add_custom_command(
     DEPENDS "${SMALLCPP_SQLITE_OBJECT}"
     VERBATIM)
 add_custom_target(smallcpp_sqlite ALL DEPENDS "${SMALLCPP_SQLITE_ARCHIVE}")
+
+set(SMALLCPP_GTK_OBJECTS "")
+foreach(name state basic layout input text)
+    set(object "${CMAKE_BINARY_DIR}/gtk-${name}.o")
+    list(APPEND SMALLCPP_GTK_OBJECTS "${object}")
+    add_custom_command(
+        OUTPUT "${object}"
+        COMMAND "$<TARGET_FILE:scpp>" -c -o "${object}"
+                "${CMAKE_SOURCE_DIR}/src/gtk/${name}.scpp"
+        DEPENDS scpp
+                "${CMAKE_SOURCE_DIR}/src/gtk/${name}.scpp"
+                "${CMAKE_SOURCE_DIR}/src/gtk/gtk-native"
+                "${CMAKE_SOURCE_DIR}/src/gtk/gtk-support"
+                "${CMAKE_SOURCE_DIR}/src/gtk/gtk-globals"
+                "${CMAKE_SOURCE_DIR}/include/gtk"
+                "${CMAKE_SOURCE_DIR}/include/exceptions"
+        VERBATIM)
+endforeach()
+set(SMALLCPP_GTK_ARCHIVE "${CMAKE_SOURCE_DIR}/lib/libsmallcpp_gtk.a")
+add_custom_command(
+    OUTPUT "${SMALLCPP_GTK_ARCHIVE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/lib"
+    COMMAND "${CMAKE_AR}" rcs "${SMALLCPP_GTK_ARCHIVE}"
+            ${SMALLCPP_GTK_OBJECTS}
+    DEPENDS ${SMALLCPP_GTK_OBJECTS}
+    VERBATIM)
+add_custom_target(smallcpp_gtk ALL DEPENDS "${SMALLCPP_GTK_ARCHIVE}")
 
 add_subdirectory(tests)

@@ -1,0 +1,546 @@
+/* Choices, pictures, dialogs, and progress. */
+#include <exceptions>
+#include "gtk-native"
+#include "gtk-globals"
+
+namespace Gtk {
+
+static void dialog_response(
+        void *dialog,
+        int response,
+        void *data) {
+    SignalConnection *slot;
+    void (*action)(void *, int);
+
+    (void)dialog;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *, int))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data, response);
+}
+
+static void choice_changed(void *widget, void *data) {
+    SignalConnection *slot;
+    void (*action)(void *);
+
+    (void)widget;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data);
+}
+
+static void dropdown_notify(
+        void *widget,
+        void *spec,
+        void *data) {
+    (void)spec;
+    choice_changed(widget, data);
+}
+
+static void alert_done(
+        void *source,
+        void *result,
+        void *data) {
+    AlertDialog *dialog;
+    int response;
+
+    (void)source;
+    dialog = (AlertDialog *)data;
+    if (dialog == nullptr || dialog->native == nullptr)
+        return;
+    response = gtk_alert_dialog_choose_finish(
+            dialog->native,
+            result,
+            nullptr);
+    dialog->pending = 0;
+    if (response == 0 && dialog->confirmAction != nullptr)
+        dialog->confirmAction(dialog->confirmData);
+}
+
+static void file_done(
+        void *source,
+        void *result,
+        void *data) {
+    FileDialog *dialog;
+    void *file;
+    void *error;
+    char *path;
+    const char *owned;
+
+    (void)source;
+    dialog = (FileDialog *)data;
+    if (dialog == nullptr || dialog->native == nullptr)
+        return;
+    error = nullptr;
+    if (dialog->saving != 0)
+        file = gtk_file_dialog_save_finish(
+                dialog->native,
+                result,
+                &error);
+    else
+        file = gtk_file_dialog_open_finish(
+                dialog->native,
+                result,
+                &error);
+    path = nullptr;
+    if (file != nullptr) {
+        path = g_file_get_path(file);
+        g_object_unref(file);
+    }
+    if (error != nullptr)
+        g_error_free(error);
+    dialog->pending = 0;
+    owned = nullptr;
+    if (path != nullptr) {
+        owned = gtk_copy(path);
+        g_free((void *)path);
+        dialog->picked = (char *)owned;
+    } else
+        dialog->picked = nullptr;
+    if (dialog->pick != nullptr)
+        dialog->pick(dialog->pickData, owned);
+}
+
+static void use_file(FileDialog *dialog) {
+    gtk_check_thread();
+    if (dialog == nullptr || dialog->native == nullptr)
+        gtk_fail("disposed");
+}
+
+static void use_alert(AlertDialog *dialog) {
+    gtk_check_thread();
+    if (dialog == nullptr || dialog->native == nullptr)
+        gtk_fail("disposed");
+}
+
+static void file_begin(
+        FileDialog *dialog,
+        int saving,
+        void (*action)(void *, const char *),
+        void *data) {
+    void (*typed)(void *, void *, void *);
+    void *handler;
+    void *self;
+
+    use_file(dialog);
+    if (action == nullptr)
+        gtk_fail("null");
+    if (dialog->pending != 0)
+        gtk_fail("gtk");
+    dialog->saving = saving;
+    dialog->pick = action;
+    dialog->pickData = data;
+    dialog->pending = 1;
+    typed = file_done;
+    handler = (void *)typed;
+    self = (void *)dialog;
+    if (saving != 0)
+        gtk_file_dialog_save(
+                dialog->native,
+                nullptr,
+                nullptr,
+                handler,
+                self);
+    else
+        gtk_file_dialog_open(
+                dialog->native,
+                nullptr,
+                nullptr,
+                handler,
+                self);
+}
+
+Dialog::Dialog(const char *title) : Widget() {
+    gtk_check_text(title);
+    kind = GTK_KIND_WINDOW;
+    native = gtk_sink(gtk_dialog_new());
+    gtk_window_set_title(native, title);
+    content = nullptr;
+}
+
+void Dialog::set_title(const char *title) {
+    gtk_use((Widget *)this);
+    gtk_check_text(title);
+    gtk_window_set_title(native, title);
+}
+
+const char *Dialog::title() const {
+    gtk_use((Widget *)this);
+    return gtk_text_or_empty(gtk_window_get_title(native));
+}
+
+void Dialog::set_content(Widget *child) {
+    void *area;
+
+    gtk_use((Widget *)this);
+    gtk_check_child((Widget *)this, child);
+    area = gtk_dialog_get_content_area(native);
+    if (content != nullptr) {
+        gtk_box_remove(area, content->native);
+        gtk_note_remove((Widget *)this, content);
+        content = nullptr;
+    }
+    gtk_box_append(area, child->native);
+    gtk_note_child((Widget *)this, child);
+    content = child;
+}
+
+void Dialog::add_button(const char *label, int response) {
+    gtk_use((Widget *)this);
+    gtk_check_text(label);
+    gtk_dialog_add_button(native, label, response);
+}
+
+SignalConnection Dialog::on_response(
+        void (*action)(void *, int),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, int, void *);
+    void *handler;
+    void (*user)(void *, int);
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = dialog_response;
+    handler = (void *)typed;
+    user = action;
+    userAction = (void *)user;
+    slot = gtk_bind(
+            native,
+            "response",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+void Dialog::present() {
+    gtk_use((Widget *)this);
+    gtk_window_present(native);
+}
+
+AlertDialog::AlertDialog(
+        const char *message,
+        const char *detail) {
+    gtk_check_thread();
+    gtk_ensure();
+    gtk_check_text(message);
+    gtk_check_text(detail);
+    native = gtk_alert_dialog_new("");
+    if (native == nullptr)
+        gtk_fail("gtk");
+    gtk_alert_dialog_set_message(native, message);
+    gtk_alert_dialog_set_detail(native, detail);
+    confirmAction = nullptr;
+    confirmData = nullptr;
+    pending = 0;
+}
+
+AlertDialog::~AlertDialog() {
+    if (native != nullptr) {
+        g_object_unref(native);
+        native = nullptr;
+    }
+}
+
+const char *AlertDialog::message() const {
+    use_alert((AlertDialog *)this);
+    return gtk_text_or_empty(
+            gtk_alert_dialog_get_message(native));
+}
+
+const char *AlertDialog::detail() const {
+    use_alert((AlertDialog *)this);
+    return gtk_text_or_empty(
+            gtk_alert_dialog_get_detail(native));
+}
+
+void AlertDialog::present(
+        void (*confirm)(void *),
+        void *data) {
+    const char *labels[2];
+    void (*typed)(void *, void *, void *);
+    void *handler;
+    void *self;
+
+    use_alert(this);
+    if (confirm == nullptr)
+        gtk_fail("null");
+    if (pending != 0)
+        gtk_fail("gtk");
+    labels[0] = "OK";
+    labels[1] = nullptr;
+    gtk_alert_dialog_set_buttons(native, labels);
+    confirmAction = confirm;
+    confirmData = data;
+    pending = 1;
+    typed = alert_done;
+    handler = (void *)typed;
+    self = (void *)this;
+    gtk_alert_dialog_choose(
+            native,
+            nullptr,
+            nullptr,
+            handler,
+            self);
+}
+
+FileDialog::FileDialog() {
+    gtk_check_thread();
+    gtk_ensure();
+    native = gtk_file_dialog_new();
+    if (native == nullptr)
+        gtk_fail("gtk");
+    titleText = nullptr;
+    pick = nullptr;
+    pickData = nullptr;
+    pending = 0;
+    saving = 0;
+    picked = nullptr;
+}
+
+FileDialog::~FileDialog() {
+    if (native != nullptr) {
+        g_object_unref(native);
+        native = nullptr;
+    }
+}
+
+void FileDialog::set_title(const char *title) {
+    use_file(this);
+    gtk_check_text(title);
+    titleText = gtk_copy(title);
+    gtk_file_dialog_set_title(native, titleText);
+}
+
+const char *FileDialog::title() const {
+    use_file((FileDialog *)this);
+    if (titleText == nullptr)
+        return "";
+    return titleText;
+}
+
+void FileDialog::open(
+        void (*action)(void *, const char *),
+        void *data) {
+    file_begin(this, 0, action, data);
+}
+
+void FileDialog::save(
+        void (*action)(void *, const char *),
+        void *data) {
+    file_begin(this, 1, action, data);
+}
+
+DropDown::DropDown() : Widget() {
+    native = gtk_sink(gtk_drop_down_new(nullptr, nullptr));
+    items = nullptr;
+    itemCount = 0;
+}
+
+void DropDown::set_items(const char **items, long count) {
+    char **list;
+    char **owned;
+    void *model;
+    long i;
+
+    gtk_use((Widget *)this);
+    if (count < 0)
+        gtk_fail("range");
+    if (count > 0 && items == nullptr)
+        gtk_fail("null");
+    list = new char *[count + 1];
+    owned = new char *[count];
+    i = 0;
+    while (i < count) {
+        gtk_check_text(items[i]);
+        owned[i] = gtk_copy(items[i]);
+        list[i] = owned[i];
+        i = i + 1;
+    }
+    list[count] = nullptr;
+    model = gtk_string_list_new((const char **)list);
+    if (model == nullptr)
+        gtk_fail("gtk");
+    gtk_drop_down_set_model(native, model);
+    g_object_unref(model);
+    this->items = owned;
+    itemCount = count;
+}
+
+void DropDown::set_selected(long index) {
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= itemCount)
+        gtk_fail("range");
+    gtk_drop_down_set_selected(
+            native,
+            (unsigned)gtk_int(index));
+}
+
+long DropDown::selected() const {
+    unsigned value;
+
+    gtk_use((Widget *)this);
+    value = gtk_drop_down_get_selected(native);
+    if (value == (unsigned)4294967295)
+        return -1;
+    return (long)value;
+}
+
+const char *DropDown::selected_string() const {
+    long index;
+
+    gtk_use((Widget *)this);
+    index = selected();
+    if (index < 0 || index >= itemCount)
+        return "";
+    return gtk_text_or_empty(items[index]);
+}
+
+SignalConnection DropDown::on_changed(
+        void (*action)(void *),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *, void *);
+    void *handler;
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = dropdown_notify;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            native,
+            "notify::selected",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+SpinButton::SpinButton(
+        double min,
+        double max,
+        double value) : Widget() {
+    if (max < min)
+        gtk_fail("range");
+    native = gtk_sink(
+            gtk_spin_button_new_with_range(min, max, 1));
+    gtk_spin_button_set_value(native, value);
+}
+
+double SpinButton::min() const {
+    double low;
+    double high;
+
+    gtk_use((Widget *)this);
+    gtk_spin_button_get_range(native, &low, &high);
+    return low;
+}
+
+double SpinButton::max() const {
+    double low;
+    double high;
+
+    gtk_use((Widget *)this);
+    gtk_spin_button_get_range(native, &low, &high);
+    return high;
+}
+
+double SpinButton::value() const {
+    gtk_use((Widget *)this);
+    return gtk_spin_button_get_value(native);
+}
+
+void SpinButton::set_value(double value) {
+    gtk_use((Widget *)this);
+    gtk_spin_button_set_value(native, value);
+}
+
+SignalConnection SpinButton::on_changed(
+        void (*action)(void *),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *);
+    void *handler;
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = choice_changed;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            native,
+            "value-changed",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+Picture::Picture() : Widget() {
+    native = gtk_sink(gtk_picture_new());
+    path = nullptr;
+}
+
+void Picture::set_file(const char *path) {
+    gtk_use((Widget *)this);
+    gtk_check_text(path);
+    this->path = gtk_copy(path);
+    gtk_picture_set_filename(native, this->path);
+}
+
+const char *Picture::file() const {
+    gtk_use((Widget *)this);
+    if (path == nullptr)
+        return "";
+    return path;
+}
+
+ProgressBar::ProgressBar() : Widget() {
+    native = gtk_sink(gtk_progress_bar_new());
+}
+
+void ProgressBar::set_fraction(double fraction) {
+    gtk_use((Widget *)this);
+    gtk_progress_bar_set_fraction(native, fraction);
+}
+
+double ProgressBar::fraction() const {
+    gtk_use((Widget *)this);
+    return gtk_progress_bar_get_fraction(native);
+}
+
+Spinner::Spinner() : Widget() {
+    native = gtk_sink(gtk_spinner_new());
+}
+
+void Spinner::start() {
+    gtk_use((Widget *)this);
+    gtk_spinner_start(native);
+}
+
+void Spinner::stop() {
+    gtk_use((Widget *)this);
+    gtk_spinner_stop(native);
+}
+
+bool Spinner::spinning() const {
+    gtk_use((Widget *)this);
+    return gtk_spinner_get_spinning(native) != 0;
+}
+
+}

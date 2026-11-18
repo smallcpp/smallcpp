@@ -1,0 +1,39 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int main(void) {
+    Picture *picture;
+    ProgressBar *bar;
+    Spinner *spinner;
+    int started;
+
+    try {
+        picture = new Picture();
+        picture->set_file("/etc/os-release");
+        bar = new ProgressBar();
+        bar->set_fraction(0.5);
+        spinner = new Spinner();
+        spinner->start();
+        started = 0;
+        if (spinner->spinning())
+            started = 1;
+        spinner->stop();
+        print("gtk-display {:s} {:g} {} {}\n",
+                picture->file(),
+                bar->fraction(),
+                started,
+                (int)spinner->spinning());
+        return 0;
+    } catch (Exception error) {
+        if (error.message != nullptr
+                && strcmp(error.message, "display") == 0) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        if (error.message != nullptr)
+            print("gtk-display fail {:s}\n", error.message);
+        return 1;
+    }
+}

@@ -1,0 +1,57 @@
+#ifndef SMALLCPP_GTK_SUPPORT
+#define SMALLCPP_GTK_SUPPORT
+
+/* Helpers shared by the wrapper sources. */
+
+#include <gtk>
+
+namespace Gtk {
+
+enum {
+    GTK_KIND_PLAIN,
+    GTK_KIND_WINDOW
+};
+
+void gtk_fail(const char *message);
+void gtk_check_thread(void);
+void gtk_check_text(const char *text);
+void gtk_ensure(void);
+int gtk_int(long value);
+int gtk_flag(bool value);
+char *gtk_copy(const char *text);
+void *gtk_sink(void *object);
+const char *gtk_text_or_empty(const char *text);
+void gtk_use(const Widget *widget);
+void gtk_track(Widget *widget);
+void gtk_check_child(Widget *parent, Widget *child);
+void gtk_note_child(Widget *parent, Widget *child);
+void gtk_note_remove(Widget *parent, Widget *child);
+void gtk_require_single(Widget *parent);
+SignalConnection *gtk_bind(
+        void *instance,
+        const char *signal,
+        void *handler,
+        void *action,
+        void *data,
+        int flags);
+void gtk_keep(Widget *widget, SignalConnection *slot);
+void gtk_keep_app(
+        Application *app,
+        SignalConnection *slot);
+void gtk_keep_buffer(
+        TextBuffer *buffer,
+        SignalConnection *slot);
+void gtk_clear_iter(long *words);
+void gtk_place(
+        void *buffer,
+        long *words,
+        long line,
+        long offset);
+void gtk_read_iter(
+        long *words,
+        long *line,
+        long *offset);
+
+}
+
+#endif

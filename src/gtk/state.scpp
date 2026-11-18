@@ -1,0 +1,823 @@
+/* GTK wrapper core. The public header does not
+ * declare the C functions. This file calls them
+ * with extern. */
+#include <exceptions>
+#include "gtk-native"
+#include "gtk-support"
+
+namespace Gtk {
+
+enum { GTK_POST_SLOTS = 64 };
+
+Application *gtkApp;
+void *gtkThread;
+int gtkThreadSet;
+static int gtkReady;
+
+class PostSlot {
+public:
+    PostSlot();
+    long token;
+    long index;
+    void (*action)(void *);
+    void *data;
+    unsigned source;
+    int pending;
+};
+
+PostSlot::PostSlot() {
+    token = 0;
+    index = 0;
+    action = nullptr;
+    data = nullptr;
+    source = 0;
+    pending = 0;
+}
+
+static int post_fire(void *data) {
+    PostSlot *slot;
+    void (*action)(void *);
+    void *user;
+
+    slot = (PostSlot *)data;
+    if (gtkApp == nullptr || gtkApp->lock == nullptr)
+        return 0;
+    g_mutex_lock(gtkApp->lock);
+    action = slot->action;
+    user = slot->data;
+    slot->pending = 0;
+    slot->action = nullptr;
+    slot->data = nullptr;
+    slot->source = 0;
+    g_mutex_unlock(gtkApp->lock);
+    if (action != nullptr)
+        action(user);
+    return 0;
+}
+
+void gtk_fail(const char *message) {
+    throw *new Exception(message);
+}
+
+void gtk_check_thread(void) {
+    void *self;
+
+    self = g_thread_self();
+    if (gtkThreadSet == 0) {
+        gtkThread = self;
+        gtkThreadSet = 1;
+        return;
+    }
+    if (gtkThread != self)
+        gtk_fail("thread");
+}
+
+void gtk_ensure(void) {
+    if (gtkReady != 0)
+        return;
+    if (gtk_init_check() == 0)
+        gtk_fail("display");
+    gtkReady = 1;
+}
+
+void gtk_check_text(const char *text) {
+    if (text == nullptr)
+        gtk_fail("null");
+    if (g_utf8_validate(text, -1, nullptr) == 0)
+        gtk_fail("utf8");
+}
+
+int gtk_int(long value) {
+    if (value > 2147483647)
+        gtk_fail("range");
+    if (value < -2147483648)
+        gtk_fail("range");
+    return (int)value;
+}
+
+int gtk_flag(bool value) {
+    if (value)
+        return 1;
+    return 0;
+}
+
+char *gtk_copy(const char *text) {
+    long n;
+    long i;
+    char *copy;
+
+    n = 0;
+    while (text[n] != 0)
+        n = n + 1;
+    copy = new char[n + 1];
+    i = 0;
+    while (i <= n) {
+        copy[i] = text[i];
+        i = i + 1;
+    }
+    return copy;
+}
+
+void *gtk_sink(void *object) {
+    if (object == nullptr)
+        gtk_fail("gtk");
+    return g_object_ref_sink(object);
+}
+
+const char *gtk_text_or_empty(const char *text) {
+    if (text == nullptr)
+        return "";
+    return text;
+}
+
+void gtk_use(const Widget *widget) {
+    gtk_check_thread();
+    if (widget->gone != 0 || widget->native == nullptr)
+        gtk_fail("disposed");
+}
+
+static Widget **grow_widgets(
+        Widget **widgets,
+        long count,
+        long *room) {
+    Widget **grown;
+    long next;
+    long i;
+
+    if (count < *room)
+        return widgets;
+    next = *room * 2;
+    if (next < 4)
+        next = 4;
+    grown = new Widget *[next];
+    i = 0;
+    while (i < next) {
+        grown[i] = nullptr;
+        i = i + 1;
+    }
+    i = 0;
+    while (i < count) {
+        grown[i] = widgets[i];
+        i = i + 1;
+    }
+    *room = next;
+    return grown;
+}
+
+static SignalConnection **grow_slots(
+        SignalConnection **slots,
+        long count,
+        long *room) {
+    SignalConnection **grown;
+    long next;
+    long i;
+
+    if (count < *room)
+        return slots;
+    next = *room * 2;
+    if (next < 4)
+        next = 4;
+    grown = new SignalConnection *[next];
+    i = 0;
+    while (i < next) {
+        grown[i] = nullptr;
+        i = i + 1;
+    }
+    i = 0;
+    while (i < count) {
+        grown[i] = slots[i];
+        i = i + 1;
+    }
+    *room = next;
+    return grown;
+}
+
+void gtk_track(Widget *widget) {
+    if (gtkApp == nullptr || widget == nullptr)
+        return;
+    gtkApp->widgets = grow_widgets(
+            gtkApp->widgets,
+            gtkApp->widgetCount,
+            &gtkApp->widgetRoom);
+    gtkApp->widgets[gtkApp->widgetCount] = widget;
+    gtkApp->widgetCount = gtkApp->widgetCount + 1;
+}
+
+void gtk_check_child(Widget *parent, Widget *child) {
+    gtk_use(parent);
+    if (child == nullptr)
+        gtk_fail("null");
+    if (child->gone != 0)
+        gtk_fail("disposed");
+    if (child->kind == GTK_KIND_WINDOW)
+        gtk_fail("parent");
+    if (child->parentWidget != nullptr)
+        gtk_fail("parent");
+    if (child == parent)
+        gtk_fail("parent");
+}
+
+void gtk_note_child(Widget *parent, Widget *child) {
+    parent->children = grow_widgets(
+            parent->children,
+            parent->childCount,
+            &parent->childRoom);
+    parent->children[parent->childCount] = child;
+    parent->childCount = parent->childCount + 1;
+    child->parentWidget = parent;
+}
+
+void gtk_note_remove(Widget *parent, Widget *child) {
+    long i;
+    long j;
+
+    i = 0;
+    while (i < parent->childCount) {
+        if (parent->children[i] == child) {
+            j = i;
+            while (j + 1 < parent->childCount) {
+                parent->children[j] =
+                        parent->children[j + 1];
+                j = j + 1;
+            }
+            parent->childCount =
+                    parent->childCount - 1;
+            child->parentWidget = nullptr;
+            return;
+        }
+        i = i + 1;
+    }
+    gtk_fail("child");
+}
+
+void gtk_require_single(Widget *parent) {
+    if (parent->childCount != 0)
+        gtk_fail("child");
+}
+
+SignalConnection::SignalConnection() {
+    instance = nullptr;
+    handler = 0;
+    action = nullptr;
+    data = nullptr;
+    live = 0;
+    owner = nullptr;
+    anchor = nullptr;
+    anchorKind = 0;
+}
+
+SignalConnection *gtk_bind(
+        void *instance,
+        const char *signal,
+        void *handler,
+        void *action,
+        void *data,
+        int flags) {
+    SignalConnection *slot;
+    unsigned long id;
+    void *slotPtr;
+
+    if (instance == nullptr || handler == nullptr)
+        gtk_fail("gtk");
+    slot = new SignalConnection();
+    slot->instance = instance;
+    slot->action = action;
+    slot->data = data;
+    slotPtr = (void *)slot;
+    id = g_signal_connect_data(
+            instance,
+            signal,
+            handler,
+            slotPtr,
+            nullptr,
+            flags);
+    if (id == 0)
+        gtk_fail("gtk");
+    slot->handler = id;
+    slot->live = 1;
+    return slot;
+}
+
+void gtk_keep(Widget *widget, SignalConnection *slot) {
+    slot->owner = widget;
+    slot->anchor = widget;
+    slot->anchorKind = 1;
+    widget->slots = grow_slots(
+            widget->slots,
+            widget->slotCount,
+            &widget->slotRoom);
+    widget->slots[widget->slotCount] = slot;
+    widget->slotCount = widget->slotCount + 1;
+}
+
+void gtk_keep_app(
+        Application *app,
+        SignalConnection *slot) {
+    slot->anchor = app;
+    slot->anchorKind = 2;
+    app->slots = grow_slots(
+            app->slots,
+            app->slotCount,
+            &app->slotRoom);
+    app->slots[app->slotCount] = slot;
+    app->slotCount = app->slotCount + 1;
+}
+
+void gtk_keep_buffer(
+        TextBuffer *buffer,
+        SignalConnection *slot) {
+    slot->anchor = buffer;
+    slot->anchorKind = 3;
+    buffer->slots = grow_slots(
+            buffer->slots,
+            buffer->slotCount,
+            &buffer->slotRoom);
+    buffer->slots[buffer->slotCount] = slot;
+    buffer->slotCount = buffer->slotCount + 1;
+}
+
+static SignalConnection *find_slots(
+        SignalConnection **slots,
+        long count,
+        unsigned long handler) {
+    long i;
+
+    if (slots == nullptr || handler == 0)
+        return nullptr;
+    i = 0;
+    while (i < count) {
+        if (slots[i] != nullptr
+                && slots[i]->handler == handler)
+            return slots[i];
+        i = i + 1;
+    }
+    return nullptr;
+}
+
+static SignalConnection *find_handler(
+        SignalConnection *self) {
+    Application *app;
+    TextBuffer *buffer;
+
+    if (self->handler == 0)
+        return nullptr;
+    if (self->anchorKind == 1 && self->owner != nullptr)
+        return find_slots(
+                self->owner->slots,
+                self->owner->slotCount,
+                self->handler);
+    if (self->anchorKind == 2
+            && self->anchor != nullptr) {
+        app = (Application *)self->anchor;
+        return find_slots(
+                app->slots,
+                app->slotCount,
+                self->handler);
+    }
+    if (self->anchorKind == 3
+            && self->anchor != nullptr) {
+        buffer = (TextBuffer *)self->anchor;
+        return find_slots(
+                buffer->slots,
+                buffer->slotCount,
+                self->handler);
+    }
+    return nullptr;
+}
+
+void SignalConnection::disconnect() {
+    SignalConnection *heap;
+
+    gtk_check_thread();
+    heap = find_handler(this);
+    if (heap != nullptr && heap->live == 0) {
+        live = 0;
+        return;
+    }
+    if (live == 0)
+        return;
+    if (instance != nullptr && handler != 0)
+        g_signal_handler_disconnect(instance, handler);
+    live = 0;
+    data = nullptr;
+    action = nullptr;
+    if (heap != nullptr) {
+        heap->live = 0;
+        heap->data = nullptr;
+        heap->action = nullptr;
+    }
+}
+
+bool SignalConnection::connected() const {
+    SignalConnection *heap;
+
+    gtk_check_thread();
+    heap = find_handler((SignalConnection *)this);
+    if (heap != nullptr)
+        return heap->live != 0;
+    return live != 0;
+}
+
+Widget::Widget() {
+    gtk_check_thread();
+    gtk_ensure();
+    native = nullptr;
+    gone = 0;
+    kind = GTK_KIND_PLAIN;
+    disposing = 0;
+    parentWidget = nullptr;
+    children = nullptr;
+    childCount = 0;
+    childRoom = 0;
+    slots = nullptr;
+    slotCount = 0;
+    slotRoom = 0;
+    cleanup = nullptr;
+    gtk_track(this);
+}
+
+Widget::~Widget() {
+}
+
+bool Widget::disposed() const {
+    gtk_check_thread();
+    return gone != 0;
+}
+
+void Widget::dispose() {
+    long i;
+
+    gtk_check_thread();
+    if (gone != 0)
+        gtk_fail("disposed");
+    gone = 1;
+    i = childCount - 1;
+    while (i >= 0) {
+        if (children[i] != nullptr
+                && children[i]->gone == 0)
+            children[i]->dispose();
+        i = i - 1;
+    }
+    i = 0;
+    while (i < slotCount) {
+        if (slots[i] != nullptr && slots[i]->live != 0) {
+            g_signal_handler_disconnect(
+                    slots[i]->instance,
+                    slots[i]->handler);
+            slots[i]->live = 0;
+            slots[i]->data = nullptr;
+            slots[i]->action = nullptr;
+        }
+        i = i + 1;
+    }
+    if (cleanup != nullptr)
+        cleanup(this);
+    if (native != nullptr) {
+        if (gtk_widget_get_parent(native) != nullptr)
+            gtk_widget_unparent(native);
+        g_object_unref(native);
+        native = nullptr;
+    }
+}
+
+void Widget::set_visible(bool value) {
+    gtk_use(this);
+    gtk_widget_set_visible(native, gtk_flag(value));
+}
+
+void Widget::set_sensitive(bool value) {
+    gtk_use(this);
+    gtk_widget_set_sensitive(native, gtk_flag(value));
+}
+
+void Widget::set_h_expand(bool value) {
+    gtk_use(this);
+    gtk_widget_set_hexpand(native, gtk_flag(value));
+}
+
+void Widget::set_v_expand(bool value) {
+    gtk_use(this);
+    gtk_widget_set_vexpand(native, gtk_flag(value));
+}
+
+void Widget::set_width_request(long width) {
+    gtk_use(this);
+    gtk_widget_set_size_request(
+            native,
+            gtk_int(width),
+            -1);
+}
+
+void Widget::add_css_class(const char *name) {
+    gtk_use(this);
+    gtk_check_text(name);
+    gtk_widget_add_css_class(native, name);
+}
+
+void Widget::remove_css_class(const char *name) {
+    gtk_use(this);
+    gtk_check_text(name);
+    gtk_widget_remove_css_class(native, name);
+}
+
+void Widget::set_tooltip(const char *text) {
+    gtk_use(this);
+    gtk_check_text(text);
+    gtk_widget_set_tooltip_text(native, text);
+}
+
+static void clear_app_signals(Application *app) {
+    long i;
+
+    i = 0;
+    while (i < app->slotCount) {
+        if (app->slots[i] != nullptr
+                && app->slots[i]->live != 0) {
+            g_signal_handler_disconnect(
+                    app->slots[i]->instance,
+                    app->slots[i]->handler);
+            app->slots[i]->live = 0;
+            app->slots[i]->data = nullptr;
+            app->slots[i]->action = nullptr;
+        }
+        i = i + 1;
+    }
+}
+
+static void dispose_tracked(Application *app) {
+    long i;
+    long n;
+
+    n = app->widgetCount;
+    i = 0;
+    while (i < n) {
+        if (app->widgets[i] != nullptr
+                && app->widgets[i]->gone == 0)
+            app->widgets[i]->dispose();
+        i = i + 1;
+    }
+    app->widgetCount = 0;
+}
+
+static void cancel_pending(Application *app) {
+    PostSlot **table;
+    unsigned sources[GTK_POST_SLOTS];
+    long n;
+    long i;
+
+    n = 0;
+    g_mutex_lock(app->lock);
+    table = (PostSlot **)app->posts;
+    i = 0;
+    while (i < app->postRoom && n < GTK_POST_SLOTS) {
+        if (table[i]->pending != 0) {
+            sources[n] = table[i]->source;
+            n = n + 1;
+            table[i]->pending = 0;
+            table[i]->action = nullptr;
+            table[i]->data = nullptr;
+            table[i]->source = 0;
+        }
+        i = i + 1;
+    }
+    g_mutex_unlock(app->lock);
+    i = 0;
+    while (i < n) {
+        if (sources[i] != 0)
+            g_source_remove(sources[i]);
+        i = i + 1;
+    }
+}
+
+Application::Application(const char *id) {
+    long i;
+    PostSlot **table;
+
+    gtk_check_thread();
+    gtk_ensure();
+    gtk_check_text(id);
+    if (gtkApp != nullptr)
+        gtk_fail("gtk");
+    native = gtk_application_new(id, 0);
+    if (native == nullptr)
+        gtk_fail("gtk");
+    running = 0;
+    finished = 0;
+    nextToken = 1;
+    widgets = nullptr;
+    widgetCount = 0;
+    widgetRoom = 0;
+    slots = nullptr;
+    slotCount = 0;
+    slotRoom = 0;
+    postRoom = GTK_POST_SLOTS;
+    posts = new void *[GTK_POST_SLOTS];
+    table = new PostSlot *[GTK_POST_SLOTS];
+    i = 0;
+    while (i < GTK_POST_SLOTS) {
+        table[i] = new PostSlot();
+        table[i]->index = i;
+        posts[i] = table[i];
+        i = i + 1;
+    }
+    lock = malloc(16);
+    if (lock == nullptr)
+        gtk_fail("gtk");
+    g_mutex_init(lock);
+    gtkApp = this;
+}
+
+Application::~Application() {
+    if (native != nullptr && running == 0) {
+        g_object_unref(native);
+        native = nullptr;
+    }
+    if (gtkApp == this)
+        gtkApp = nullptr;
+}
+
+static void gtk_use_app(Application *app) {
+    gtk_check_thread();
+    if (app->native == nullptr)
+        gtk_fail("disposed");
+}
+
+static void app_activate(void *application, void *data) {
+    SignalConnection *slot;
+    void (*action)(void *);
+
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data);
+    (void)application;
+}
+
+SignalConnection Application::on_activate(
+        void (*action)(void *),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *);
+    void *handler;
+    void *userAction;
+
+    gtk_use_app(this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = app_activate;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            native,
+            "activate",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep_app(this, slot);
+    return *slot;
+}
+
+int Application::run() {
+    int code;
+
+    gtk_check_thread();
+    if (finished != 0)
+        gtk_fail("run");
+    if (native == nullptr)
+        gtk_fail("gtk");
+    g_mutex_lock(lock);
+    running = 1;
+    g_mutex_unlock(lock);
+    code = g_application_run(native, 0, nullptr);
+    g_mutex_lock(lock);
+    running = 0;
+    finished = 1;
+    g_mutex_unlock(lock);
+    cancel_pending(this);
+    clear_app_signals(this);
+    dispose_tracked(this);
+    g_object_unref(native);
+    native = nullptr;
+    return code;
+}
+
+long Application::post(
+        void (*action)(void *),
+        void *data) {
+    PostSlot **table;
+    PostSlot *slot;
+    long i;
+    long token;
+    int (*typed)(void *);
+    void *handler;
+    void *slotPtr;
+
+    if (action == nullptr)
+        gtk_fail("null");
+    if (lock == nullptr || posts == nullptr)
+        gtk_fail("post");
+    g_mutex_lock(lock);
+    if (running == 0) {
+        g_mutex_unlock(lock);
+        gtk_fail("post");
+    }
+    table = (PostSlot **)posts;
+    slot = nullptr;
+    i = 0;
+    while (i < postRoom) {
+        if (table[i]->pending == 0) {
+            slot = table[i];
+            break;
+        }
+        i = i + 1;
+    }
+    if (slot == nullptr) {
+        g_mutex_unlock(lock);
+        gtk_fail("post");
+    }
+    token = nextToken;
+    nextToken = nextToken + 1;
+    slot->token = token;
+    slot->action = action;
+    slot->data = data;
+    slot->pending = 1;
+    typed = post_fire;
+    handler = (void *)typed;
+    slotPtr = (void *)slot;
+    slot->source = g_idle_add(handler, slotPtr);
+    g_mutex_unlock(lock);
+    return token;
+}
+
+bool Application::cancel(long token) {
+    PostSlot **table;
+    long i;
+    unsigned source;
+
+    gtk_check_thread();
+    if (lock == nullptr || posts == nullptr)
+        gtk_fail("post");
+    g_mutex_lock(lock);
+    table = (PostSlot **)posts;
+    i = 0;
+    while (i < postRoom) {
+        if (table[i]->pending != 0
+                && table[i]->token == token) {
+            source = table[i]->source;
+            table[i]->pending = 0;
+            table[i]->action = nullptr;
+            table[i]->data = nullptr;
+            table[i]->source = 0;
+            g_mutex_unlock(lock);
+            if (source != 0)
+                g_source_remove(source);
+            return true;
+        }
+        i = i + 1;
+    }
+    g_mutex_unlock(lock);
+    return false;
+}
+
+void gtk_clear_iter(long *words) {
+    long i;
+
+    i = 0;
+    while (i < 12) {
+        words[i] = 0;
+        i = i + 1;
+    }
+}
+
+void gtk_place(
+        void *buffer,
+        long *words,
+        long line,
+        long offset) {
+    int ok;
+    void *iter;
+
+    gtk_clear_iter(words);
+    iter = (void *)words;
+    ok = gtk_text_buffer_get_iter_at_line_offset(
+            buffer,
+            iter,
+            gtk_int(line),
+            gtk_int(offset));
+    if (ok == 0)
+        gtk_fail("range");
+}
+
+void gtk_read_iter(
+        long *words,
+        long *line,
+        long *offset) {
+    void *iter;
+
+    iter = (void *)words;
+    *line = gtk_text_iter_get_line(iter);
+    *offset = gtk_text_iter_get_line_offset(iter);
+}
+
+}

@@ -1,0 +1,72 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+static int edited;
+
+static void entry_changed(void *data) {
+    int *flag;
+
+    flag = (int *)data;
+    *flag = 1;
+}
+
+int main(void) {
+    Label *label;
+    Button *button;
+    Entry *entry;
+    CheckButton *check;
+    Box *box;
+    ScrolledWindow *scrolled;
+    Label *side;
+    char bad[2];
+    int saw;
+
+    try {
+        label = new Label("Hello");
+        button = new Button("Click");
+        entry = new Entry("");
+        edited = 0;
+        entry->on_changed(entry_changed, (void *)&edited);
+        entry->set_text("hi");
+        if (edited == 0)
+            throw *new Exception("gtk");
+        check = new CheckButton("Yes");
+        check->set_active(true);
+        box = new Box(GTK_HORIZONTAL, 4);
+        side = new Label("Side");
+        box->append((Widget *)side);
+        scrolled = new ScrolledWindow();
+        scrolled->set_policy(
+                GTK_POLICY_AUTOMATIC,
+                GTK_POLICY_NEVER);
+        bad[0] = '\xff';
+        bad[1] = 0;
+        saw = 0;
+        try {
+            label = new Label(bad);
+        } catch (Exception error) {
+            if (strcmp(error.message, "utf8") == 0)
+                saw = 1;
+        }
+        if (saw == 0)
+            throw *new Exception("utf8");
+        print("gtk-widget {:s} {:s} {:s} {} {:s}\n",
+                label->text(),
+                button->label(),
+                entry->text(),
+                (int)check->active(),
+                "utf8");
+        return 0;
+    } catch (Exception error) {
+        if (error.message != nullptr
+                && strcmp(error.message, "display") == 0) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        if (error.message != nullptr)
+            print("gtk-widget fail {:s}\n", error.message);
+        return 1;
+    }
+}

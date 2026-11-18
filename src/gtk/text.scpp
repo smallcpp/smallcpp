@@ -1,0 +1,606 @@
+/* Text buffer, marks, and the text view.
+ * TextIter is a line and a character offset.
+ * It is not a live GTK iterator. */
+#include <exceptions>
+#include "gtk-native"
+#include "gtk-globals"
+
+namespace Gtk {
+
+enum { GTK_TYPE_STRING = 64 };
+enum { GTK_CONNECT_AFTER = 1 };
+
+static void use_buffer(const TextBuffer *buffer) {
+    gtk_check_thread();
+    if (buffer == nullptr || buffer->native == nullptr)
+        gtk_fail("disposed");
+}
+
+static void use_mark(const TextMark *mark) {
+    gtk_check_thread();
+    if (mark == nullptr || mark->native == nullptr)
+        gtk_fail("disposed");
+    if (mark->buffer == nullptr
+            || mark->buffer->native == nullptr)
+        gtk_fail("disposed");
+}
+
+static int iter_order(TextIter *start, TextIter *end) {
+    if (start == nullptr || end == nullptr)
+        gtk_fail("null");
+    if (start->lineNumber > end->lineNumber)
+        return 0;
+    if (start->lineNumber == end->lineNumber
+            && start->charOffset > end->charOffset)
+        return 0;
+    return 1;
+}
+
+static void buffer_changed(void *buffer, void *data) {
+    SignalConnection *slot;
+    void (*action)(void *);
+
+    (void)buffer;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data);
+}
+
+static void view_moved(
+        void *view,
+        int step,
+        int count,
+        int extend,
+        void *data) {
+    SignalConnection *slot;
+    TextView *text;
+    TextBuffer *buffer;
+    long *words;
+    void *iter;
+    void *mark;
+    void (*action)(void *, long, long);
+    long line;
+    long offset;
+
+    (void)view;
+    (void)step;
+    (void)count;
+    (void)extend;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *, long, long))slot->action;
+    if (slot->live == 0 || action == nullptr)
+        return;
+    text = (TextView *)slot->owner;
+    if (text == nullptr || text->buffer == nullptr)
+        return;
+    buffer = text->buffer;
+    if (buffer->native == nullptr)
+        return;
+    words = new long[12];
+    gtk_clear_iter(words);
+    iter = (void *)words;
+    mark = gtk_text_buffer_get_insert(buffer->native);
+    gtk_text_buffer_get_iter_at_mark(
+            buffer->native,
+            iter,
+            mark);
+    line = gtk_text_iter_get_line(iter);
+    offset = gtk_text_iter_get_line_offset(iter);
+    action(slot->data, line, offset);
+}
+
+static long *scratch() {
+    return new long[12];
+}
+
+static void read_mark(
+        TextMark *mark,
+        long *line,
+        long *offset) {
+    long *words;
+    void *iter;
+
+    words = scratch();
+    gtk_clear_iter(words);
+    iter = (void *)words;
+    gtk_text_buffer_get_iter_at_mark(
+            mark->buffer->native,
+            iter,
+            mark->native);
+    *line = gtk_text_iter_get_line(iter);
+    *offset = gtk_text_iter_get_line_offset(iter);
+}
+
+TextIter::TextIter(long line, long offset) {
+    lineNumber = line;
+    charOffset = offset;
+}
+
+long TextIter::line() const {
+    return lineNumber;
+}
+
+long TextIter::offset() const {
+    return charOffset;
+}
+
+TextBuffer::TextBuffer() {
+    gtk_check_thread();
+    gtk_ensure();
+    native = gtk_text_buffer_new(nullptr);
+    if (native == nullptr)
+        gtk_fail("gtk");
+    gtk_text_buffer_set_enable_undo(native, 1);
+    ownedText = nullptr;
+    slots = nullptr;
+    slotCount = 0;
+    slotRoom = 0;
+}
+
+TextBuffer::~TextBuffer() {
+    long i;
+
+    if (native == nullptr)
+        return;
+    i = 0;
+    while (i < slotCount) {
+        if (slots[i] != nullptr && slots[i]->live != 0) {
+            g_signal_handler_disconnect(
+                    slots[i]->instance,
+                    slots[i]->handler);
+            slots[i]->live = 0;
+            slots[i]->data = nullptr;
+            slots[i]->action = nullptr;
+        }
+        i = i + 1;
+    }
+    g_object_unref(native);
+    native = nullptr;
+}
+
+void TextBuffer::set_text(const char *text) {
+    use_buffer(this);
+    gtk_check_text(text);
+    gtk_text_buffer_set_text(native, text, -1);
+}
+
+const char *TextBuffer::get_text() {
+    long *start;
+    long *end;
+    void *first;
+    void *second;
+    char *raw;
+
+    use_buffer(this);
+    start = scratch();
+    end = scratch();
+    gtk_clear_iter(start);
+    gtk_clear_iter(end);
+    first = (void *)start;
+    second = (void *)end;
+    gtk_text_buffer_get_bounds(native, first, second);
+    raw = gtk_text_buffer_get_text(
+            native,
+            first,
+            second,
+            1);
+    if (raw == nullptr)
+        ownedText = gtk_copy("");
+    else {
+        ownedText = gtk_copy(raw);
+        g_free((void *)raw);
+    }
+    return ownedText;
+}
+
+void TextBuffer::insert(TextIter *at, const char *text) {
+    long *words;
+
+    use_buffer(this);
+    if (at == nullptr)
+        gtk_fail("null");
+    gtk_check_text(text);
+    words = scratch();
+    gtk_place(
+            native,
+            words,
+            at->lineNumber,
+            at->charOffset);
+    gtk_text_buffer_insert(
+            native,
+            (void *)words,
+            text,
+            -1);
+}
+
+void TextBuffer::delete_range(
+        TextIter *start,
+        TextIter *end) {
+    long *first;
+    long *second;
+
+    use_buffer(this);
+    if (iter_order(start, end) == 0)
+        gtk_fail("range");
+    first = scratch();
+    second = scratch();
+    gtk_place(
+            native,
+            first,
+            start->lineNumber,
+            start->charOffset);
+    gtk_place(
+            native,
+            second,
+            end->lineNumber,
+            end->charOffset);
+    gtk_text_buffer_delete(
+            native,
+            (void *)first,
+            (void *)second);
+}
+
+void TextBuffer::place_cursor(TextIter *at) {
+    long *words;
+
+    use_buffer(this);
+    if (at == nullptr)
+        gtk_fail("null");
+    words = scratch();
+    gtk_place(
+            native,
+            words,
+            at->lineNumber,
+            at->charOffset);
+    gtk_text_buffer_place_cursor(native, (void *)words);
+}
+
+void TextBuffer::select_range(
+        TextIter *start,
+        TextIter *end) {
+    long *first;
+    long *second;
+
+    use_buffer(this);
+    if (iter_order(start, end) == 0)
+        gtk_fail("range");
+    first = scratch();
+    second = scratch();
+    gtk_place(
+            native,
+            first,
+            start->lineNumber,
+            start->charOffset);
+    gtk_place(
+            native,
+            second,
+            end->lineNumber,
+            end->charOffset);
+    gtk_text_buffer_select_range(
+            native,
+            (void *)first,
+            (void *)second);
+}
+
+bool TextBuffer::selection_bounds(
+        TextIter *start,
+        TextIter *end) {
+    long *first;
+    long *second;
+    void *a;
+    void *b;
+    int selected;
+
+    use_buffer(this);
+    if (start == nullptr || end == nullptr)
+        gtk_fail("null");
+    first = scratch();
+    second = scratch();
+    gtk_clear_iter(first);
+    gtk_clear_iter(second);
+    a = (void *)first;
+    b = (void *)second;
+    selected = gtk_text_buffer_get_selection_bounds(
+            native,
+            a,
+            b);
+    start->lineNumber = gtk_text_iter_get_line(a);
+    start->charOffset = gtk_text_iter_get_line_offset(a);
+    end->lineNumber = gtk_text_iter_get_line(b);
+    end->charOffset = gtk_text_iter_get_line_offset(b);
+    return selected != 0;
+}
+
+void TextBuffer::create_tag(
+        const char *name,
+        const char *foreground) {
+    long *words;
+    void *value;
+    void *tag;
+    void *table;
+    int ok;
+    long i;
+
+    use_buffer(this);
+    gtk_check_text(name);
+    gtk_check_text(foreground);
+    words = new long[4];
+    i = 0;
+    while (i < 4) {
+        words[i] = 0;
+        i = i + 1;
+    }
+    value = (void *)words;
+    g_value_init(value, GTK_TYPE_STRING);
+    g_value_set_string(value, foreground);
+    tag = gtk_text_tag_new(name);
+    if (tag == nullptr)
+        gtk_fail("gtk");
+    g_object_set_property(tag, "foreground", value);
+    table = gtk_text_buffer_get_tag_table(native);
+    ok = gtk_text_tag_table_add(table, tag);
+    g_object_unref(tag);
+    g_value_unset(value);
+    if (ok == 0)
+        gtk_fail("gtk");
+}
+
+void TextBuffer::apply_tag(
+        const char *name,
+        TextIter *start,
+        TextIter *end) {
+    void *table;
+    void *tag;
+    long *first;
+    long *second;
+
+    use_buffer(this);
+    gtk_check_text(name);
+    if (iter_order(start, end) == 0)
+        gtk_fail("range");
+    table = gtk_text_buffer_get_tag_table(native);
+    tag = gtk_text_tag_table_lookup(table, name);
+    if (tag == nullptr)
+        gtk_fail("gtk");
+    first = scratch();
+    second = scratch();
+    gtk_place(
+            native,
+            first,
+            start->lineNumber,
+            start->charOffset);
+    gtk_place(
+            native,
+            second,
+            end->lineNumber,
+            end->charOffset);
+    gtk_text_buffer_apply_tag(
+            native,
+            tag,
+            (void *)first,
+            (void *)second);
+}
+
+void TextBuffer::remove_tag(
+        const char *name,
+        TextIter *start,
+        TextIter *end) {
+    void *table;
+    void *tag;
+    long *first;
+    long *second;
+
+    use_buffer(this);
+    gtk_check_text(name);
+    if (iter_order(start, end) == 0)
+        gtk_fail("range");
+    table = gtk_text_buffer_get_tag_table(native);
+    tag = gtk_text_tag_table_lookup(table, name);
+    if (tag == nullptr)
+        gtk_fail("gtk");
+    first = scratch();
+    second = scratch();
+    gtk_place(
+            native,
+            first,
+            start->lineNumber,
+            start->charOffset);
+    gtk_place(
+            native,
+            second,
+            end->lineNumber,
+            end->charOffset);
+    gtk_text_buffer_remove_tag(
+            native,
+            tag,
+            (void *)first,
+            (void *)second);
+}
+
+void TextBuffer::undo() {
+    use_buffer(this);
+    gtk_text_buffer_undo(native);
+}
+
+void TextBuffer::redo() {
+    use_buffer(this);
+    gtk_text_buffer_redo(native);
+}
+
+SignalConnection TextBuffer::on_changed(
+        void (*action)(void *),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *);
+    void *handler;
+    void *userAction;
+
+    use_buffer(this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = buffer_changed;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            native,
+            "changed",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep_buffer(this, slot);
+    return *slot;
+}
+
+TextMark *TextBuffer::create_mark(
+        const char *name,
+        long line,
+        long offset) {
+    use_buffer(this);
+    return new TextMark(this, name, line, offset);
+}
+
+TextMark::TextMark(
+        TextBuffer *buffer,
+        const char *name,
+        long line,
+        long offset) {
+    long *words;
+
+    gtk_check_thread();
+    if (buffer == nullptr)
+        gtk_fail("null");
+    if (buffer->native == nullptr)
+        gtk_fail("disposed");
+    gtk_check_text(name);
+    this->buffer = buffer;
+    ownedName = gtk_copy(name);
+    words = scratch();
+    gtk_place(buffer->native, words, line, offset);
+    native = gtk_text_buffer_create_mark(
+            buffer->native,
+            ownedName,
+            (void *)words,
+            0);
+    if (native == nullptr)
+        gtk_fail("gtk");
+}
+
+TextMark::~TextMark() {
+    native = nullptr;
+    buffer = nullptr;
+}
+
+const char *TextMark::name() const {
+    use_mark((TextMark *)this);
+    if (ownedName == nullptr)
+        return "";
+    return ownedName;
+}
+
+void TextMark::move(long line, long offset) {
+    long *words;
+
+    use_mark(this);
+    words = scratch();
+    gtk_place(buffer->native, words, line, offset);
+    gtk_text_buffer_move_mark(
+            buffer->native,
+            native,
+            (void *)words);
+}
+
+long TextMark::line() const {
+    long line;
+    long offset;
+
+    use_mark((TextMark *)this);
+    read_mark((TextMark *)this, &line, &offset);
+    return line;
+}
+
+long TextMark::offset() const {
+    long line;
+    long offset;
+
+    use_mark((TextMark *)this);
+    read_mark((TextMark *)this, &line, &offset);
+    return offset;
+}
+
+TextView::TextView(TextBuffer *buffer) : Widget() {
+    if (buffer == nullptr)
+        gtk_fail("null");
+    if (buffer->native == nullptr)
+        gtk_fail("disposed");
+    this->buffer = buffer;
+    native = gtk_sink(
+            gtk_text_view_new_with_buffer(buffer->native));
+}
+
+void TextView::set_editable(bool value) {
+    gtk_use((Widget *)this);
+    gtk_text_view_set_editable(native, gtk_flag(value));
+}
+
+bool TextView::editable() const {
+    gtk_use((Widget *)this);
+    return gtk_text_view_get_editable(native) != 0;
+}
+
+void TextView::set_monospace(bool value) {
+    gtk_use((Widget *)this);
+    gtk_text_view_set_monospace(native, gtk_flag(value));
+}
+
+bool TextView::monospace() const {
+    gtk_use((Widget *)this);
+    return gtk_text_view_get_monospace(native) != 0;
+}
+
+void TextView::scroll_to(long line, long offset) {
+    long *words;
+
+    gtk_use((Widget *)this);
+    if (buffer == nullptr || buffer->native == nullptr)
+        gtk_fail("disposed");
+    words = scratch();
+    gtk_place(buffer->native, words, line, offset);
+    gtk_text_view_scroll_to_iter(
+            native,
+            (void *)words,
+            0.0,
+            0,
+            0.0,
+            0.0);
+}
+
+SignalConnection TextView::on_move_cursor(
+        void (*action)(void *, long, long),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, int, int, int, void *);
+    void *handler;
+    void (*user)(void *, long, long);
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = view_moved;
+    handler = (void *)typed;
+    user = action;
+    userAction = (void *)user;
+    slot = gtk_bind(
+            native,
+            "move-cursor",
+            handler,
+            userAction,
+            data,
+            GTK_CONNECT_AFTER);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+}

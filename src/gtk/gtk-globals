@@ -1,0 +1,14 @@
+#ifndef SMALLCPP_GTK_GLOBALS
+#define SMALLCPP_GTK_GLOBALS
+
+#include "gtk-support"
+
+namespace Gtk {
+
+extern Application *gtkApp;
+extern void *gtkThread;
+extern int gtkThreadSet;
+
+}
+
+#endif

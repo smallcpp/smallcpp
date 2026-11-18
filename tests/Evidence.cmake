@@ -242,6 +242,32 @@ add_test(
         "-DLIB_DIRS=${CMAKE_SOURCE_DIR}/lib"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 
+set(SMALLCPP_GTK_LIBS
+    "smallcpp_gtk;gtk-4;gio-2.0;gobject-2.0;glib-2.0;pango-1.0;pangocairo-1.0;cairo")
+function(add_gtk_test name line)
+    add_test(
+        NAME exec_gtk-${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCOMPILER=$<TARGET_FILE:scpp>
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/gtk-${name}.scpp
+            -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/exec-gtk-${name}
+            "-DEXPECT_OUT=${line}"
+            "-DLIBS=${SMALLCPP_GTK_LIBS}"
+            "-DLIB_DIRS=${CMAKE_SOURCE_DIR}/lib"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectGtk.cmake)
+    set_tests_properties(exec_gtk-${name} PROPERTIES
+        SKIP_REGULAR_EXPRESSION "SKIP gtk display"
+        SKIP_RETURN_CODE 77)
+endfunction()
+add_gtk_test(widget "gtk-widget Hello Click hi 1 utf8")
+add_gtk_test(layout "gtk-layout Win Title 0 40 0")
+add_gtk_test(menu "gtk-menu Open Hello")
+add_gtk_test(column "gtk-column 1 Ada")
+add_gtk_test(dialog "gtk-dialog Ask Hello Open")
+add_gtk_test(input "gtk-input blue 4 1")
+add_gtk_test(display "gtk-display /etc/os-release 0.5 1 0")
+add_gtk_test(text "gtk-text aXb 2 ab 5 1 0")
+
 add_test(
     NAME exec_exec-print-two
     COMMAND ${CMAKE_COMMAND}
