@@ -1,8 +1,17 @@
 #include <hash>
 
-HASH(AbsMap, int, int)
+HASH(IntMap, int, int)
 
-long same_abs(int left, int right) {
+class AbsMap : public IntMap {
+public:
+    AbsMap();
+    long compare(int left, int right);
+};
+
+AbsMap::AbsMap() : IntMap() {
+}
+
+long AbsMap::compare(int left, int right) {
     if (left < 0)
         left = -left;
     if (right < 0)
@@ -17,7 +26,7 @@ int main(void) {
     int value;
     int ok;
 
-    map = new AbsMap(same_abs);
+    map = new AbsMap();
     map->put(1, 10);
     map->replace(-1, 30);
     value = 0;

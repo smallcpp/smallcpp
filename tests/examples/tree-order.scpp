@@ -1,8 +1,17 @@
 #include <tree>
 
-TREE(RevTree, int)
+TREE(IntTree, int)
 
-long reverse(int left, int right) {
+class RevTree : public IntTree {
+public:
+    RevTree();
+    long compare(int left, int right);
+};
+
+RevTree::RevTree() : IntTree() {
+}
+
+long RevTree::compare(int left, int right) {
     if (left < right)
         return (long)1;
     if (right < left)
@@ -13,7 +22,7 @@ long reverse(int left, int right) {
 int main(void) {
     RevTree *nodes;
 
-    nodes = new RevTree(reverse);
+    nodes = new RevTree();
     nodes->insert(0, 1);
     nodes->insert(0, 2);
     nodes->insert(0, 3);

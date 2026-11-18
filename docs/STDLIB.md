@@ -428,12 +428,13 @@ LIST(IntList, int)
 
 ### `<tree>`
 
-`TREE(Name, Type)` defines a balanced binary tree. Order is a callback
-`long (*)(Type, Type)`. A negative result means the first value comes
-first, zero means equal, and a positive result means the first value
-comes later, the same as `strcmp`. A null callback uses the default.
-The default calls `String.cmp` when `Type` is `const char *` or
-`String *`. Any other type keeps `<`. A value that compares equal to
+`TREE(Name, Type)` defines a balanced binary tree. Order is the virtual
+method `compare(Type, Type)`. A negative result means the first value
+comes first, zero means equal, and a positive result means the first
+value comes later, the same as `strcmp`. The default calls `String.cmp`
+when `Type` is `const char *` or `String *`. Any other type uses `<`.
+A subclass overrides `compare` to change the order. `add`, `insert`,
+`find`, `replace`, and `remove` call that method. A value that compares equal to
 one already in the tree is left in place. `add` inserts. `root` returns
 the root value, or throws `Exception` with message `empty` when the
 tree has no nodes. `at` walks the values in order. A negative index
@@ -442,12 +443,11 @@ in-order index of the first zero result, or `-1`. `replace` removes
 the value at the index and inserts the new one, so the order stays
 valid. When that new value is already stored, it is left in place and
 the indexed value is gone. `insert` accepts the index with the sequence
-bounds above, then places the value with the callback, the same as
-`add`. The in-order index is the one the order chooses. That place is
-the end when the value comes after every stored value, and the start
-when it comes before. `remove` deletes the value at the in-order index.
-`next` walks in order. `new Name()` uses the default. `new Name(callback)`
-stores that callback.
+bounds above, then places the value with `compare`, the same as `add`.
+The in-order index is the one `compare` chooses. That place is the end
+when the value comes after every stored value, and the start when it
+comes before. `remove` deletes the value at the in-order index. `next`
+walks in order.
 
 ```smallcpp
 #include <tree>
@@ -461,24 +461,24 @@ Inserting 1, then 2, then 3 leaves 2 at the root. `at(0)`, `at(1)`, and
 ### `<hash>`
 
 `HASH(Name, Key, Value)` defines an open hash table. The slots live in
-an `Array`. Equality is a callback `long (*)(Key, Key)`. Zero means
-equal. A null callback uses the default. The default calls `String.cmp`
-when `Key` is `const char *` or `String *`. Any other type keeps `==`.
-There is no hash callback. With a null callback, `const char *` and
+an `Array`. Equality is the virtual method `compare(Key, Key)`. Zero
+means equal. The default calls `String.cmp` when `Key` is `const char *`
+or `String *`. Any other type uses `==`. A subclass overrides `compare`
+to change equality. There is no hash callback. `const char *` and
 `String *` are hashed by their characters, and any other key is hashed
-as its bytes. A callback compares every filled slot, so its equality
-does not have to agree with that byte hash. `put` inserts or replaces.
-`find` writes `*out` and returns 1, or returns 0 when the key is absent.
-A null `out` throws `Exception` with message `hash`. `size` is the
-number of stored keys. `replace` stores the value when the key is
-present and puts the pair when the key is missing. `remove` deletes
-that key. A missing key leaves the table unchanged. There is no second
-insert. `next(long *, Key *, Value *)` walks filled slots. The cursor
-starts at 0 and names a slot. A call that finds a filled slot returns
-1, writes the key and value, and stores the following slot. A finished
-walk returns 0. A null cursor, key, or value pointer throws `Exception`
-with message `hash`. The order is slot order. `new Name()` uses the
-default. `new Name(callback)` stores that callback.
+as its bytes. `put`, `find`, `replace`, and `remove` call `compare` on
+the filled slots, so an override does not have to agree with that hash.
+`put` inserts or replaces. `find` writes `*out` and returns 1, or
+returns 0 when the key is absent. A null `out` throws `Exception` with
+message `hash`. `size` is the number of stored keys. `replace` stores
+the value when the key is present and puts the pair when the key is
+missing. `remove` deletes that key. A missing key leaves the table
+unchanged. There is no second insert. `next(long *, Key *, Value *)`
+walks filled slots. The cursor starts at 0 and names a slot. A call
+that finds a filled slot returns 1, writes the key and value, and
+stores the following slot. A finished walk returns 0. A null cursor,
+key, or value pointer throws `Exception` with message `hash`. The order
+is slot order.
 
 ```smallcpp
 #include <hash>
