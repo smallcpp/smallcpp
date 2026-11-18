@@ -4,7 +4,7 @@
 using namespace Sqlite;
 
 int main(void) {
-    Connection *database;
+    Database *database;
     Statement *insert;
     Statement *query;
     Value *stored;

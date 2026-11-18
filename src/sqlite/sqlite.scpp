@@ -439,6 +439,9 @@ long Value::blob_size() const {
     return blobBytes;
 }
 
+Database::~Database() {
+}
+
 Connection::Connection(const char *path) {
     Connection *self;
     ConnectionState *data;

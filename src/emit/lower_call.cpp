@@ -326,8 +326,11 @@ void Codegen::install(Func incoming)
         arg_types.push_back(ty.ir);
     auto *type = llvm::FunctionType::get(incoming.ret.ir, arg_types, incoming.vararg);
     std::string ir_name = group.empty() ? incoming.source : sig_text(incoming);
-    auto linkage = incoming.is_static ? llvm::GlobalValue::InternalLinkage
-                                      : llvm::GlobalValue::ExternalLinkage;
+    auto linkage = llvm::GlobalValue::ExternalLinkage;
+    if (incoming.is_static)
+        linkage = llvm::GlobalValue::InternalLinkage;
+    else if (incoming.is_pure)
+        linkage = llvm::GlobalValue::LinkOnceODRLinkage;
     incoming.fn = llvm::Function::Create(type, linkage, ir_name, &module);
     if (incoming.is_inline)
         incoming.fn->addFnAttr(llvm::Attribute::InlineHint);
