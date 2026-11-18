@@ -1,0 +1,8 @@
+int main(void) {
+    int length;
+    int value;
+    length = strlen("small");
+    value = atoi("12");
+    print("libc {} {}\n", length, value);
+    return 0;
+}

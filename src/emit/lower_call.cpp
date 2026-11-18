@@ -215,6 +215,32 @@ void Codegen::install(Func incoming)
         rename_group(group);
 }
 
+Func *Codegen::implicit_extern(const char *name, const std::vector<Ty> &args)
+{
+    if (name == NULL || name[0] == '\0') {
+        error("the call has no name");
+        return NULL;
+    }
+    std::string key = qualify(name);
+    Func incoming;
+    incoming.source = key;
+    incoming.ret = int_ty();
+    incoming.debug_name = name;
+    incoming.line = focus != NULL && focus->line > 0 ? focus->line : 1;
+    for (const Ty &ty : args) {
+        incoming.params.push_back(ty);
+        incoming.defaults.push_back(NULL);
+        incoming.names.push_back("");
+    }
+    install(std::move(incoming));
+    if (failed)
+        return NULL;
+    auto found = overloads.find(key);
+    if (found == overloads.end() || found->second.empty())
+        return NULL;
+    return &found->second.back();
+}
+
 Func *Codegen::resolve_keys(const std::vector<std::string> &keys, const std::vector<Ty> &args, const char *label)
 {
     bool any = false;
@@ -227,6 +253,8 @@ Func *Codegen::resolve_keys(const std::vector<std::string> &keys, const std::vec
             any = true;
     }
     if (!any) {
+        if (keys.empty())
+            return implicit_extern(label, args);
         error_name("unknown function", label);
         return NULL;
     }

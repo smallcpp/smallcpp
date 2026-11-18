@@ -159,6 +159,7 @@ add_exec_line(default-both default-both 0 "default-both 7 5")
 add_exec_line(short-circuit-and short-circuit-and 0 "short-circuit-and 0 0")
 add_exec_line(short-circuit-or short-circuit-or 0 "short-circuit-or 1 0")
 add_exec_line(this-field this-field 0 "this-field 4")
+add_exec_line(libc libc 0 "libc 5 12")
 
 add_test(
     NAME exec_exec-print-two
@@ -216,7 +217,13 @@ add_diag(bad-array-return "function returns an array")
 add_diag(bad-empty-struct "syntax error, unexpected '}'")
 add_diag(bad-unnamed-bit "syntax error, unexpected ':'")
 add_diag(bad-redefine "name is already defined: n")
-add_diag(bad-unknown-call "unknown function: missing")
+add_test(
+    NAME diag_bad-unknown-call
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/bad-unknown-call.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/bad-unknown-call
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectUndefined.cmake)
 add_diag(bad-no-match "no matching function: f")
 add_diag(bad-ambiguous "ambiguous call: f")
 add_diag(bad-this "this is not allowed here")

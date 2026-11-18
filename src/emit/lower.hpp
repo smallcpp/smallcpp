@@ -527,6 +527,7 @@ private:
     void rename_group(std::vector<Func> &group);
     bool same_signature(const Func &left, const Func &right);
     void install(Func incoming);
+    Func *implicit_extern(const char *name, const std::vector<Ty> &args);
     Func *resolve_keys(const std::vector<std::string> &keys, const std::vector<Ty> &args, const char *label);
     Func *resolve(const char *name, const std::vector<Ty> &args);
     Ty vararg_ty(Ty ty);
