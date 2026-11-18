@@ -1,4 +1,5 @@
 #include "smallcpp/CommandLine.hpp"
+#include "stackmap.hpp"
 
 #include <cerrno>
 #include <cstdint>
@@ -599,5 +600,8 @@ int main(int argc, char **argv)
     link.push_back(SMALLCPP_RUNTIME);
     link.push_back("-ldl");
     const int status = run_program(clang, link, "");
-    return finish(status, keep, intermediates);
+    if (status != 0)
+        return finish(status, keep, intermediates);
+    const int joined = merge_stackmaps(output);
+    return finish(joined, keep, intermediates);
 }

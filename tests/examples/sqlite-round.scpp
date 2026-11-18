@@ -1,0 +1,40 @@
+#include <exceptions>
+#include <sqlite>
+
+using namespace Sqlite;
+
+int main(void) {
+    Connection *database;
+    Statement *insert;
+    Statement *query;
+    Value *stored;
+
+    database = new Connection(":memory:");
+    if (!database->is_open())
+        throw *new Exception(database->error());
+    if (!database->execute(
+            "CREATE TABLE sample (value)"))
+        throw *new Exception(database->error());
+    insert = database->prepare(
+        "INSERT INTO sample VALUES (?)");
+    if (insert == nullptr)
+        throw *new Exception(database->error());
+    stored = new Value("parameterized text");
+    if (!insert->bind(1, stored))
+        throw *new Exception(insert->error());
+    insert->step();
+    if (insert->failed() || !insert->is_done())
+        throw *new Exception(insert->error());
+    insert->close();
+    query = database->prepare(
+        "SELECT value FROM sample");
+    if (query == nullptr || !query->step())
+        throw *new Exception(database->error());
+    if (strcmp(query->value(0)->as_text(),
+            "parameterized text") != 0)
+        throw *new Exception("roundtrip mismatch");
+    query->close();
+    database->close();
+    print("round trip\n");
+    return 0;
+}

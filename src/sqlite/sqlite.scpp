@@ -1,0 +1,921 @@
+/* Sqlite backend. The public header does not declare
+ * these C functions. This file calls them with extern.
+ * One backend is compiled into smallcpp_sqlite. */
+#include <exceptions>
+#include <sqlite>
+
+extern int sqlite3_open(const char *path, void **out);
+extern int sqlite3_close(void *db);
+extern const char *sqlite3_errmsg(void *db);
+extern int sqlite3_exec(void *db, const char *sql,
+        int (*callback)(void *data, int count,
+            char **values, char **names),
+        void *data, char **message);
+extern int sqlite3_prepare_v2(void *db, const char *sql,
+        int length, void **out, const char **tail);
+extern int sqlite3_finalize(void *stmt);
+extern int sqlite3_step(void *stmt);
+extern int sqlite3_bind_null(void *stmt, int index);
+extern int sqlite3_bind_int64(void *stmt, int index,
+        long value);
+extern int sqlite3_bind_double(void *stmt, int index,
+        double value);
+extern int sqlite3_bind_text(void *stmt, int index,
+        const char *text, int size,
+        void (*destroy)(void *));
+extern int sqlite3_bind_blob(void *stmt, int index,
+        const void *bytes, int size,
+        void (*destroy)(void *));
+extern int sqlite3_column_count(void *stmt);
+extern int sqlite3_column_type(void *stmt, int column);
+extern long sqlite3_column_int64(void *stmt, int column);
+extern double sqlite3_column_double(void *stmt,
+        int column);
+extern const char *sqlite3_column_text(void *stmt,
+        int column);
+extern const void *sqlite3_column_blob(void *stmt,
+        int column);
+extern int sqlite3_column_bytes(void *stmt, int column);
+extern int sqlite3_busy_timeout(void *db,
+        int milliseconds);
+
+namespace Sqlite {
+
+enum {
+    SQLITE_OK = 0,
+    SQLITE_ROW = 100,
+    SQLITE_DONE = 101,
+    SQLITE_INTEGER = 1,
+    SQLITE_FLOAT = 2,
+    SQLITE_TEXT = 3,
+    SQLITE_BLOB = 4,
+    SQLITE_NULL = 5
+};
+
+class ConnectionState {
+public:
+    void *database;
+    int opened;
+    char *errorText;
+    Statement **statements;
+    long statementCount;
+    long statementRoom;
+    Transaction **transactions;
+    long transactionCount;
+    long transactionRoom;
+};
+
+class StatementState {
+public:
+    Connection *owner;
+    void *handle;
+    int open;
+    int rowReady;
+    int atEnd;
+    int failed;
+    char *errorText;
+    Value **columns;
+    long columnCount;
+};
+
+class TransactionState {
+public:
+    Connection *owner;
+    int active;
+    int open;
+};
+
+static char *copy_text(const char *text) {
+    long n;
+    long i;
+    char *copy;
+
+    if (text == nullptr)
+        text = "";
+    n = 0;
+    while (text[n] != 0)
+        n = n + 1;
+    copy = new char[n + 1];
+    i = 0;
+    while (i < n) {
+        copy[i] = text[i];
+        i = i + 1;
+    }
+    copy[i] = 0;
+    return copy;
+}
+
+static char *copy_bytes(const void *bytes, long size) {
+    const char *incoming;
+    char *copy;
+    long i;
+
+    if (size <= 0 || bytes == nullptr)
+        return nullptr;
+    incoming = (const char *)bytes;
+    copy = new char[size];
+    i = 0;
+    while (i < size) {
+        copy[i] = incoming[i];
+        i = i + 1;
+    }
+    return copy;
+}
+
+static int only_space(const char *text) {
+    long i;
+
+    if (text == nullptr)
+        return 1;
+    i = 0;
+    while (text[i] != 0) {
+        if (text[i] != ' ' && text[i] != '\t'
+                && text[i] != '\n' && text[i] != '\r'
+                && text[i] != '\f' && text[i] != '\v')
+            return 0;
+        i = i + 1;
+    }
+    return 1;
+}
+
+static void *transient_pointer(void) {
+    long bits;
+
+    bits = -1;
+    return (void *)bits;
+}
+
+static void drop_statement(ConnectionState *data,
+        Statement *statement) {
+    long i;
+    long j;
+
+    if (data == nullptr || statement == nullptr)
+        return;
+    if (data->statements == nullptr)
+        return;
+    i = 0;
+    while (i < data->statementCount) {
+        if (data->statements[i] == statement) {
+            j = i;
+            while (j + 1 < data->statementCount) {
+                data->statements[j] =
+                    data->statements[j + 1];
+                j = j + 1;
+            }
+            data->statementCount =
+                data->statementCount - 1;
+            return;
+        }
+        i = i + 1;
+    }
+}
+
+static void drop_transaction(ConnectionState *data,
+        Transaction *transaction) {
+    long i;
+    long j;
+
+    if (data == nullptr || transaction == nullptr)
+        return;
+    if (data->transactions == nullptr)
+        return;
+    i = 0;
+    while (i < data->transactionCount) {
+        if (data->transactions[i] == transaction) {
+            j = i;
+            while (j + 1 < data->transactionCount) {
+                data->transactions[j] =
+                    data->transactions[j + 1];
+                j = j + 1;
+            }
+            data->transactionCount =
+                data->transactionCount - 1;
+            return;
+        }
+        i = i + 1;
+    }
+}
+
+static void keep_statement(ConnectionState *data,
+        Statement *statement) {
+    Statement **grown;
+    long next;
+    long i;
+
+    if (data == nullptr || statement == nullptr)
+        return;
+    if (data->statementCount < data->statementRoom) {
+        data->statements[data->statementCount] =
+            statement;
+        data->statementCount = data->statementCount + 1;
+        return;
+    }
+    next = data->statementRoom * 2;
+    if (next < 4)
+        next = 4;
+    grown = new Statement *[next];
+    i = 0;
+    while (i < next) {
+        grown[i] = nullptr;
+        i = i + 1;
+    }
+    i = 0;
+    while (i < data->statementCount) {
+        grown[i] = data->statements[i];
+        i = i + 1;
+    }
+    grown[data->statementCount] = statement;
+    data->statements = grown;
+    data->statementRoom = next;
+    data->statementCount = data->statementCount + 1;
+}
+
+static void keep_transaction(ConnectionState *data,
+        Transaction *transaction) {
+    Transaction **grown;
+    long next;
+    long i;
+
+    if (data == nullptr || transaction == nullptr)
+        return;
+    if (data->transactionCount < data->transactionRoom) {
+        data->transactions[data->transactionCount] =
+            transaction;
+        data->transactionCount =
+            data->transactionCount + 1;
+        return;
+    }
+    next = data->transactionRoom * 2;
+    if (next < 4)
+        next = 4;
+    grown = new Transaction *[next];
+    i = 0;
+    while (i < next) {
+        grown[i] = nullptr;
+        i = i + 1;
+    }
+    i = 0;
+    while (i < data->transactionCount) {
+        grown[i] = data->transactions[i];
+        i = i + 1;
+    }
+    grown[data->transactionCount] = transaction;
+    data->transactions = grown;
+    data->transactionRoom = next;
+    data->transactionCount =
+        data->transactionCount + 1;
+}
+
+static void remember_error(StatementState *data) {
+    ConnectionState *ownerState;
+    const char *text;
+
+    if (data == nullptr)
+        return;
+    text = "sqlite";
+    if (data->owner != nullptr) {
+        ownerState =
+            (ConnectionState *)data->owner->state;
+        if (ownerState != nullptr
+                && ownerState->database != nullptr) {
+            text = sqlite3_errmsg(ownerState->database);
+            if (text == nullptr)
+                text = "sqlite";
+            ownerState->errorText = copy_text(text);
+        }
+    }
+    data->errorText = copy_text(text);
+}
+
+static Value *column_value(void *stmt, int column) {
+    int kind;
+    const char *text;
+    const void *bytes;
+    int size;
+
+    kind = sqlite3_column_type(stmt, column);
+    if (kind == SQLITE_INTEGER)
+        return new Value(sqlite3_column_int64(
+            stmt, column));
+    if (kind == SQLITE_FLOAT)
+        return new Value(sqlite3_column_double(
+            stmt, column));
+    if (kind == SQLITE_TEXT) {
+        text = sqlite3_column_text(stmt, column);
+        if (text == nullptr)
+            text = "";
+        return new Value(text);
+    }
+    if (kind == SQLITE_BLOB) {
+        size = sqlite3_column_bytes(stmt, column);
+        bytes = sqlite3_column_blob(stmt, column);
+        if (size < 0)
+            size = 0;
+        return new Value(bytes, (long)size);
+    }
+    return new Value();
+}
+
+static void finish_transaction(Transaction *transaction) {
+    TransactionState *data;
+
+    if (transaction == nullptr)
+        return;
+    data = (TransactionState *)transaction->state;
+    if (data == nullptr || data->open == 0)
+        return;
+    if (data->active != 0 && data->owner != nullptr)
+        data->owner->execute("ROLLBACK");
+    data->active = 0;
+    data->open = 0;
+    if (data->owner != nullptr)
+        drop_transaction(
+            (ConnectionState *)data->owner->state,
+            transaction);
+}
+
+Value::Value() {
+    kindValue = SQL_NULL;
+    integerValue = 0;
+    realValue = 0.0;
+    textValue = nullptr;
+    blobValue = nullptr;
+    blobBytes = 0;
+}
+
+Value::Value(long number) {
+    kindValue = SQL_INTEGER;
+    integerValue = number;
+    realValue = 0.0;
+    textValue = nullptr;
+    blobValue = nullptr;
+    blobBytes = 0;
+}
+
+Value::Value(double number) {
+    kindValue = SQL_REAL;
+    integerValue = 0;
+    realValue = number;
+    textValue = nullptr;
+    blobValue = nullptr;
+    blobBytes = 0;
+}
+
+Value::Value(const char *text) {
+    Value *self;
+
+    self = this;
+    self->kindValue = SQL_NULL;
+    self->integerValue = 0;
+    self->realValue = 0.0;
+    self->textValue = nullptr;
+    self->blobValue = nullptr;
+    self->blobBytes = 0;
+    if (text == nullptr)
+        throw *new Exception("value");
+    self->kindValue = SQL_TEXT;
+    self->textValue = copy_text(text);
+}
+
+Value::Value(const void *bytes, long size) {
+    Value *self;
+
+    self = this;
+    self->kindValue = SQL_NULL;
+    self->integerValue = 0;
+    self->realValue = 0.0;
+    self->textValue = nullptr;
+    self->blobValue = nullptr;
+    self->blobBytes = 0;
+    if (size < 0 || (bytes == nullptr && size != 0))
+        throw *new Exception("value");
+    self->kindValue = SQL_BLOB;
+    self->blobBytes = size;
+    if (size == 0)
+        return;
+    self->blobValue = copy_bytes(bytes, size);
+}
+
+int Value::kind() const {
+    return kindValue;
+}
+
+bool Value::is_null() const {
+    if (kindValue == SQL_NULL)
+        return true;
+    return false;
+}
+
+long Value::as_integer() const {
+    if (kindValue != SQL_INTEGER)
+        throw *new Exception("value");
+    return integerValue;
+}
+
+double Value::as_real() const {
+    if (kindValue != SQL_REAL)
+        throw *new Exception("value");
+    return realValue;
+}
+
+const char *Value::as_text() const {
+    if (kindValue != SQL_TEXT)
+        throw *new Exception("value");
+    if (textValue == nullptr)
+        return "";
+    return textValue;
+}
+
+const void *Value::as_blob() const {
+    if (kindValue != SQL_BLOB)
+        throw *new Exception("value");
+    return blobValue;
+}
+
+long Value::blob_size() const {
+    if (kindValue != SQL_BLOB)
+        throw *new Exception("value");
+    return blobBytes;
+}
+
+Connection::Connection(const char *path) {
+    Connection *self;
+    ConnectionState *data;
+    void *db;
+    int code;
+
+    self = this;
+    self->state = nullptr;
+    data = new ConnectionState();
+    data->database = nullptr;
+    data->opened = 0;
+    data->errorText = "";
+    data->statements = nullptr;
+    data->statementCount = 0;
+    data->statementRoom = 0;
+    data->transactions = nullptr;
+    data->transactionCount = 0;
+    data->transactionRoom = 0;
+    self->state = data;
+    if (path == nullptr) {
+        data->errorText = copy_text("sqlite");
+        return;
+    }
+    db = nullptr;
+    code = sqlite3_open(path, &db);
+    if (code != SQLITE_OK) {
+        if (db != nullptr)
+            data->errorText = copy_text(sqlite3_errmsg(db));
+        else
+            data->errorText = copy_text("sqlite");
+        if (db != nullptr)
+            sqlite3_close(db);
+        return;
+    }
+    data->database = db;
+    data->opened = 1;
+}
+
+Connection::~Connection() {
+    ConnectionState *data;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr)
+        return;
+    while (data->statementCount > 0)
+        data->statements[0]->close();
+    while (data->transactionCount > 0)
+        finish_transaction(data->transactions[0]);
+    if (data->opened != 0 && data->database != nullptr) {
+        sqlite3_close(data->database);
+        data->database = nullptr;
+        data->opened = 0;
+    }
+}
+
+bool Connection::is_open() const {
+    ConnectionState *data;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr)
+        return false;
+    if (data->opened != 0)
+        return true;
+    return false;
+}
+
+const char *Connection::error() const {
+    ConnectionState *data;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr || data->errorText == nullptr)
+        return "";
+    return data->errorText;
+}
+
+bool Connection::execute(const char *sql) {
+    ConnectionState *data;
+    int code;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr || data->opened == 0) {
+        if (data != nullptr)
+            data->errorText = copy_text("sqlite");
+        return false;
+    }
+    if (sql == nullptr) {
+        data->errorText = copy_text("sqlite");
+        return false;
+    }
+    code = sqlite3_exec(data->database, sql, nullptr,
+        nullptr, nullptr);
+    if (code != SQLITE_OK) {
+        data->errorText = copy_text(
+            sqlite3_errmsg(data->database));
+        return false;
+    }
+    return true;
+}
+
+Statement *Connection::prepare(const char *sql) {
+    ConnectionState *data;
+    Statement *made;
+    void *stmt;
+    const char *tail;
+    int code;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr || data->opened == 0) {
+        if (data != nullptr)
+            data->errorText = copy_text("sqlite");
+        return nullptr;
+    }
+    if (sql == nullptr) {
+        data->errorText = copy_text("sqlite");
+        return nullptr;
+    }
+    stmt = nullptr;
+    tail = nullptr;
+    code = sqlite3_prepare_v2(data->database, sql, -1,
+        &stmt, &tail);
+    if (code != SQLITE_OK || stmt == nullptr) {
+        data->errorText = copy_text(
+            sqlite3_errmsg(data->database));
+        if (stmt != nullptr)
+            sqlite3_finalize(stmt);
+        return nullptr;
+    }
+    if (only_space(tail) == 0) {
+        sqlite3_finalize(stmt);
+        data->errorText = copy_text("sqlite");
+        return nullptr;
+    }
+    made = new Statement(this, stmt);
+    keep_statement(data, made);
+    return made;
+}
+
+bool Connection::set_busy_timeout(long milliseconds) {
+    ConnectionState *data;
+    int code;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr || data->opened == 0)
+        return false;
+    if (milliseconds > 2147483647)
+        return false;
+    if (milliseconds < -2147483647)
+        return false;
+    code = sqlite3_busy_timeout(data->database,
+        (int)milliseconds);
+    if (code != SQLITE_OK) {
+        data->errorText = copy_text(
+            sqlite3_errmsg(data->database));
+        return false;
+    }
+    return true;
+}
+
+Transaction *Connection::begin_transaction() {
+    ConnectionState *data;
+    Transaction *made;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr || data->opened == 0) {
+        if (data != nullptr)
+            data->errorText = copy_text("sqlite");
+        return nullptr;
+    }
+    if (data->transactionCount > 0) {
+        data->errorText = copy_text("sqlite");
+        return nullptr;
+    }
+    if (!execute("BEGIN IMMEDIATE"))
+        return nullptr;
+    made = new Transaction(this);
+    keep_transaction(data, made);
+    return made;
+}
+
+bool Connection::close() {
+    ConnectionState *data;
+    int code;
+
+    data = (ConnectionState *)state;
+    if (data == nullptr || data->opened == 0)
+        return true;
+    if (data->statementCount > 0
+            || data->transactionCount > 0) {
+        data->errorText = copy_text("sqlite");
+        return false;
+    }
+    code = sqlite3_close(data->database);
+    if (code != SQLITE_OK) {
+        data->errorText = copy_text(
+            sqlite3_errmsg(data->database));
+        return false;
+    }
+    data->database = nullptr;
+    data->opened = 0;
+    return true;
+}
+
+Statement::Statement(Connection *owner, void *handle) {
+    Statement *self;
+    StatementState *data;
+
+    self = this;
+    self->state = nullptr;
+    data = new StatementState();
+    data->owner = owner;
+    data->handle = handle;
+    data->open = 1;
+    data->rowReady = 0;
+    data->atEnd = 0;
+    data->failed = 0;
+    data->errorText = "";
+    data->columns = nullptr;
+    data->columnCount = 0;
+    self->state = data;
+}
+
+Statement::~Statement() {
+    close();
+}
+
+const char *Statement::error() const {
+    StatementState *data;
+
+    data = (StatementState *)state;
+    if (data == nullptr || data->errorText == nullptr)
+        return "";
+    return data->errorText;
+}
+
+bool Statement::bind(int index, Value *slot) {
+    StatementState *data;
+    void (*destroy)(void *);
+    int kind;
+    int code;
+    long size;
+
+    data = (StatementState *)state;
+    if (data == nullptr || data->open == 0)
+        return false;
+    if (slot == nullptr)
+        throw *new Exception("value");
+    if (index < 1) {
+        data->errorText = copy_text("sqlite");
+        return false;
+    }
+    destroy = (void (*)(void *))transient_pointer();
+    kind = slot->kind();
+    if (kind == SQL_NULL) {
+        code = sqlite3_bind_null(data->handle, index);
+    } else if (kind == SQL_INTEGER) {
+        code = sqlite3_bind_int64(data->handle, index,
+            slot->as_integer());
+    } else if (kind == SQL_REAL) {
+        code = sqlite3_bind_double(data->handle, index,
+            slot->as_real());
+    } else if (kind == SQL_TEXT) {
+        code = sqlite3_bind_text(data->handle, index,
+            slot->as_text(), -1, destroy);
+    } else if (kind == SQL_BLOB) {
+        size = slot->blob_size();
+        if (size > 2147483647 || size < 0) {
+            data->errorText = copy_text("sqlite");
+            return false;
+        }
+        code = sqlite3_bind_blob(data->handle, index,
+            slot->as_blob(), (int)size, destroy);
+    } else {
+        data->errorText = copy_text("sqlite");
+        return false;
+    }
+    if (code != SQLITE_OK) {
+        remember_error(data);
+        return false;
+    }
+    return true;
+}
+
+bool Statement::step() {
+    StatementState *data;
+    Value **held;
+    int code;
+    int count;
+    int i;
+
+    data = (StatementState *)state;
+    if (data == nullptr || data->open == 0)
+        return false;
+    if (data->atEnd != 0 || data->failed != 0)
+        return false;
+    code = sqlite3_step(data->handle);
+    data->columns = nullptr;
+    data->columnCount = 0;
+    data->rowReady = 0;
+    if (code == SQLITE_ROW) {
+        count = sqlite3_column_count(data->handle);
+        if (count < 0)
+            count = 0;
+        held = nullptr;
+        if (count > 0) {
+            held = new Value *[count];
+            i = 0;
+            while (i < count) {
+                held[i] = nullptr;
+                i = i + 1;
+            }
+            i = 0;
+            while (i < count) {
+                held[i] = column_value(data->handle, i);
+                i = i + 1;
+            }
+        }
+        data->columns = held;
+        data->columnCount = count;
+        data->rowReady = 1;
+        data->atEnd = 0;
+        data->failed = 0;
+        return true;
+    }
+    if (code == SQLITE_DONE) {
+        data->atEnd = 1;
+        data->failed = 0;
+        return false;
+    }
+    data->failed = 1;
+    data->atEnd = 0;
+    remember_error(data);
+    return false;
+}
+
+bool Statement::has_row() const {
+    StatementState *data;
+
+    data = (StatementState *)state;
+    if (data == nullptr)
+        return false;
+    if (data->rowReady != 0)
+        return true;
+    return false;
+}
+
+bool Statement::is_done() const {
+    StatementState *data;
+
+    data = (StatementState *)state;
+    if (data == nullptr)
+        return false;
+    if (data->atEnd != 0)
+        return true;
+    return false;
+}
+
+bool Statement::failed() const {
+    StatementState *data;
+
+    data = (StatementState *)state;
+    if (data == nullptr)
+        return false;
+    if (data->failed != 0)
+        return true;
+    return false;
+}
+
+Value *Statement::value(int column) const {
+    StatementState *data;
+
+    data = (StatementState *)state;
+    if (data == nullptr || data->rowReady == 0)
+        throw *new Exception("value");
+    if (column < 0 || (long)column >= data->columnCount)
+        throw *new Exception("value");
+    if (data->columns == nullptr)
+        throw *new Exception("value");
+    return data->columns[column];
+}
+
+bool Statement::close() {
+    StatementState *data;
+    int code;
+
+    data = (StatementState *)state;
+    if (data == nullptr || data->open == 0)
+        return true;
+    code = SQLITE_OK;
+    if (data->handle != nullptr)
+        code = sqlite3_finalize(data->handle);
+    data->handle = nullptr;
+    data->open = 0;
+    data->rowReady = 0;
+    data->atEnd = 0;
+    data->columns = nullptr;
+    data->columnCount = 0;
+    if (code != SQLITE_OK)
+        remember_error(data);
+    if (data->owner != nullptr)
+        drop_statement(
+            (ConnectionState *)data->owner->state, this);
+    if (code != SQLITE_OK)
+        return false;
+    return true;
+}
+
+Transaction::Transaction(Connection *owner) {
+    Transaction *self;
+    TransactionState *data;
+
+    self = this;
+    self->state = nullptr;
+    data = new TransactionState();
+    data->owner = owner;
+    data->active = 1;
+    data->open = 1;
+    self->state = data;
+}
+
+Transaction::~Transaction() {
+    close();
+}
+
+bool Transaction::is_active() const {
+    TransactionState *data;
+
+    data = (TransactionState *)state;
+    if (data == nullptr)
+        return false;
+    if (data->active != 0)
+        return true;
+    return false;
+}
+
+bool Transaction::commit() {
+    TransactionState *data;
+
+    data = (TransactionState *)state;
+    if (data == nullptr || data->active == 0)
+        return false;
+    if (data->owner == nullptr)
+        return false;
+    if (!data->owner->execute("COMMIT"))
+        return false;
+    data->active = 0;
+    return true;
+}
+
+bool Transaction::rollback() {
+    TransactionState *data;
+
+    data = (TransactionState *)state;
+    if (data == nullptr || data->active == 0)
+        return false;
+    if (data->owner == nullptr)
+        return false;
+    if (!data->owner->execute("ROLLBACK"))
+        return false;
+    data->active = 0;
+    return true;
+}
+
+bool Transaction::close() {
+    TransactionState *data;
+
+    data = (TransactionState *)state;
+    if (data == nullptr || data->open == 0)
+        return true;
+    if (data->active != 0) {
+        if (!rollback())
+            return false;
+    }
+    data->open = 0;
+    if (data->owner != nullptr)
+        drop_transaction(
+            (ConnectionState *)data->owner->state, this);
+    return true;
+}
+
+}

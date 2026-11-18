@@ -3,6 +3,11 @@ if(NOT DEFINED COMPILER OR NOT DEFINED SOURCE OR NOT DEFINED PROGRAM OR NOT DEFI
 endif()
 
 set(compile_command "${COMPILER}")
+if(DEFINED LIB_DIRS AND NOT "${LIB_DIRS}" STREQUAL "")
+    foreach(dir IN LISTS LIB_DIRS)
+        list(APPEND compile_command -L "${dir}")
+    endforeach()
+endif()
 if(DEFINED LIBS AND NOT "${LIBS}" STREQUAL "")
     foreach(lib IN LISTS LIBS)
         list(APPEND compile_command -l "${lib}")
