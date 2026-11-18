@@ -141,6 +141,26 @@ void Codegen::rename_group(std::vector<Func> &group)
         fn.fn->setName(sig_text(fn));
 }
 
+static bool same_text(const char *left, const char *right)
+{
+    if (left == NULL || right == NULL)
+        return left == right;
+    return std::strcmp(left, right) == 0;
+}
+
+static bool same_expr(const AstNode *left, const AstNode *right)
+{
+    if (left == NULL || right == NULL)
+        return left == right;
+    if (left->kind != right->kind || !same_text(left->text, right->text))
+        return false;
+    if (!same_expr(left->a, right->a) || !same_expr(left->b, right->b))
+        return false;
+    if (!same_expr(left->c, right->c) || !same_expr(left->d, right->d))
+        return false;
+    return same_expr(left->next, right->next);
+}
+
 bool Codegen::same_signature(const Func &left, const Func &right)
 {
     if (left.vararg != right.vararg || left.params.size() != right.params.size())
@@ -150,6 +170,57 @@ bool Codegen::same_signature(const Func &left, const Func &right)
             return false;
     }
     return true;
+}
+
+bool Codegen::has_default(const Func &fn, unsigned index) const
+{
+    if (index < fn.default_exprs.size() && fn.default_exprs[index] != NULL)
+        return true;
+    return index < fn.defaults.size() && fn.defaults[index] != NULL;
+}
+
+void Codegen::append_omitted(std::vector<llvm::Value *> &out, const Func &fn,
+                             unsigned begin, unsigned end, int most_flag)
+{
+    std::vector<Ty> params = fn.params;
+    std::vector<const AstNode *> exprs = fn.default_exprs;
+    std::vector<llvm::Constant *> constants = fn.defaults;
+    std::vector<std::string> names = fn.names;
+    for (unsigned index = begin; index < end; index++) {
+        if (most_flag >= 0 && index < names.size()
+            && names[index] == ".most") {
+            out.push_back(ctor_flag(most_flag != 0));
+            continue;
+        }
+        const AstNode *expr = NULL;
+        llvm::Constant *constant = NULL;
+        Ty param = int_ty();
+        if (index < exprs.size())
+            expr = exprs[index];
+        if (index < constants.size())
+            constant = constants[index];
+        if (index < params.size())
+            param = params[index];
+        llvm::Type *ir = llvm::Type::getInt32Ty(context);
+        if (param.ir != NULL)
+            ir = param.ir;
+        if (expr != NULL) {
+            RValue value = emit_rvalue(expr);
+            if (failed || value.v == NULL) {
+                out.push_back(llvm::Constant::getNullValue(ir));
+                return;
+            }
+            out.push_back(convert(value.v, value.ty, param));
+        } else if (constant != NULL) {
+            out.push_back(constant);
+        } else {
+            error("missing default argument");
+            out.push_back(llvm::Constant::getNullValue(ir));
+            return;
+        }
+        if (failed)
+            return;
+    }
 }
 
 void Codegen::install(Func incoming)
@@ -170,6 +241,19 @@ void Codegen::install(Func incoming)
         if (existing.is_static != incoming.is_static) {
             error_name("incompatible linkage", incoming.source.c_str());
             return;
+        }
+        if (existing.default_exprs.size() != incoming.default_exprs.size()
+            || existing.defaults.size() != incoming.defaults.size()) {
+            error("default argument does not match");
+            return;
+        }
+        for (std::size_t i = 0; i < existing.default_exprs.size(); i++) {
+            const AstNode *was = existing.default_exprs[i];
+            const AstNode *now = incoming.default_exprs[i];
+            if (was != NULL && now != NULL && !same_expr(was, now)) {
+                error("default argument does not match");
+                return;
+            }
         }
         if (existing.body != NULL && incoming.body != NULL) {
             error_name("name is already defined", incoming.source.c_str());
@@ -197,6 +281,8 @@ void Codegen::install(Func incoming)
         for (std::size_t i = 0; i < existing.defaults.size(); i++) {
             if (existing.defaults[i] == NULL && incoming.defaults[i] != NULL)
                 existing.defaults[i] = incoming.defaults[i];
+            if (existing.default_exprs[i] == NULL && incoming.default_exprs[i] != NULL)
+                existing.default_exprs[i] = incoming.default_exprs[i];
         }
         return;
     }
@@ -230,6 +316,7 @@ Func *Codegen::implicit_extern(const char *name, const std::vector<Ty> &args)
     for (const Ty &ty : args) {
         incoming.params.push_back(ty);
         incoming.defaults.push_back(NULL);
+        incoming.default_exprs.push_back(NULL);
         incoming.names.push_back("");
     }
     install(std::move(incoming));
@@ -268,7 +355,7 @@ Func *Codegen::resolve_keys(const std::vector<std::string> &keys, const std::vec
             continue;
         for (Func &fn : found->second) {
         unsigned required = 0;
-        while (required < fn.params.size() && fn.defaults[required] == NULL)
+        while (required < fn.params.size() && !has_default(fn, required))
             required++;
         if (args.size() < required)
             continue;
@@ -420,15 +507,17 @@ RValue Codegen::emit_call(const AstNode *node)
     Func *target = resolve_keys(keys, types, label);
     if (target == NULL || failed)
         return fallback();
+    llvm::Function *callee = target->fn;
+    Ty ret = drop(target->ret);
+    bool vararg = target->vararg;
     std::vector<llvm::Value *> values;
     unsigned fixed = static_cast<unsigned>(target->params.size());
     unsigned provided = static_cast<unsigned>(args.size());
     unsigned limit = provided < fixed ? provided : fixed;
     for (unsigned i = 0; i < limit; i++)
         values.push_back(convert(args[i].v, args[i].ty, target->params[i]));
-    for (unsigned i = limit; i < fixed; i++)
-        values.push_back(target->defaults[i]);
-    if (target->vararg) {
+    append_omitted(values, *target, limit, fixed, -1);
+    if (vararg) {
         for (unsigned i = fixed; i < provided; i++) {
             Ty widened = vararg_ty(args[i].ty);
             values.push_back(convert(args[i].v, args[i].ty, widened));
@@ -436,9 +525,9 @@ RValue Codegen::emit_call(const AstNode *node)
     }
     if (failed)
         return fallback();
-    llvm::Value *call = builder.CreateCall(target->fn->getFunctionType(), target->fn, values);
+    llvm::Value *call = builder.CreateCall(callee->getFunctionType(), callee, values);
     RValue out;
-    out.ty = drop(target->ret);
+    out.ty = ret;
     out.v = out.ty.is_void ? nullptr : call;
     return out;
 }
@@ -531,14 +620,7 @@ bool Codegen::collect_params(const AstNode *list, std::vector<Param> &out, bool 
             return false;
         }
         if (node->c != NULL) {
-            Const value = eval_const(node->c);
-            if (!value.ok) {
-                if (!failed)
-                    error("default argument is not constant");
-                return false;
-            }
-            param.fallback = llvm::cast<llvm::Constant>(
-                convert_const(value.v, value.ty, param.ty));
+            param.expr = node->c;
             saw_default = true;
         } else if (saw_default) {
             error("default arguments must be trailing");
@@ -622,6 +704,7 @@ void Codegen::declare_function(const AstNode *specs, const AstNode *decl, const 
     for (const Param &param : params) {
         incoming.params.push_back(param.ty);
         incoming.defaults.push_back(param.fallback);
+        incoming.default_exprs.push_back(param.expr);
         incoming.names.push_back(param.name);
     }
     install(std::move(incoming));

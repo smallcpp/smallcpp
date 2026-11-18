@@ -142,20 +142,19 @@ RValue Codegen::emit_new(const AstNode *node)
             Func *ctor = resolve_keys({ir_name}, types, last.c_str());
             if (ctor == NULL)
                 return fallback();
+            llvm::Function *callee = ctor->fn;
             std::vector<llvm::Value *> values;
             values.push_back(result);
-            unsigned user = static_cast<unsigned>(ctor->params.size() - 1);
+            unsigned count = static_cast<unsigned>(ctor->params.size());
+            unsigned user = count - 1;
             unsigned provided = static_cast<unsigned>(args.size());
             unsigned limit = provided < user ? provided : user;
             for (unsigned i = 0; i < limit; i++)
                 values.push_back(convert(args[i].v, args[i].ty, ctor->params[i + 1]));
-            for (unsigned i = limit; i < user; i++) {
-                if (i + 1 < ctor->names.size() && ctor->names[i + 1] == ".most")
-                    values.push_back(ctor_flag(true));
-                else
-                    values.push_back(ctor->defaults[i + 1]);
-            }
-            builder.CreateCall(ctor->fn->getFunctionType(), ctor->fn, values);
+            append_omitted(values, *ctor, limit + 1, count, 1);
+            if (failed)
+                return fallback();
+            builder.CreateCall(callee->getFunctionType(), callee, values);
         } else if (node->b != NULL) {
             error("no matching constructor");
             return fallback();

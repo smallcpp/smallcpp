@@ -1,0 +1,25 @@
+int extra(void) {
+    return 4;
+}
+
+class Box {
+    int x;
+public:
+    Box(int ax) : x(ax) {
+    }
+    int take(int n = extra());
+};
+
+int Box::take(int n = extra()) {
+    return x + n;
+}
+
+int main(void) {
+    Box *b;
+    int shown;
+
+    b = new Box(3);
+    shown = b->take();
+    print("default-method {}\n", shown);
+    return 0;
+}

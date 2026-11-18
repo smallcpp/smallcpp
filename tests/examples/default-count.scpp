@@ -1,0 +1,25 @@
+int hits;
+
+int extra(void) {
+    hits = hits + 1;
+    return 9;
+}
+
+int pick(int n) {
+    return n;
+}
+
+int pick(int n, int k = extra()) {
+    return n + k;
+}
+
+int main(void) {
+    int one;
+    int two;
+
+    hits = 0;
+    one = pick(3);
+    two = pick(3, 4);
+    print("default-count {} {} {}\n", one, two, hits);
+    return 0;
+}

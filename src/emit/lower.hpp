@@ -182,6 +182,7 @@ struct LabelInfo {
 struct Param {
     std::string name;
     Ty ty;
+    const AstNode *expr = nullptr;
     llvm::Constant *fallback = nullptr;
 };
 
@@ -201,6 +202,7 @@ struct Func {
     llvm::Function *fn = nullptr;
     std::vector<Ty> params;
     std::vector<llvm::Constant *> defaults;
+    std::vector<const AstNode *> default_exprs;
     std::vector<std::string> names;
     bool vararg = false;
     Ty ret;
@@ -534,6 +536,9 @@ private:
     std::string sig_text(const Func &fn);
     void rename_group(std::vector<Func> &group);
     bool same_signature(const Func &left, const Func &right);
+    bool has_default(const Func &fn, unsigned index) const;
+    void append_omitted(std::vector<llvm::Value *> &out, const Func &fn,
+                        unsigned begin, unsigned end, int most_flag);
     void install(Func incoming);
     Func *implicit_extern(const char *name, const std::vector<Ty> &args);
     Func *resolve_keys(const std::vector<std::string> &keys, const std::vector<Ty> &args, const char *label);

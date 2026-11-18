@@ -1,0 +1,21 @@
+int hits;
+
+int extra(void) {
+    hits = hits + 1;
+    return 3;
+}
+
+int add(int n, int k = 2, int m = extra()) {
+    return n + k + m;
+}
+
+int main(void) {
+    int both;
+    int last;
+
+    hits = 0;
+    both = add(4);
+    last = add(4, 1);
+    print("default-trail {} {} {}\n", both, last, hits);
+    return 0;
+}
