@@ -1,0 +1,17 @@
+long pick(int value) {
+    return (long)value;
+}
+
+long pick(int left, int right) {
+    return (long)left + (long)right;
+}
+
+int main(void) {
+    long (*fn)(int, int);
+    int shown;
+
+    fn = (long (*)(int, int))pick;
+    shown = (int)fn(3, 4);
+    print("fn-ptr-assign {}\n", shown);
+    return 0;
+}

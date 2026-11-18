@@ -1,0 +1,17 @@
+long add(int left, int right) {
+    return (long)left + (long)right;
+}
+
+long apply(long fn(int, int), int left, int right) {
+    return fn(left, right);
+}
+
+int main(void) {
+    long (*fn)(int, int);
+    int shown;
+
+    fn = add;
+    shown = (int)apply(fn, 2, 5);
+    print("fn-ptr-pass {}\n", shown);
+    return 0;
+}

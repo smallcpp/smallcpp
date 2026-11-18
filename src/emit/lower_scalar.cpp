@@ -216,6 +216,8 @@ Ty Codegen::decay(Ty ty)
     ty = drop(ty);
     if (ty.is_array && ty.inner)
         return pointer_to(*ty.inner);
+    if (ty.is_function)
+        return pointer_to(ty);
     return ty;
 }
 
@@ -230,6 +232,8 @@ bool Codegen::complete_type(const Ty &ty)
             return false;
         return complete_type(*ty.inner);
     }
+    if (ty.is_function)
+        return false;
     if (ty.is_record) {
         auto found = records.find(ty.record);
         return found != records.end() && found->second.complete;
@@ -327,13 +331,22 @@ Ty Codegen::walk_declarator(Ty base, const AstNode *node, Declared &out)
         return base;
     }
     if (node->kind == AST_FUNCTION_DECL) {
-        if (node->a != NULL && node->a->kind != AST_IDENT && node->a->kind != AST_QUALIFIED) {
-            error("not in this phase");
+        const AstNode *inner = NULL;
+        const AstNode *params = NULL;
+        split_function(node, inner, params);
+        bool entity = inner == NULL || inner->kind == AST_IDENT
+            || inner->kind == AST_QUALIFIED;
+        if (entity) {
+            out.func = node;
+            if (inner != NULL
+                && (inner->kind == AST_IDENT || inner->kind == AST_QUALIFIED))
+                out.name = inner;
             return base;
         }
-        out.func = node;
-        out.name = node->a;
-        return base;
+        Ty fn = function_from_decl(base, node);
+        if (failed)
+            return base;
+        return walk_declarator(fn, inner, out);
     }
     if (node->kind == AST_DECLARATOR)
         return walk_declarator(apply_pointers(base, node->a), node->b, out);
@@ -1075,6 +1088,12 @@ void Codegen::store_slot(const Slot &slot, llvm::Value *value, bool initializing
 
 RValue Codegen::read_slot(const Slot &slot)
 {
+    if (slot.ty.is_function) {
+        RValue out;
+        out.ty = pointer_to(slot.ty);
+        out.v = slot.addr;
+        return out;
+    }
     if (slot.ty.is_array && slot.ty.inner != NULL && slot.bits == 0) {
         llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0);
         RValue out;
@@ -1148,7 +1167,7 @@ Ty Codegen::object_type(const AstNode *node)
         type_of(node->b);
         if (failed)
             return int_ty();
-        if (!base.is_pointer || base.inner == NULL) {
+        if (!base.is_pointer || base.inner == NULL || base.inner->is_function) {
             error("not an array or pointer");
             return int_ty();
         }
@@ -1179,7 +1198,7 @@ std::optional<Slot> Codegen::index_slot(const AstNode *node)
     RValue base = emit_rvalue(node->a);
     if (failed)
         return std::nullopt;
-    if (!base.ty.is_pointer || base.ty.inner == NULL) {
+    if (!base.ty.is_pointer || base.ty.inner == NULL || base.ty.inner->is_function) {
         error("not an array or pointer");
         return std::nullopt;
     }
@@ -1339,8 +1358,19 @@ Ty Codegen::type_of(const AstNode *node)
                 return int_ty();
             if (node->text != NULL && namespace_only_name(node->text))
                 error("namespace is not a value");
-            else
+            else {
+                std::vector<std::string> keys;
+                const char *label = node->text != NULL ? node->text : "function";
+                if (function_keys(node, keys, label)) {
+                    Func *fn = pick_address(keys, label);
+                    if (fn == NULL)
+                        return int_ty();
+                    return pointer_to(signature_ty(*fn));
+                }
+                if (failed)
+                    return int_ty();
                 error_name("unknown name", node->text);
+            }
             return int_ty();
         }
         return drop(slot->ty);
@@ -1357,6 +1387,16 @@ Ty Codegen::type_of(const AstNode *node)
         if (global != scopes[0].end())
             return drop(global->second.ty);
         if (enum_consts.count(key) != 0)
+            return int_ty();
+        std::vector<std::string> keys;
+        const char *label = "function";
+        if (function_keys(node, keys, label)) {
+            Func *fn = pick_address(keys, label);
+            if (fn == NULL)
+                return int_ty();
+            return pointer_to(signature_ty(*fn));
+        }
+        if (failed)
             return int_ty();
         error_name("unknown name", key.c_str());
         return int_ty();
@@ -1407,13 +1447,27 @@ Ty Codegen::type_unary(const AstNode *node)
 {
     SourceNote here(*this, node);
     if (op_is(node, "&")) {
+        std::vector<std::string> keys;
+        const char *label = "function";
+        if (function_keys(node->a, keys, label)) {
+            Func *fn = pick_address(keys, label);
+            if (fn == NULL)
+                return int_ty();
+            return pointer_to(signature_ty(*fn));
+        }
+        if (failed)
+            return int_ty();
         Ty object = object_type(node->a);
         if (failed)
             return int_ty();
         return pointer_to(object);
     }
-    if (op_is(node, "*"))
-        return drop(object_type(node));
+    if (op_is(node, "*")) {
+        Ty ty = drop(object_type(node));
+        if (ty.is_function)
+            return pointer_to(ty);
+        return ty;
+    }
     if (op_is(node, "!"))
         return bool_ty();
     if (op_is(node, "++") || op_is(node, "--") || op_is(node, "post++")
@@ -1846,8 +1900,15 @@ RValue Codegen::emit_rvalue(const AstNode *node)
             }
             if (node->text != NULL && namespace_only_name(node->text))
                 error("namespace is not a value");
-            else
+            else {
+                std::vector<std::string> keys;
+                const char *label = node->text != NULL ? node->text : "function";
+                if (function_keys(node, keys, label))
+                    return take_function(keys, label);
+                if (failed)
+                    return fallback();
                 error_name("unknown name", node->text);
+            }
             return fallback();
         }
         return read_slot(*slot);
@@ -1871,6 +1932,12 @@ RValue Codegen::emit_rvalue(const AstNode *node)
                 context, llvm::APInt(32, static_cast<uint64_t>(enumerator->second), true));
             return out;
         }
+        std::vector<std::string> keys;
+        const char *label = "function";
+        if (function_keys(node, keys, label))
+            return take_function(keys, label);
+        if (failed)
+            return fallback();
         error_name("unknown name", key.c_str());
         return fallback();
     }
@@ -1912,7 +1979,10 @@ RValue Codegen::emit_cast(const AstNode *node)
     Ty dest = type_from_name(node->a);
     if (failed)
         return fallback();
+    const Ty *saved = expect;
+    expect = &dest;
     RValue value = emit_rvalue(node->b);
+    expect = saved;
     if (failed)
         return fallback();
     if (dest.is_void) {
@@ -1926,6 +1996,12 @@ RValue Codegen::emit_cast(const AstNode *node)
 RValue Codegen::emit_unary(const AstNode *node)
 {
     if (op_is(node, "&")) {
+        std::vector<std::string> keys;
+        const char *label = "function";
+        if (function_keys(node->a, keys, label))
+            return take_function(keys, label);
+        if (failed)
+            return fallback();
         std::optional<Slot> slot = lvalue(node->a);
         if (!slot)
             return fallback();
@@ -1993,7 +2069,7 @@ RValue Codegen::emit_inc(const AstNode *node)
     }
     bool postfix = op_is(node, "post++") || op_is(node, "post--");
     bool decrement = op_is(node, "--") || op_is(node, "post--");
-    if (slot->ty.is_array) {
+    if (slot->ty.is_array || fn_pointer(slot->ty)) {
         error("not a scalar");
         return fallback();
     }
@@ -2244,7 +2320,10 @@ RValue Codegen::emit_assign(const AstNode *node)
     }
     RValue stored;
     if (std::strcmp(node->text, "=") == 0) {
+        const Ty *saved = expect;
+        expect = &slot->ty;
         RValue value = emit_rvalue(node->b);
+        expect = saved;
         if (failed)
             return fallback();
         stored = cast_to(value, slot->ty);
@@ -2730,7 +2809,13 @@ void Codegen::emit_return(const AstNode *node)
         error("return needs a value");
         return;
     }
-    RValue value = cast_to(emit_rvalue(node->a), ret_ty);
+    const Ty *saved = expect;
+    expect = &ret_ty;
+    RValue value = emit_rvalue(node->a);
+    expect = saved;
+    if (failed)
+        return;
+    value = cast_to(value, ret_ty);
     if (!failed && !terminated()) {
         close_open_catches();
         builder.CreateRet(value.v);

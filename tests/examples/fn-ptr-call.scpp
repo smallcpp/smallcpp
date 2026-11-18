@@ -1,0 +1,13 @@
+long add(int left, int right) {
+    return (long)left + (long)right;
+}
+
+int main(void) {
+    long (*fn)(int, int);
+    int shown;
+
+    fn = &add;
+    shown = (int)(*fn)(2, 5);
+    print("fn-ptr-call {}\n", shown);
+    return 0;
+}

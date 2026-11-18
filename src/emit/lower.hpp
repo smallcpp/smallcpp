@@ -45,6 +45,8 @@ extern "C" {
 
 enum class Where { File, Local, Param, Return };
 
+struct FnSig;
+
 struct Ty {
     llvm::Type *ir = nullptr;
     bool is_signed = false;
@@ -59,11 +61,18 @@ struct Ty {
     bool is_record = false;
     bool is_union = false;
     bool is_enum = false;
+    bool is_function = false;
+    bool func_vararg = false;
     int array_len = 0;
     int rank = 0;
     int fp_rank = 0;
     std::string record;
     std::shared_ptr<Ty> inner;
+    std::shared_ptr<FnSig> sig;
+};
+
+struct FnSig {
+    std::vector<Ty> params;
 };
 
 struct Storage {
@@ -263,6 +272,7 @@ private:
     Ty ret_ty;
     bool failed = false;
     const AstNode *focus = nullptr;
+    const Ty *expect = nullptr;
     std::vector<std::map<std::string, Slot>> scopes;
     std::map<std::string, std::vector<Func>> overloads;
     std::map<std::string, Ty> aliases;
@@ -564,6 +574,17 @@ private:
     void place_value(const std::string &name, Ty ty, llvm::Value *addr);
     void emit_declaration(const AstNode *node, bool file);
     bool collect_params(const AstNode *list, std::vector<Param> &out, bool &vararg);
+    void split_function(const AstNode *node, const AstNode *&inner, const AstNode *&params);
+    Ty make_function(Ty ret, const std::vector<Param> &params, bool vararg);
+    Ty function_from_decl(Ty ret, const AstNode *node);
+    Ty signature_ty(const Func &fn);
+    bool fn_pointer(const Ty &ty);
+    bool function_keys(const AstNode *node, std::vector<std::string> &keys, const char *&label);
+    Func *pick_address(const std::vector<std::string> &keys, const char *label);
+    RValue take_function(const std::vector<std::string> &keys, const char *label);
+    bool pointer_callee(const AstNode *callee, Ty &ptr_ty);
+    RValue load_callee(const AstNode *callee);
+    RValue emit_indirect(const AstNode *node, const Ty &ptr_ty);
     void declare_special(const AstNode *node);
     void declare_qualified_method(const Declared &declared, bool is_const, bool is_virtual,
                                   const AstNode *body);

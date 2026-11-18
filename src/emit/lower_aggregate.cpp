@@ -275,7 +275,8 @@ RValue Codegen::pointer_binary(const char *op, RValue left, RValue right, bool c
         return out;
     }
     Ty index_ty = integer(64, true, 4);
-    if ((add || sub) && left.ty.is_pointer && left.ty.inner != NULL && is_integer(right.ty)) {
+    if ((add || sub) && left.ty.is_pointer && left.ty.inner != NULL
+        && !left.ty.inner->is_function && is_integer(right.ty)) {
         llvm::Value *index = convert(right.v, right.ty, index_ty);
         if (sub)
             index = builder.CreateNeg(index);
@@ -284,7 +285,8 @@ RValue Codegen::pointer_binary(const char *op, RValue left, RValue right, bool c
         out.v = builder.CreateInBoundsGEP(left.ty.inner->ir, left.v, {index});
         return out;
     }
-    if (add && right.ty.is_pointer && right.ty.inner != NULL && is_integer(left.ty)) {
+    if (add && right.ty.is_pointer && right.ty.inner != NULL
+        && !right.ty.inner->is_function && is_integer(left.ty)) {
         llvm::Value *index = convert(left.v, left.ty, index_ty);
         RValue out;
         out.ty = right.ty;
@@ -292,7 +294,7 @@ RValue Codegen::pointer_binary(const char *op, RValue left, RValue right, bool c
         return out;
     }
     if (sub && left.ty.is_pointer && right.ty.is_pointer && same_value_type(left.ty, right.ty)
-        && left.ty.inner != NULL) {
+        && left.ty.inner != NULL && !left.ty.inner->is_function) {
         RValue out;
         out.ty = index_ty;
         out.v = builder.CreatePtrDiff(left.ty.inner->ir, left.v, right.v);
@@ -530,7 +532,13 @@ void Codegen::store_initializer(const Slot &slot, const AstNode *init)
             error("cannot initialize an array from a value");
             return;
         }
-        RValue value = cast_to(emit_rvalue(init), slot.ty);
+        const Ty *saved = expect;
+        expect = &slot.ty;
+        RValue raw = emit_rvalue(init);
+        expect = saved;
+        if (failed)
+            return;
+        RValue value = cast_to(raw, slot.ty);
         if (!failed)
             store_slot(slot, value.v, true);
         return;

@@ -204,6 +204,19 @@ llvm::DIType *Codegen::debug_type(const Ty &ty)
             : 0;
         built = di->createArrayType(
             element_size * static_cast<uint64_t>(count), align, element, di->getOrCreateArray({bounds}));
+    } else if (ty.is_function) {
+        std::vector<llvm::Metadata *> signature;
+        llvm::DIType *ret = nullptr;
+        if (ty.inner != nullptr && !ty.inner->is_void)
+            ret = debug_type(*ty.inner);
+        signature.push_back(ret);
+        if (ty.sig != nullptr) {
+            for (const Ty &param : ty.sig->params)
+                signature.push_back(debug_type(param));
+        }
+        if (ty.func_vararg)
+            signature.push_back(di->createUnspecifiedParameter());
+        built = di->createSubroutineType(di->getOrCreateTypeArray(signature));
     } else if (ty.is_record || ty.is_union) {
         built = debug_record(ty);
     } else {

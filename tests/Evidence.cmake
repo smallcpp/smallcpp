@@ -179,6 +179,11 @@ add_exec_line(vector-edit vector-edit 0 "vector-edit 1 -1 5 15 4 40 2")
 add_exec_line(list-edit list-edit 0 "list-edit 1 -1 4 7 4 8 5")
 add_exec_line(tree-edit tree-edit 0 "tree-edit 2 -1 2 4 4 9 3")
 add_exec_line(hash-edit hash-edit 0 "hash-edit 3 0 1 3 30 4 40 2 25 0")
+add_exec_line(fn-ptr-param fn-ptr-param 0 "fn-ptr-param 1")
+add_exec_line(fn-ptr-local fn-ptr-local 0 "fn-ptr-local 1")
+add_exec_line(fn-ptr-assign fn-ptr-assign 0 "fn-ptr-assign 7")
+add_exec_line(fn-ptr-call fn-ptr-call 0 "fn-ptr-call 7")
+add_exec_line(fn-ptr-pass fn-ptr-pass 0 "fn-ptr-pass 7")
 
 add_test(
     NAME exec_exec-print-two
