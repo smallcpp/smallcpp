@@ -2,10 +2,10 @@
 
 int main(void) {
     try {
-        exception *error;
-        error = new exception("missing");
+        Exception *error;
+        error = new Exception("missing");
         throw *error;
-    } catch (exception error) {
+    } catch (Exception error) {
         print("{:s} {:s}\n", "exception-message", error.message);
         return 0;
     }

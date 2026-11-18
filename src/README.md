@@ -5,4 +5,4 @@
 - `emit` — the C++ IR emitter. `scpp_cc` links it. The C header is `emit/emit.h`.
 - `preproc` — the preprocessor. The binary is `bin/preproc`. `scpp` runs it. It deletes nothing.
 - `cli` — command-line parsing shared by the programs.
-- `runtime` — the collector, `print` and `format`, and the base `exception` class. An exception nothing catches aborts and prints a stack.
+- `runtime` — the collector, `print` and `format`, and the base `Exception` class. An exception nothing catches aborts and prints a stack.

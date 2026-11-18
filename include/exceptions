@@ -1,11 +1,16 @@
 #ifndef SMALLCPP_EXCEPTIONS
 #define SMALLCPP_EXCEPTIONS
 
-class exception {
+/* Base exception. Include this header as <exceptions>.
+ * Exception() stores a null message.
+ * Exception(const char *) stores that C string in message.
+ * The pointer is not copied. A throw that nothing catches
+ * aborts and prints the message and a call stack. */
+class Exception {
 public:
     const char *message;
-    exception();
-    exception(const char *text);
+    Exception();
+    Exception(const char *text);
 };
 
 #endif
