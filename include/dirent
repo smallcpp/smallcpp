@@ -1,0 +1,23 @@
+#ifndef SMALLCPP_DIRENT
+#define SMALLCPP_DIRENT
+
+/* Directory entries. Include this header as <dirent>.
+ * readdir returns one entry, or null at the end or on
+ * error. errno is unchanged at a normal end. d_name is
+ * the name. . and .. appear. closedir returns 0 or -1. */
+
+typedef struct Directory DIR;
+
+struct dirent {
+    long d_ino;
+    long d_off;
+    unsigned short d_reclen;
+    unsigned char d_type;
+    char d_name[256];
+};
+
+extern DIR *opendir(const char *path);
+extern struct dirent *readdir(DIR *dir);
+extern int closedir(DIR *dir);
+
+#endif

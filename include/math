@@ -1,0 +1,65 @@
+#ifndef SMALLCPP_MATH
+#define SMALLCPP_MATH
+
+/* libm. Include this header as <math>. Link with -l m.
+ * Each double function has a float twin with an f suffix.
+ * Angles are radians. A domain error may set errno to
+ * EDOM. A range error may set errno to ERANGE. */
+
+#define MATH_PI 3.14159265358979323846
+#define MATH_E 2.71828182845904523536
+#define MATH_TAU 6.28318530717958647692
+
+extern double fabs(double x);
+extern double fmin(double a, double b);
+extern double fmax(double a, double b);
+extern double floor(double x);
+extern double ceil(double x);
+extern double round(double x);
+extern double trunc(double x);
+extern double sqrt(double x);
+extern double cbrt(double x);
+extern double pow(double base, double exp);
+extern double exp(double x);
+extern double log(double x);
+extern double log10(double x);
+extern double log2(double x);
+extern double sin(double x);
+extern double cos(double x);
+extern double tan(double x);
+extern double asin(double x);
+extern double acos(double x);
+extern double atan(double x);
+extern double atan2(double y, double x);
+extern double sinh(double x);
+extern double cosh(double x);
+extern double tanh(double x);
+
+extern float fabsf(float x);
+extern float fminf(float a, float b);
+extern float fmaxf(float a, float b);
+extern float floorf(float x);
+extern float ceilf(float x);
+extern float roundf(float x);
+extern float truncf(float x);
+extern float sqrtf(float x);
+extern float cbrtf(float x);
+extern float powf(float base, float exp);
+extern float expf(float x);
+extern float logf(float x);
+extern float log10f(float x);
+extern float log2f(float x);
+extern float sinf(float x);
+extern float cosf(float x);
+extern float tanf(float x);
+extern float asinf(float x);
+extern float acosf(float x);
+extern float atanf(float x);
+extern float atan2f(float y, float x);
+extern float sinhf(float x);
+extern float coshf(float x);
+extern float tanhf(float x);
+
+extern long labs(long x);
+
+#endif

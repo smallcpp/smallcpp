@@ -1,0 +1,39 @@
+#ifndef SMALLCPP_UNISTD
+#define SMALLCPP_UNISTD
+
+/* File, directory, and descriptor calls. Include this header
+ * as <unistd>. A return of 0 is success and -1 is failure,
+ * except read, write, lseek, and copy_file_range, which
+ * return a count or -1. isatty returns 1 for a terminal. */
+
+#ifndef SMALLCPP_SSIZE_T
+#define SMALLCPP_SSIZE_T
+typedef long ssize_t;
+#endif
+
+#ifndef SMALLCPP_OFF_T
+#define SMALLCPP_OFF_T
+typedef long off_t;
+#endif
+
+extern int unlink(const char *path);
+extern int rmdir(const char *path);
+extern int chdir(const char *path);
+extern char *getcwd(char *buf, unsigned long size);
+extern int access(const char *path, int mode);
+extern long read(int fd, void *buf, unsigned long count);
+extern long write(int fd, const void *buf, unsigned long count);
+extern int close(int fd);
+extern long lseek(int fd, long offset, int whence);
+extern long copy_file_range(int in_fd, long *off_in,
+    int out_fd, long *off_out, unsigned long len,
+    unsigned int flags);
+extern int pipe(int *fds);
+extern int isatty(int fd);
+
+#define F_OK 0
+#define X_OK 1
+#define W_OK 2
+#define R_OK 4
+
+#endif

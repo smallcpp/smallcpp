@@ -1,0 +1,56 @@
+#ifndef SMALLCPP_SPAWN
+#define SMALLCPP_SPAWN
+
+/* Spawn a process without a shell. Include this header as
+ * <spawn>. A name with no slash is searched in PATH.
+ * A spawn result other than 0 is an error number. errno
+ * is left unchanged. The caller reaps every child. */
+
+#ifndef SMALLCPP_PID_T
+#define SMALLCPP_PID_T
+typedef int pid_t;
+#endif
+
+struct SpawnActions {
+    long align;
+    char pad[72];
+};
+
+struct SpawnAttr {
+    long align;
+    char pad[328];
+};
+
+typedef struct SpawnActions posix_spawn_file_actions_t;
+typedef struct SpawnAttr posix_spawnattr_t;
+
+extern int posix_spawnp(pid_t *pid, const char *file,
+    const posix_spawn_file_actions_t *actions,
+    const posix_spawnattr_t *attr, char *const argv[],
+    char *const envp[]);
+extern int posix_spawn_file_actions_init(
+    posix_spawn_file_actions_t *actions);
+extern int posix_spawn_file_actions_destroy(
+    posix_spawn_file_actions_t *actions);
+extern int posix_spawn_file_actions_adddup2(
+    posix_spawn_file_actions_t *actions, int fd,
+    int new_fd);
+extern int posix_spawn_file_actions_addclose(
+    posix_spawn_file_actions_t *actions, int fd);
+extern int posix_spawnattr_init(posix_spawnattr_t *attr);
+extern int posix_spawnattr_destroy(posix_spawnattr_t *attr);
+extern int posix_spawnattr_setflags(
+    posix_spawnattr_t *attr, short flags);
+extern int posix_spawnattr_setpgroup(
+    posix_spawnattr_t *attr, pid_t group);
+extern int waitpid(pid_t pid, int *status, int options);
+
+#define POSIX_SPAWN_SETPGROUP 2
+#define WNOHANG 1
+#define WTERMSIG(status) ((status) & 127)
+#define WEXITSTATUS(status) (((status) & 65280) >> 8)
+#define WIFEXITED(status) (WTERMSIG(status) == 0)
+#define WIFSIGNALED(status) \
+    (((signed char)(((status) & 127) + 1) >> 1) > 0)
+
+#endif

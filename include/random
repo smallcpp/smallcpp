@@ -1,0 +1,14 @@
+#ifndef SMALLCPP_RANDOM
+#define SMALLCPP_RANDOM
+
+/* Linux getrandom. Include this header as <random>.
+ * It returns the number of bytes written, or -1 and
+ * sets errno. GRND_NONBLOCK returns EAGAIN instead of
+ * blocking. A short count means the caller asks again. */
+
+extern long getrandom(void *buf, unsigned long size,
+    unsigned int flags);
+
+#define GRND_NONBLOCK 1
+
+#endif

@@ -1,0 +1,31 @@
+#ifndef SMALLCPP_STAT
+#define SMALLCPP_STAT
+
+/* File status. Include this header as <stat>. struct stat
+ * matches the LP64 Linux layout. st_mode is the mode.
+ * st_size is a long. S_ISREG and S_ISDIR test the type.
+ * stat and lstat return 0 on success and -1 on failure. */
+
+struct stat {
+    unsigned long st_dev;
+    unsigned long st_ino;
+    unsigned long st_nlink;
+    unsigned st_mode;
+    unsigned st_uid;
+    unsigned st_gid;
+    int pad0;
+    unsigned long st_rdev;
+    long st_size;
+    long st_blksize;
+    long st_blocks;
+    char pad1[72];
+};
+
+extern int stat(const char *path, struct stat *buf);
+extern int lstat(const char *path, struct stat *buf);
+extern int mkdir(const char *path, unsigned mode);
+
+#define S_ISREG(mode) (((mode) & 61440) == 32768)
+#define S_ISDIR(mode) (((mode) & 61440) == 16384)
+
+#endif

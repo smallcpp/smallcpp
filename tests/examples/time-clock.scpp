@@ -1,0 +1,19 @@
+#include <time>
+
+int main(void) {
+    time_t now;
+    struct timespec clock;
+    struct timespec req;
+    int rc;
+
+    now = time(nullptr);
+    rc = clock_gettime(CLOCK_MONOTONIC, &clock);
+    if (rc != 0 || now < 0 || clock.tv_sec < 0)
+        return 1;
+    req.tv_sec = 0;
+    req.tv_nsec = 1000000;
+    if (nanosleep(&req, nullptr) != 0)
+        return 1;
+    print("time-clock {}\n", rc);
+    return 0;
+}

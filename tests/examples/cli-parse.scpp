@@ -1,0 +1,83 @@
+#include <cli>
+#include <exceptions>
+
+using namespace Cli;
+
+void copy_text(char *buf, const char *text) {
+    long i;
+
+    i = 0;
+    while (text[i] != 0) {
+        buf[i] = text[i];
+        i = i + 1;
+    }
+    buf[i] = 0;
+}
+
+int main(void) {
+    CommandLine *command;
+    Option *output;
+    Option *include;
+    Option *help;
+    Positional *input;
+    char *args[5];
+    char *helpArgs[3];
+    char *badArgs[2];
+    char out[16];
+    char file[16];
+    char left[8];
+    char right[8];
+    int action;
+    const char *message;
+
+    command = new CommandLine("demo", "demo options", "1.0");
+    output = new Option();
+    output->short_name = "o";
+    output->long_name = "output";
+    output->name = "output";
+    output->value_type = CLI_STRING;
+    command->add_option(output);
+    include = new Option();
+    include->short_name = "I";
+    include->name = "include";
+    include->value_type = CLI_STRING;
+    include->is_list = true;
+    command->add_option(include);
+    help = new Option();
+    help->long_name = "help";
+    help->name = "help";
+    help->action = CLI_HELP;
+    command->add_option(help);
+    input = new Positional();
+    input->name = "input";
+    input->required = true;
+    command->add_positional(input);
+    args[0] = "demo";
+    args[1] = "-o=out.txt";
+    args[2] = "-IFOO:BAR";
+    args[3] = "file.scpp";
+    args[4] = nullptr;
+    command->parse(4, args);
+    copy_text(out, command->value("output"));
+    copy_text(file, command->positional_at(0));
+    copy_text(left, command->value_at("include", 0));
+    copy_text(right, command->value_at("include", 1));
+    helpArgs[0] = "demo";
+    helpArgs[1] = "--help";
+    helpArgs[2] = nullptr;
+    command->parse(2, helpArgs);
+    action = command->current_action();
+    badArgs[0] = "demo";
+    badArgs[1] = nullptr;
+    message = "";
+    try {
+        command->parse(1, badArgs);
+        return 1;
+    } catch (Exception error) {
+        if (error.message != nullptr)
+            message = error.message;
+    }
+    print("cli-parse {:s} {:s} {:s} {:s} {} {:s}\n",
+        out, file, left, right, action, message);
+    return 0;
+}

@@ -1,0 +1,32 @@
+#ifndef SMALLCPP_TIME
+#define SMALLCPP_TIME
+
+/* Wall time and a monotonic clock. Include this header as
+ * <time>. CLOCK_REALTIME is Unix time. CLOCK_MONOTONIC is
+ * for elapsed intervals. nanosleep returns -1 and sets
+ * errno to EINTR when a signal wakes it early. */
+
+#ifndef SMALLCPP_TIME_T
+#define SMALLCPP_TIME_T
+typedef long time_t;
+#endif
+
+#ifndef SMALLCPP_CLOCKID_T
+#define SMALLCPP_CLOCKID_T
+typedef int clockid_t;
+#endif
+
+struct timespec {
+    long tv_sec;
+    long tv_nsec;
+};
+
+#define CLOCK_REALTIME 0
+#define CLOCK_MONOTONIC 1
+
+extern time_t time(time_t *out);
+extern int clock_gettime(clockid_t id, struct timespec *out);
+extern int nanosleep(const struct timespec *req,
+    struct timespec *rem);
+
+#endif

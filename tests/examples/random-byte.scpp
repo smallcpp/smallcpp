@@ -1,0 +1,16 @@
+#include <random>
+
+int main(void) {
+    unsigned char byte;
+    long count;
+
+    byte = 0;
+    count = getrandom((void *)&byte, 1, 0);
+    if (count != 1)
+        return 1;
+    count = getrandom((void *)&byte, 1, GRND_NONBLOCK);
+    if (count != 1)
+        return 1;
+    print("random-byte {}\n", count);
+    return 0;
+}

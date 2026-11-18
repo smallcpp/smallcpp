@@ -1,0 +1,26 @@
+#ifndef SMALLCPP_ERRNO
+#define SMALLCPP_ERRNO
+
+/* errno is the calling thread's error number. A direct call
+ * that fails sets it. A successful call does not clear it.
+ * The platform accessor is __errno_location. perror and
+ * strerror turn the number into text. The text strerror
+ * returns may be overwritten by the next call that uses it. */
+
+extern int *__errno_location(void);
+
+#define errno (*__errno_location())
+
+#define EPERM 1
+#define EINTR 4
+#define EAGAIN 11
+#define EBUSY 16
+#define EDOM 33
+#define ERANGE 34
+#define EDEADLK 35
+#define ENOSYS 38
+
+extern void perror(const char *text);
+extern char *strerror(int err);
+
+#endif

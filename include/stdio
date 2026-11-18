@@ -1,0 +1,45 @@
+#ifndef SMALLCPP_STDIO
+#define SMALLCPP_STDIO
+
+/* Stdio streams. Include this header as <stdio>. File is the
+ * stream. stdin, stdout, and stderr are File *. Close a
+ * stream with fclose. The collector does not close it.
+ * The format parameter is named text because format is a
+ * keyword. */
+
+typedef struct StdioFile File;
+
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+#define EOF (-1)
+
+extern File *fopen(const char *path, const char *mode);
+extern int fclose(File *stream);
+extern unsigned long fread(void *data, unsigned long size,
+    unsigned long count, File *stream);
+extern unsigned long fwrite(const void *data, unsigned long size,
+    unsigned long count, File *stream);
+extern char *fgets(char *data, int size, File *stream);
+extern int fputs(const char *text, File *stream);
+extern int fprintf(File *stream, const char *text, ...);
+extern int printf(const char *text, ...);
+extern int snprintf(char *data, unsigned long size,
+    const char *text, ...);
+extern int fflush(File *stream);
+extern int fseek(File *stream, long offset, int whence);
+extern long ftell(File *stream);
+extern void rewind(File *stream);
+extern int feof(File *stream);
+extern int ferror(File *stream);
+extern void clearerr(File *stream);
+extern int remove(const char *path);
+extern int rename(const char *old_path, const char *new_path);
+extern long getline(char **line, unsigned long *cap,
+    File *stream);
+
+extern File *stdin;
+extern File *stdout;
+extern File *stderr;
+
+#endif

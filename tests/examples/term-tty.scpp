@@ -1,0 +1,20 @@
+#include <ioctl>
+#include <unistd>
+
+int main(void) {
+    int fds[2];
+    int tty;
+    int failed;
+    struct winsize size;
+
+    if (pipe(fds) != 0)
+        return 1;
+    tty = isatty(fds[0]);
+    failed = 0;
+    if (ioctl(fds[0], TIOCGWINSZ, &size) < 0)
+        failed = 1;
+    if (close(fds[0]) != 0 || close(fds[1]) != 0)
+        return 1;
+    print("term-tty {} {}\n", tty, failed);
+    return 0;
+}

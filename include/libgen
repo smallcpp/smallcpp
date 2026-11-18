@@ -1,0 +1,12 @@
+#ifndef SMALLCPP_LIBGEN
+#define SMALLCPP_LIBGEN
+
+/* Path pieces. Include this header as <libgen>. basename
+ * and dirname may modify the buffer they are given. They
+ * may return a pointer into that buffer or into static
+ * storage. Copy the result when it must be kept. */
+
+extern char *basename(char *path);
+extern char *dirname(char *path);
+
+#endif

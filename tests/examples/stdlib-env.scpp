@@ -1,0 +1,41 @@
+#include <errno>
+#include <stdlib>
+
+int main(void) {
+    char *block;
+    char *value;
+    char kept[8];
+    long i;
+    long number;
+    int ok;
+
+    if (setenv("SMALLCPP_PROBE", "hello", 1) != 0)
+        return 1;
+    value = getenv("SMALLCPP_PROBE");
+    if (value == nullptr)
+        return 1;
+    number = strtol("12", nullptr, 10);
+    if (number != 12 || atoi("12") != 12 || atol("12") != 12)
+        return 1;
+    block = (char *)malloc(4);
+    if (block == nullptr)
+        return 1;
+    block[0] = 'h';
+    block = (char *)realloc((void *)block, 8);
+    if (block == nullptr)
+        return 1;
+    ok = 1;
+    free((void *)block);
+    if (strerror(EDOM) == nullptr)
+        return 1;
+    i = 0;
+    while (value[i] != 0 && i < 7) {
+        kept[i] = value[i];
+        i = i + 1;
+    }
+    kept[i] = 0;
+    if (unsetenv("SMALLCPP_PROBE") != 0)
+        return 1;
+    print("stdlib-env {} {:s} {}\n", atoi("12"), kept, ok);
+    return 0;
+}

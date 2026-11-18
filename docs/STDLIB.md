@@ -548,10 +548,10 @@ unsigned long fwrite(const void *data, unsigned long size,
     unsigned long count, File *stream);
 char *fgets(char *data, int size, File *stream);
 int fputs(const char *text, File *stream);
-int fprintf(File *stream, const char *format, ...);
-int printf(const char *format, ...);
+int fprintf(File *stream, const char *text, ...);
+int printf(const char *text, ...);
 int snprintf(char *data, unsigned long size,
-    const char *format, ...);
+    const char *text, ...);
 int fflush(File *stream);
 int fseek(File *stream, long offset, int whence);
 long ftell(File *stream);
@@ -563,9 +563,10 @@ int remove(const char *path);
 int rename(const char *old_path, const char *new_path);
 ```
 
-`SEEK_SET`, `SEEK_CUR`, and `SEEK_END` are the `whence` values. A binary
-mode is `"rb"`, `"wb"`, `"ab"`, or `"r+b"`. `fopen` returns `nullptr` and
-sets `errno` when the file cannot be opened.
+The format argument is the parameter `text`, because `format` is a
+keyword. `SEEK_SET`, `SEEK_CUR`, and `SEEK_END` are the `whence`
+values. A binary mode is `"rb"`, `"wb"`, `"ab"`, or `"r+b"`. `fopen`
+returns `nullptr` and sets `errno` when the file cannot be opened.
 
 `fread` and `fwrite` return the number of members transferred. A short
 read at end of file is a short count with `feof` true and `ferror` false.
@@ -833,7 +834,7 @@ int posix_spawnattr_setflags(posix_spawnattr_t *attr, short flags);
 int posix_spawnattr_setpgroup(posix_spawnattr_t *attr, pid_t group);
 int waitpid(pid_t pid, int *status, int options);
 int kill(pid_t pid, int sig);
-int pipe(int fds[2]);
+int pipe(int *fds);
 ```
 
 `envp` null means the child inherits the environment. File actions bind
@@ -849,9 +850,10 @@ starts. A forgotten child keeps running, and an unreaped child is a
 zombie. Nothing in the collector kills a child.
 
 Read both output pipes while the child runs. A child that fills a pipe
-the parent is not reading will block. `pipe` plus a loop of `read` on
-each end is the whole capture. Bytes are bytes. A partial UTF-8 sequence
-is the caller's problem.
+the parent is not reading will block. `pipe` takes `int *fds`, the
+address of the first of two descriptors. A loop of `read` on each end
+is the whole capture. Bytes are bytes. A partial UTF-8 sequence is the
+caller's problem.
 
 `kill(-pid, SIGTERM)` signals the child's process group, and
 `kill(-pid, SIGKILL)` ends it when the grace period has passed. Signal
@@ -1021,8 +1023,8 @@ until the `CommandLine` is destroyed. A list option splits on
 `CLI_HELP` and `CLI_VERSION` stop `parse` before required checks.
 `current_action` is that enumerator, and the program prints `help_text`
 or `version_text` and calls `exit`. Any other usage error throws
-`Exception`. `set_capture_remainder(true)` sends arguments after `--` to
-the remainder accessors.
+`Exception` with message `usage`. `set_capture_remainder(true)` sends
+arguments after `--` to the remainder accessors.
 
 ```smallcpp
 #include <cli>
