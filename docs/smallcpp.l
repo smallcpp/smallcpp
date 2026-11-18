@@ -180,6 +180,7 @@ static int keyword_token(const char *name)
         {"true", TRUE},
         {"try", TRY},
         {"typedef", TYPEDEF},
+        {"typeid", TYPEID},
         {"union", UNION},
         {"unsigned", UNSIGNED},
         {"using", USING},

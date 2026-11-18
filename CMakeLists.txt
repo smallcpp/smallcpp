@@ -68,6 +68,7 @@ add_library(smallcpp_emit STATIC
     src/emit/lower_aggregate.cpp
     src/emit/lower_namespace.cpp
     src/emit/lower_class.cpp
+    src/emit/lower_typeid.cpp
     src/emit/lower_alloc.cpp
     src/emit/lower_except.cpp
     src/emit/lower_print.cpp

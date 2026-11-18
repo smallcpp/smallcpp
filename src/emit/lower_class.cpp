@@ -315,15 +315,29 @@ uint64_t Codegen::thunk_delta(const std::string &complete, const std::vector<std
     return sub;
 }
 
-llvm::GlobalVariable *Codegen::emit_vtable(const std::string &name, const std::vector<llvm::Constant *> &slots)
+/*
+ * The first slot is the TypeInfo of the most derived type. The pointer
+ * stored in the object aims at the first function, so a virtual call's
+ * index is unchanged. typeid loads the slot before that pointer.
+ */
+llvm::Constant *Codegen::emit_vtable(const std::string &name, const std::vector<llvm::Constant *> &slots,
+                                     llvm::Constant *info)
 {
     if (slots.empty())
         return NULL;
     auto *elem = llvm::PointerType::get(context, 0);
-    auto *array = llvm::ArrayType::get(elem, slots.size());
-    return new llvm::GlobalVariable(
+    if (info == NULL)
+        info = llvm::ConstantPointerNull::get(elem);
+    std::vector<llvm::Constant *> entries;
+    entries.push_back(info);
+    entries.insert(entries.end(), slots.begin(), slots.end());
+    auto *array = llvm::ArrayType::get(elem, entries.size());
+    auto *global = new llvm::GlobalVariable(
         module, array, true, llvm::GlobalValue::PrivateLinkage,
-        llvm::ConstantArray::get(array, slots), name);
+        llvm::ConstantArray::get(array, entries), name);
+    llvm::Constant *index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 1);
+    return llvm::ConstantExpr::getGetElementPtr(
+        elem, global, index, llvm::GEPNoWrapFlags::inBounds());
 }
 
 llvm::Function *Codegen::make_thunk(llvm::Function *impl, uint64_t delta, const std::string &name)
@@ -378,7 +392,7 @@ llvm::Value *Codegen::vptr_addr(llvm::Value *ptr, const std::string &key)
     return ptr;
 }
 
-llvm::GlobalVariable *Codegen::view_for(const std::string &complete, const std::vector<std::string> &path)
+llvm::Constant *Codegen::view_for(const std::string &complete, const std::vector<std::string> &path)
 {
     auto found = records.find(complete);
     if (found == records.end())
@@ -402,7 +416,7 @@ void Codegen::lay_bases(llvm::Value *ptr, const std::string &complete, const std
         path.push_back(base);
         llvm::Value *child = base_ptr(ptr, sub, base);
         if (base != found->second.primary_base) {
-            llvm::GlobalVariable *table = view_for(complete, path);
+            llvm::Constant *table = view_for(complete, path);
             if (table != NULL)
                 builder.CreateStore(table, vptr_addr(child, base));
         }
@@ -437,8 +451,10 @@ VTable Codegen::make_view(const std::string &complete, const std::string &base,
         slots.push_back(fn != NULL ? static_cast<llvm::Constant *>(fn) : null_fn);
         index++;
     }
+    llvm::Constant *info = slots.empty() ? NULL : type_descriptor(record_type(records[complete]));
     table.global = emit_vtable(
-        records[complete].name + ".vt." + std::to_string(records[complete].vtables.size()), slots);
+        records[complete].name + ".vt." + std::to_string(records[complete].vtables.size()),
+        slots, info);
     return table;
 }
 
@@ -524,7 +540,8 @@ void Codegen::build_vtable(const std::string &key)
     std::vector<llvm::Constant *> slots;
     for (const VSlot &slot : rec.vslots)
         slots.push_back(slot.fn != NULL ? static_cast<llvm::Constant *>(slot.fn) : null_fn);
-    rec.vtable = emit_vtable(rec.name + ".vt", slots);
+    llvm::Constant *info = slots.empty() ? NULL : type_descriptor(record_type(rec));
+    rec.vtable = emit_vtable(rec.name + ".vt", slots, info);
     std::vector<std::string> path;
     build_views(key, key, path);
     rec.abstract = false;

@@ -32,6 +32,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `typeid(expression)` and `typeid(type)` yield a `const TypeInfo *`. Include it as `<typeinfo>`. `==` and `!=` compare those pointers. One type has one `TypeInfo`. A polymorphic object seen through a base pointer uses the dynamic type. `tests/examples/typeid.scpp` prints `typeid 1 1 1`.
 - `docs/STDLIB.md` describes `typeid`. Include it as `<typeinfo>`. `typeid(expression)` and `typeid(Type)` yield a `const TypeInfo *`. `==` and `!=` compare those pointers. A polymorphic object seen through a base pointer uses the dynamic type from the vtable.
 - `docs/STDLIB.md` is the standard library reference. A direct library is a header of `extern` declarations, plus the POSIX typedefs, structs, and macros those calls use. `<sqlite>` and `<gtk>` declare smallcpp classes and call sqlite3 and GTK from the implementation. `<cli>` is a smallcpp command-line parser. `<exceptions>` is unchanged. A call with no declaration remains an external `int` function. The library still publishes headers so a call such as `sqrt` has its C type.
 

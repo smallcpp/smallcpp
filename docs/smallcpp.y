@@ -7,7 +7,9 @@
  * exceptions, namespaces, and precise garbage collection. A class may
  * list more than one base. A base may be virtual, so two paths share one
  * subobject. A virtual method may be pure, written = 0. A destructor
- * may be virtual. catch (...) catches every exception type.
+ * may be virtual. typeid(expression) and typeid(type) yield a const
+ * TypeInfo pointer. == and != compare that pointer. A polymorphic
+ * object uses the dynamic type. catch (...) catches every exception type.
  * That ... is not a parameter. A constructor is a method whose name is
  * the class name and that has no return type. A destructor is
  * ~ClassName(), also with no return type. A constructor may have an
@@ -33,7 +35,7 @@
  *
  * No keyword has an sc_ prefix. class, namespace, public, private,
  * protected, virtual, try, catch, throw, new, this, print, format, bool,
- * true, and false are the plain spellings, not macros. namespace uses
+ * true, false, and typeid are the plain spellings, not macros. namespace uses
  * C++ syntax:
  * namespace name { ... }.
  * A qualified name uses '::'. A new-expression creates a pointer. delete
@@ -345,6 +347,7 @@ static struct AstNode *designate(struct AstNode *designators, struct AstNode *va
 %token AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
 %token EXTERN FLOAT FOR GOTO IF INLINE INT LONG REGISTER RETURN SHORT
 %token SIGNED SIZEOF STATIC STRUCT SWITCH TYPEDEF UNION UNSIGNED VOID
+%token TYPEID "typeid"
 %token VOLATILE WHILE
 %token SCOPE "::"
 %token ARROW "->" INC "++" DEC "--"
@@ -1135,6 +1138,8 @@ unary_expression
     | unary_operator cast_expression { $$ = ast_place(ast_unary($1, $2), @$.first_line, @$.first_column); }
     | SIZEOF unary_expression { $$ = ast_place(ast_make(AST_SIZEOF, NULL, $2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | SIZEOF '(' type_name ')' { $$ = ast_place(ast_make(AST_SIZEOF, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | TYPEID '(' expression ')' { $$ = ast_place(ast_make(AST_TYPEID, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
+    | TYPEID '(' type_name ')' { $$ = ast_place(ast_make(AST_TYPEID, NULL, $3, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | NEW new_type %prec NEW_BARE { $$ = ast_place(make_new($2, NULL, NULL, NULL), @$.first_line, @$.first_column); }
     | NEW new_type new_pointer { $$ = ast_place(make_new($2, $3, NULL, NULL), @$.first_line, @$.first_column); }
     | NEW new_type new_arrays { $$ = ast_place(make_new($2, NULL, $3, NULL), @$.first_line, @$.first_column); }

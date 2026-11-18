@@ -1,0 +1,36 @@
+#include <typeinfo>
+
+class Base {
+public:
+    virtual int id(void);
+};
+
+int Base::id(void)
+{
+    return 1;
+}
+
+class Derived : public Base {
+public:
+    int id(void);
+};
+
+int Derived::id(void)
+{
+    return 2;
+}
+
+int main(void)
+{
+    int same;
+    int differ;
+    int dynamic;
+    Base *object;
+
+    same = (int)(typeid(int) == typeid(int));
+    differ = (int)(typeid(int) != typeid(double));
+    object = new Derived();
+    dynamic = (int)(typeid(*object) == typeid(Derived));
+    print("{:s} {} {} {}\n", "typeid", same, differ, dynamic);
+    return 0;
+}

@@ -160,6 +160,7 @@ add_exec_line(short-circuit-and short-circuit-and 0 "short-circuit-and 0 0")
 add_exec_line(short-circuit-or short-circuit-or 0 "short-circuit-or 1 0")
 add_exec_line(this-field this-field 0 "this-field 4")
 add_exec_line(libc libc 0 "libc 5 12")
+add_exec_line(typeid typeid 0 "typeid 1 1 1")
 
 add_test(
     NAME exec_exec-print-two

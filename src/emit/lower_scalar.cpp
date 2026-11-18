@@ -1365,6 +1365,19 @@ Ty Codegen::type_of(const AstNode *node)
         return drop(object_type(node));
     if (node->kind == AST_SIZEOF)
         return size_ty();
+    if (node->kind == AST_TYPEID) {
+        if (node->a == NULL) {
+            error("typeid has no operand");
+            return int_ty();
+        }
+        if (is_type_form(node->a))
+            type_from_name(node->a);
+        else
+            type_of(node->a);
+        if (failed)
+            return int_ty();
+        return typeid_type();
+    }
     if (node->kind == AST_CAST) {
         Ty ty = type_from_name(node->a);
         return drop(ty);
@@ -1468,6 +1481,10 @@ Const Codegen::eval_const(const AstNode *node)
     }
     if (node->kind == AST_SIZEOF)
         return eval_sizeof(node->a);
+    if (node->kind == AST_TYPEID) {
+        error("typeid is not constant");
+        return none;
+    }
     if (node->kind == AST_CAST) {
         Const inner = eval_const(node->b);
         if (!inner.ok)
@@ -1872,6 +1889,8 @@ RValue Codegen::emit_rvalue(const AstNode *node)
         }
         return RValue{size.v, size.ty};
     }
+    if (node->kind == AST_TYPEID)
+        return emit_typeid(node);
     if (node->kind == AST_CAST)
         return emit_cast(node);
     if (node->kind == AST_UNARY)
