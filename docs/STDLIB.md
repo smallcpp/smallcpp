@@ -433,21 +433,18 @@ method `compare(Type, Type)`. A negative result means the first value
 comes first, zero means equal, and a positive result means the first
 value comes later, the same as `strcmp`. The default calls `String.cmp`
 when `Type` is `const char *` or `String *`. Any other type uses `<`.
-A subclass overrides `compare` to change the order. `add`, `insert`,
-`find`, `replace`, and `remove` call that method. A value that compares equal to
-one already in the tree is left in place. `add` inserts. `root` returns
-the root value, or throws `Exception` with message `empty` when the
-tree has no nodes. `at` walks the values in order. A negative index
-counts from the end. `size` is the number of nodes. `find` returns the
-in-order index of the first zero result, or `-1`. `replace` removes
-the value at the index and inserts the new one, so the order stays
-valid. When that new value is already stored, it is left in place and
-the indexed value is gone. `insert` accepts the index with the sequence
-bounds above, then places the value with `compare`, the same as `add`.
-The in-order index is the one `compare` chooses. That place is the end
-when the value comes after every stored value, and the start when it
-comes before. `remove` deletes the value at the in-order index. `next`
-walks in order.
+A subclass overrides `compare` to change the order. `add` and `find`
+call that method. `add` places a value with `compare`. A value that
+compares equal to one already in the tree is left in place. `insert`
+places the value at the in-order index. A negative index counts from
+the end. An index past the end appends, and an index before the start
+prepends. After `insert`, `at` of that index is the value. `replace`
+writes the value at the index and leaves it there. `root` returns the
+root value, or throws `Exception` with message `empty` when the tree
+has no nodes. `at` walks the values in order. A negative index counts
+from the end. `size` is the number of nodes. `find` returns the
+in-order index of the first zero result, or `-1`. `remove` deletes the
+value at the in-order index. `next` walks in order.
 
 ```smallcpp
 #include <tree>
@@ -455,8 +452,8 @@ walks in order.
 TREE(IntTree, int)
 ```
 
-Inserting 1, then 2, then 3 leaves 2 at the root. `at(0)`, `at(1)`, and
-`at(2)` are 1, 2, and 3. `at(-1)` is 3.
+`add(1)`, then `add(2)`, then `add(3)` leaves 2 at the root. `at(0)`,
+`at(1)`, and `at(2)` are 1, 2, and 3. `at(-1)` is 3.
 
 ### `<hash>`
 
