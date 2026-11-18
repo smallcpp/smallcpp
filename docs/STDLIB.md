@@ -273,6 +273,12 @@ public:
     void replace(const String *needle, char value);
     void replace(const String *needle, const char *text);
     void replace(const String *needle, const String *text);
+    void split(char separator, StringVec *out);
+    void split(const char *separator, StringVec *out);
+    void join(char separator, StringVec *source);
+    void join(const char *separator, StringVec *source);
+    const char *token(long *cursor, char separator);
+    const char *token(long *cursor, const char *separator);
 };
 ```
 
@@ -296,6 +302,26 @@ is before the start. `truncate` removes characters from the first
 index up to but not including the second, and clamps each bound. When
 the first bound is past the second, nothing is removed. `replace`
 replaces the first match. A missing needle leaves the string unchanged.
+
+`<string>` defines `StringVec` with `VECTOR(StringVec, String *)`.
+The caller allocates that vector. `split` appends `String *` pieces
+and does not clear the vector. A missing separator appends one copy
+of the whole string. Consecutive separators append an empty string.
+An empty separator throws `Exception` with message `string`. A null
+separator or a null vector does too. `join` clears this string and
+fills it from a `StringVec`. An empty separator concatenates the
+pieces. A null separator, a null vector, or a null element throws
+`Exception` with message `string`.
+
+`token` walks the string from a caller-owned `long` cursor. The
+cursor starts at 0. A `char` separator is that character. A
+`const char *` separator is the set of separator characters. `token`
+skips those characters and does not return an empty token. It
+returns null when no token remains. An empty separator or a null
+cursor throws `Exception` with message `string`. The pointer is a
+null-terminated copy in storage the string owns. It stays valid
+until the next call that changes the string. `token` does not write
+the character buffer.
 
 ```smallcpp
 #include <string>
