@@ -453,7 +453,7 @@ endforeach()
 add_test(
     NAME build_test_programs
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
-            --target command_line_test parse_test verify_module)
+            --target command_line_test parse_test verify_module smallcpp_sqlite)
 set_tests_properties(build_test_programs PROPERTIES FIXTURES_SETUP smallcpp_test_programs)
 get_property(smallcpp_tests DIRECTORY PROPERTY TESTS)
 foreach(name IN LISTS smallcpp_tests)

@@ -24,6 +24,13 @@ function(smallcpp_use_llvm target)
     endif()
 endfunction()
 
+find_path(SMALLCPP_SQLITE3_H sqlite3.h)
+find_library(SMALLCPP_SQLITE3_LIB sqlite3)
+if(NOT SMALLCPP_SQLITE3_H OR NOT SMALLCPP_SQLITE3_LIB)
+    message(FATAL_ERROR
+        "sqlite3 development files are required to build smallcpp_sqlite")
+endif()
+
 add_subdirectory(src/compiler)
 
 add_library(smallcpp_cli STATIC src/cli/CommandLine.cpp)
@@ -93,7 +100,9 @@ endif()
 target_compile_definitions(scpp_cc PRIVATE "SMALLCPP_VERSION=\"0.1\"")
 add_dependencies(scpp_cc smallcpp_runtime)
 
-add_executable(scpp src/scpp/main.cpp)
+add_executable(scpp
+    src/scpp/main.cpp
+    src/scpp/stackmap.cpp)
 target_link_libraries(scpp PRIVATE smallcpp_cli)
 target_compile_features(scpp PRIVATE cxx_std_17)
 if(NOT LLVM_ENABLE_RTTI)
@@ -106,5 +115,25 @@ target_compile_definitions(scpp PRIVATE
     "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
     "SMALLCPP_RUNTIME=\"$<TARGET_FILE:smallcpp_runtime>\"")
 add_dependencies(scpp preproc scpp_cc smallcpp_runtime)
+
+set(SMALLCPP_SQLITE_OBJECT "${CMAKE_BINARY_DIR}/sqlite.o")
+set(SMALLCPP_SQLITE_ARCHIVE "${CMAKE_SOURCE_DIR}/lib/libsmallcpp_sqlite.a")
+add_custom_command(
+    OUTPUT "${SMALLCPP_SQLITE_OBJECT}"
+    COMMAND "$<TARGET_FILE:scpp>" -c -o "${SMALLCPP_SQLITE_OBJECT}"
+            "${CMAKE_SOURCE_DIR}/src/sqlite/sqlite.scpp"
+    DEPENDS scpp
+            "${CMAKE_SOURCE_DIR}/src/sqlite/sqlite.scpp"
+            "${CMAKE_SOURCE_DIR}/include/sqlite"
+            "${CMAKE_SOURCE_DIR}/include/exceptions"
+    VERBATIM)
+add_custom_command(
+    OUTPUT "${SMALLCPP_SQLITE_ARCHIVE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/lib"
+    COMMAND "${CMAKE_AR}" rcs "${SMALLCPP_SQLITE_ARCHIVE}"
+            "${SMALLCPP_SQLITE_OBJECT}"
+    DEPENDS "${SMALLCPP_SQLITE_OBJECT}"
+    VERBATIM)
+add_custom_target(smallcpp_sqlite ALL DEPENDS "${SMALLCPP_SQLITE_ARCHIVE}")
 
 add_subdirectory(tests)

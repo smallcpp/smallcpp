@@ -57,8 +57,8 @@ declarations. The public header does not list `sqlite3_*` or `gtk_*`.
 `<exceptions>` is the base class and is already shipped.
 
 A class in a namespace is used by its class name after
-`using namespace Sqlite;` or `using Sqlite::Connection;`. `new` takes that
-class name. A declaration's type is that name too. `Sqlite::Connection` is
+`using namespace Sqlite;` or `using Sqlite::Database;`. `new` takes that
+class name. A declaration's type is that name too. `Sqlite::Database` is
 not a type specifier.
 
 `const char *` stored in an object is not copied, except where a section
@@ -1089,14 +1089,17 @@ int main(int argc, char **argv) {
 
 ## `<sqlite>`
 
-`<sqlite>` is a smallcpp wrapper around the system sqlite3 library. The
-public header declares classes. It does not declare `sqlite3_*`. The
-implementation calls those symbols with `extern`. Link a program that
+`<sqlite>` is a smallcpp database interface. The public header declares
+classes. It does not name sqlite3 and it does not declare `sqlite3_*`.
+The implementation calls those symbols with `extern`. Link a program that
 uses the wrapper with `-l smallcpp_sqlite -l sqlite3`. A program that
 does not use it does not link sqlite3. Building the wrapper requires the
 sqlite3 development files.
 
-The classes are in namespace `Sqlite`. One database backend is declared.
+The classes are in namespace `Sqlite`. `Database` is the virtual
+interface. `Connection` is the class the sqlite3 library implements. A
+caller holds a `Database *` and does not call through `Connection`. A
+subclass of `Database` overrides the virtual methods for another server.
 The value kinds are `SQL_NULL`, `SQL_INTEGER`, `SQL_REAL`, `SQL_TEXT`,
 and `SQL_BLOB`, with values 0 through 4.
 
@@ -1117,7 +1120,19 @@ public:
     long blob_size() const;
 };
 
-class Connection {
+class Database {
+public:
+    virtual ~Database();
+    virtual bool is_open() const = 0;
+    virtual const char *error() const = 0;
+    virtual bool execute(const char *sql) = 0;
+    virtual Statement *prepare(const char *sql) = 0;
+    virtual bool set_busy_timeout(long milliseconds) = 0;
+    virtual Transaction *begin_transaction() = 0;
+    virtual bool close() = 0;
+};
+
+class Connection : public Database {
 public:
     Connection(const char *path);
     ~Connection();
@@ -1161,7 +1176,8 @@ a null pointer with size 0, or any pointer with size 0. The accessors
 throw `Exception` when `kind()` is a different variant. They do not
 convert.
 
-`Connection(path)` opens or creates a read/write database. Check
+`Connection(path)` opens or creates a read/write database. Store that
+object in a `Database *`. The calls on that pointer are virtual. Check
 `is_open()` and read `error()` when it is false. An empty path asks
 SQLite for a temporary database, which SQLite deletes when the connection
 closes. `":memory:"` is an in-memory database. `error()` points at text
@@ -1198,7 +1214,9 @@ failure to the program. A `catch` that is leaving closes the statement
 and the connection, then uses a bare `throw`. A close failure on that
 path stays in `error()` and leaves the original exception in flight.
 
-`set_busy_timeout` is sqlite-specific. The SQL text is SQLite's SQL.
+`set_busy_timeout` is one of the virtual methods. The `Connection`
+implementation sets the sqlite busy timeout. A subclass overrides it.
+The SQL text is SQLite's SQL.
 
 ```smallcpp
 #include <exceptions>
@@ -1208,7 +1226,7 @@ path stays in `error()` and leaves the original exception in flight.
 using namespace Sqlite;
 
 int main(void) {
-    Connection *database;
+    Database *database;
     Statement *insert;
     Statement *query;
     Value *stored;

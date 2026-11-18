@@ -229,6 +229,18 @@ add_exec_line(term-tty term-tty 0 "term-tty 0 1")
 add_exec_line(random-byte random-byte 0 "random-byte 1")
 add_exec_libs(pthread-join pthread-join 0 "pthread-join 7" pthread)
 add_exec_line(cli-parse cli-parse 0 "cli-parse out.txt file.scpp FOO BAR 1 usage")
+add_test(
+    NAME exec_sqlite-round
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/sqlite-round.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/exec-sqlite-round
+        -DEXPECT=0
+        "-DEXPECT_OUT=round trip"
+        -DEXPECT_NL=1
+        "-DLIBS=smallcpp_sqlite;sqlite3"
+        "-DLIB_DIRS=${CMAKE_SOURCE_DIR}/lib"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 
 add_test(
     NAME exec_exec-print-two
