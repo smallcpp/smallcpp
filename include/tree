@@ -8,16 +8,18 @@
  * the first value comes later, like strcmp. The default
  * calls String.cmp when Type is const char * or String *.
  * Any other type uses <. A subclass overrides compare to
- * change the order. add inserts. An equal value is left
- * in place. root() is the root value. at walks in order
- * and counts a negative index from the end. find returns
- * that in-order index for the first zero result, or -1.
- * replace removes the indexed value and inserts the new
- * one so the order stays valid. insert accepts an index
- * the way a sequence does, then places the value with
- * compare, the same as add. remove deletes the in-order
- * value at the index. next returns the value at a
- * caller-owned cursor and writes the following index.
+ * change the order. add places a value with compare. An
+ * equal value is left in place. insert places a value at
+ * the in-order index. A negative index counts from the
+ * end. Past the end appends. Before the start prepends.
+ * After insert, at(index) is that value. replace writes
+ * the value at the index and leaves it there. find
+ * returns the in-order index of the first zero result,
+ * or -1. root() is the root value. at walks in order and
+ * counts a negative index from the end. remove deletes
+ * the in-order value at the index. next returns the value
+ * at a caller-owned cursor and writes the following
+ * index.
  * The cursor starts at 0. A null cursor, or a cursor past
  * either end, throws Exception with message index.
  * Expand the macro in one translation unit.
@@ -50,7 +52,12 @@ class Name { \
     Name##Node *rotate_right(Name##Node *node); \
     Name##Node *plant(Name##Node *node, Type value); \
     Name##Node *settle(Name##Node *node); \
-    Name##Node *drop(Name##Node *node, Type value); \
+    long span(Name##Node *node); \
+    Name##Node *graft(Name##Node *node, long index, \
+        Type value); \
+    int write(Name##Node *node, long *seen, \
+        long index, Type value); \
+    Name##Node *drop_at(Name##Node *node, long index); \
     int locate(Name##Node *node, Type value, \
         long *seen, long *out); \
     int pick(Name##Node *node, long *seen, \
@@ -183,15 +190,59 @@ Name##Node *Name::settle(Name##Node *node) { \
     } \
     return node; \
 } \
-Name##Node *Name::drop(Name##Node *node, Type value) { \
+long Name::span(Name##Node *node) { \
+    if (node == nullptr) \
+        return 0; \
+    return 1 + span(node->left) + span(node->right); \
+} \
+Name##Node *Name::graft(Name##Node *node, long index, \
+    Type value) { \
+    long left_count; \
+    if (node == nullptr) { \
+        node = new Name##Node(); \
+        node->value = value; \
+        node->left = nullptr; \
+        node->right = nullptr; \
+        node->height = 1; \
+        count = count + 1; \
+        return node; \
+    } \
+    left_count = span(node->left); \
+    if (index <= left_count) \
+        node->left = graft(node->left, index, value); \
+    else \
+        node->right = graft(node->right, \
+            index - left_count - 1, value); \
+    return settle(node); \
+} \
+int Name::write(Name##Node *node, long *seen, \
+    long index, Type value) { \
+    int found; \
+    if (node == nullptr) \
+        return 0; \
+    found = write(node->left, seen, index, value); \
+    if (found) \
+        return 1; \
+    if (*seen == index) { \
+        node->value = value; \
+        return 1; \
+    } \
+    *seen = *seen + 1; \
+    return write(node->right, seen, index, value); \
+} \
+Name##Node *Name::drop_at(Name##Node *node, long index) { \
     Name##Node *least; \
+    long left_count; \
     if (node == nullptr) \
         return nullptr; \
-    if (compare(value, node->value) < 0) \
-        node->left = drop(node->left, value); \
-    else if (compare(node->value, value) < 0) \
-        node->right = drop(node->right, value); \
-    else if (node->left == nullptr || node->right == nullptr) { \
+    left_count = span(node->left); \
+    if (index < left_count) \
+        node->left = drop_at(node->left, index); \
+    else if (index > left_count) \
+        node->right = drop_at(node->right, \
+            index - left_count - 1); \
+    else if (node->left == nullptr \
+        || node->right == nullptr) { \
         count = count - 1; \
         if (node->left != nullptr) \
             return node->left; \
@@ -201,7 +252,7 @@ Name##Node *Name::drop(Name##Node *node, Type value) { \
         while (least->left != nullptr) \
             least = least->left; \
         node->value = least->value; \
-        node->right = drop(node->right, least->value); \
+        node->right = drop_at(node->right, 0); \
     } \
     return settle(node); \
 } \
@@ -266,35 +317,29 @@ long Name::find(Type value) { \
     return out; \
 } \
 void Name::replace(long index, Type value) { \
-    Type old; \
+    long seen; \
     if (index < 0) \
         index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
-    old = at(index); \
-    if (compare(old, value) == 0) \
-        return; \
-    top = drop(top, old); \
-    add(value); \
+    seen = 0; \
+    write(top, &seen, index, value); \
 } \
 void Name::insert(long index, Type value) { \
-    /* Sequence bounds. Tree order chooses the place. */ \
     if (index < 0) \
         index = count + index; \
     if (index < 0) \
         index = 0; \
     if (index > count) \
         index = count; \
-    add(value); \
+    top = graft(top, index, value); \
 } \
 void Name::remove(long index) { \
-    Type value; \
     if (index < 0) \
         index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
-    value = at(index); \
-    top = drop(top, value); \
+    top = drop_at(top, index); \
 } \
 Type Name::next(long *cursor) { \
     long index; \

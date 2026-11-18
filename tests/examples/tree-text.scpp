@@ -8,9 +8,9 @@ int main(void) {
     long found;
 
     nodes = new TextTree();
-    nodes->insert(0, "b");
-    nodes->insert(0, "a");
-    nodes->insert(0, "c");
+    nodes->add("b");
+    nodes->add("a");
+    nodes->add("c");
     key[0] = 'b';
     key[1] = 0;
     found = nodes->find(key);
