@@ -1,0 +1,87 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+static int edits;
+
+static void buffer_changed(void *data) {
+    int *flag;
+
+    flag = (int *)data;
+    *flag = *flag + 1;
+}
+
+static void copy_text(
+        char *dest,
+        const char *src,
+        long room) {
+    long i;
+
+    i = 0;
+    if (src == nullptr) {
+        dest[0] = 0;
+        return;
+    }
+    while (src[i] != 0 && i + 1 < room) {
+        dest[i] = src[i];
+        i = i + 1;
+    }
+    dest[i] = 0;
+}
+
+int main(void) {
+    TextBuffer *buffer;
+    TextMark *mark;
+    TextIter *at;
+    TextIter *start;
+    TextIter *end;
+    TextView *view;
+    char inserted[8];
+    char undone[8];
+    long place;
+
+    try {
+        buffer = new TextBuffer();
+        edits = 0;
+        buffer->on_changed(buffer_changed, (void *)&edits);
+        buffer->set_text("ab");
+        mark = buffer->create_mark("caret", 0, 1);
+        at = new TextIter(0, 1);
+        buffer->insert(at, "X");
+        copy_text(inserted, buffer->get_text(), 8);
+        place = mark->offset();
+        buffer->undo();
+        copy_text(undone, buffer->get_text(), 8);
+        buffer->set_text("hello");
+        start = new TextIter(0, 0);
+        end = new TextIter(0, 5);
+        buffer->select_range(start, end);
+        buffer->selection_bounds(start, end);
+        buffer->create_tag("note", "blue");
+        buffer->apply_tag("note", start, end);
+        view = new TextView(buffer);
+        view->set_monospace(true);
+        view->set_editable(false);
+        view->scroll_to(0, 0);
+        if (edits == 0)
+            throw *new Exception("gtk");
+        print("gtk-text {:s} {} {:s} {} {} {}\n",
+                inserted,
+                place,
+                undone,
+                end->offset(),
+                (int)view->monospace(),
+                (int)view->editable());
+        return 0;
+    } catch (Exception error) {
+        if (error.message != nullptr
+                && strcmp(error.message, "display") == 0) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        if (error.message != nullptr)
+            print("gtk-text fail {:s}\n", error.message);
+        return 1;
+    }
+}

@@ -1,0 +1,408 @@
+#ifndef SMALLCPP_GTK_NATIVE
+#define SMALLCPP_GTK_NATIVE
+
+/* C functions used by the wrapper. The public
+ * header does not declare these. */
+
+extern void *malloc(unsigned long size);
+extern void free(void *ptr);
+
+extern int g_utf8_validate(
+        const char *text,
+        long length,
+        const char **end);
+extern unsigned g_idle_add(void *func, void *data);
+extern int g_source_remove(unsigned id);
+extern void *g_thread_self(void);
+extern void g_mutex_init(void *mutex);
+extern void g_mutex_lock(void *mutex);
+extern void g_mutex_unlock(void *mutex);
+extern void g_free(void *ptr);
+extern void g_error_free(void *error);
+extern void *g_object_ref_sink(void *object);
+extern void g_object_unref(void *object);
+extern void g_object_set_data(
+        void *object,
+        const char *key,
+        void *data);
+extern void *g_object_get_data(
+        void *object,
+        const char *key);
+extern unsigned long g_signal_connect_data(
+        void *instance,
+        const char *signal,
+        void *handler,
+        void *data,
+        void *destroy,
+        int flags);
+extern void g_signal_handler_disconnect(
+        void *instance,
+        unsigned long handler);
+extern int g_application_run(
+        void *application,
+        int argc,
+        char **argv);
+extern void *g_menu_new(void);
+extern void g_menu_append(
+        void *menu,
+        const char *label,
+        const char *action);
+extern void *g_simple_action_group_new(void);
+extern void *g_simple_action_new(
+        const char *name,
+        void *parameter);
+extern void g_action_map_add_action(
+        void *map,
+        void *action);
+extern char *g_file_get_path(void *file);
+extern void g_value_init(void *value, unsigned long type);
+extern void g_value_set_string(
+        void *value,
+        const char *text);
+extern void g_value_unset(void *value);
+extern void g_object_set_property(
+        void *object,
+        const char *name,
+        void *value);
+
+extern int gtk_init_check(void);
+extern void *gtk_application_new(
+        const char *id,
+        int flags);
+extern void *gtk_window_new(void);
+extern void gtk_window_set_title(
+        void *window,
+        const char *title);
+extern const char *gtk_window_get_title(void *window);
+extern void gtk_window_set_default_size(
+        void *window,
+        int width,
+        int height);
+extern void gtk_window_set_child(
+        void *window,
+        void *child);
+extern void gtk_window_present(void *window);
+extern void gtk_window_close(void *window);
+extern void gtk_widget_set_visible(void *widget, int value);
+extern void gtk_widget_set_sensitive(
+        void *widget,
+        int value);
+extern void gtk_widget_set_hexpand(void *widget, int value);
+extern void gtk_widget_set_vexpand(void *widget, int value);
+extern void gtk_widget_set_size_request(
+        void *widget,
+        int width,
+        int height);
+extern void gtk_widget_add_css_class(
+        void *widget,
+        const char *name);
+extern void gtk_widget_remove_css_class(
+        void *widget,
+        const char *name);
+extern void gtk_widget_set_tooltip_text(
+        void *widget,
+        const char *text);
+extern void gtk_widget_unparent(void *widget);
+extern void *gtk_widget_get_parent(void *widget);
+extern void gtk_widget_insert_action_group(
+        void *widget,
+        const char *name,
+        void *group);
+extern void *gtk_box_new(int orientation, int spacing);
+extern void gtk_box_append(void *box, void *child);
+extern void gtk_box_remove(void *box, void *child);
+extern void *gtk_label_new(const char *text);
+extern void gtk_label_set_text(
+        void *label,
+        const char *text);
+extern const char *gtk_label_get_text(void *label);
+extern void *gtk_button_new_with_label(const char *label);
+extern void gtk_button_set_label(
+        void *button,
+        const char *label);
+extern const char *gtk_button_get_label(void *button);
+extern void *gtk_entry_new(void);
+extern void gtk_editable_set_text(
+        void *editable,
+        const char *text);
+extern const char *gtk_editable_get_text(void *editable);
+extern void *gtk_check_button_new_with_label(
+        const char *label);
+extern void gtk_check_button_set_label(
+        void *button,
+        const char *label);
+extern const char *gtk_check_button_get_label(
+        void *button);
+extern void gtk_check_button_set_active(
+        void *button,
+        int value);
+extern int gtk_check_button_get_active(void *button);
+extern void *gtk_scrolled_window_new(void);
+extern void gtk_scrolled_window_set_child(
+        void *window,
+        void *child);
+extern void gtk_scrolled_window_set_policy(
+        void *window,
+        int horizontal,
+        int vertical);
+extern void *gtk_header_bar_new(void);
+extern void gtk_header_bar_set_title_widget(
+        void *bar,
+        void *widget);
+extern void *gtk_header_bar_get_title_widget(void *bar);
+extern void gtk_header_bar_pack_start(
+        void *bar,
+        void *child);
+extern void gtk_header_bar_pack_end(
+        void *bar,
+        void *child);
+extern void gtk_header_bar_set_show_title_buttons(
+        void *bar,
+        int value);
+extern int gtk_header_bar_get_show_title_buttons(
+        void *bar);
+extern void *gtk_menu_button_new(void);
+extern void gtk_menu_button_set_label(
+        void *button,
+        const char *label);
+extern const char *gtk_menu_button_get_label(void *button);
+extern void gtk_menu_button_set_menu_model(
+        void *button,
+        void *model);
+extern void *gtk_popover_new(void);
+extern void gtk_popover_set_child(
+        void *popover,
+        void *child);
+extern void gtk_popover_popup(void *popover);
+extern void gtk_popover_popdown(void *popover);
+extern void *gtk_paned_new(int orientation);
+extern void gtk_paned_set_start_child(
+        void *paned,
+        void *child);
+extern void gtk_paned_set_end_child(
+        void *paned,
+        void *child);
+extern void gtk_paned_set_position(
+        void *paned,
+        int position);
+extern int gtk_paned_get_position(void *paned);
+extern void *gtk_notebook_new(void);
+extern int gtk_notebook_append_page(
+        void *notebook,
+        void *child,
+        void *tab);
+extern void gtk_notebook_remove_page(
+        void *notebook,
+        int index);
+extern int gtk_notebook_get_current_page(void *notebook);
+extern void gtk_notebook_set_current_page(
+        void *notebook,
+        int index);
+extern void *gtk_string_list_new(const char **strings);
+extern void gtk_string_list_append(
+        void *list,
+        const char *text);
+extern void gtk_string_list_remove(
+        void *list,
+        unsigned position);
+extern void *gtk_no_selection_new(void *model);
+extern void *gtk_column_view_new(void *model);
+extern void gtk_column_view_append_column(
+        void *view,
+        void *column);
+extern void *gtk_column_view_column_new(
+        const char *title,
+        void *factory);
+extern void *gtk_signal_list_item_factory_new(void);
+extern void gtk_list_item_set_child(
+        void *item,
+        void *child);
+extern void *gtk_list_item_get_child(void *item);
+extern unsigned gtk_list_item_get_position(void *item);
+extern void *gtk_dialog_new(void);
+extern void *gtk_dialog_add_button(
+        void *dialog,
+        const char *label,
+        int response);
+extern void *gtk_dialog_get_content_area(void *dialog);
+extern void *gtk_alert_dialog_new(const char *text);
+extern void gtk_alert_dialog_set_message(
+        void *dialog,
+        const char *message);
+extern void gtk_alert_dialog_set_detail(
+        void *dialog,
+        const char *detail);
+extern const char *gtk_alert_dialog_get_message(
+        void *dialog);
+extern const char *gtk_alert_dialog_get_detail(
+        void *dialog);
+extern void gtk_alert_dialog_set_buttons(
+        void *dialog,
+        const char **labels);
+extern void gtk_alert_dialog_choose(
+        void *dialog,
+        void *parent,
+        void *cancellable,
+        void *callback,
+        void *data);
+extern int gtk_alert_dialog_choose_finish(
+        void *dialog,
+        void *result,
+        void **error);
+extern void *gtk_file_dialog_new(void);
+extern void gtk_file_dialog_set_title(
+        void *dialog,
+        const char *title);
+extern const char *gtk_file_dialog_get_title(
+        void *dialog);
+extern void gtk_file_dialog_open(
+        void *dialog,
+        void *parent,
+        void *cancellable,
+        void *callback,
+        void *data);
+extern void *gtk_file_dialog_open_finish(
+        void *dialog,
+        void *result,
+        void **error);
+extern void gtk_file_dialog_save(
+        void *dialog,
+        void *parent,
+        void *cancellable,
+        void *callback,
+        void *data);
+extern void *gtk_file_dialog_save_finish(
+        void *dialog,
+        void *result,
+        void **error);
+extern void *gtk_drop_down_new(
+        void *model,
+        void *expression);
+extern void gtk_drop_down_set_model(
+        void *dropdown,
+        void *model);
+extern void gtk_drop_down_set_selected(
+        void *dropdown,
+        unsigned position);
+extern unsigned gtk_drop_down_get_selected(void *dropdown);
+extern void *gtk_spin_button_new_with_range(
+        double min,
+        double max,
+        double step);
+extern void gtk_spin_button_set_value(
+        void *button,
+        double value);
+extern double gtk_spin_button_get_value(void *button);
+extern void gtk_spin_button_get_range(
+        void *button,
+        double *min,
+        double *max);
+extern void *gtk_picture_new(void);
+extern void gtk_picture_set_filename(
+        void *picture,
+        const char *path);
+extern void *gtk_progress_bar_new(void);
+extern void gtk_progress_bar_set_fraction(
+        void *bar,
+        double fraction);
+extern double gtk_progress_bar_get_fraction(void *bar);
+extern void *gtk_spinner_new(void);
+extern void gtk_spinner_start(void *spinner);
+extern void gtk_spinner_stop(void *spinner);
+extern int gtk_spinner_get_spinning(void *spinner);
+extern void *gtk_text_buffer_new(void *table);
+extern void gtk_text_buffer_set_text(
+        void *buffer,
+        const char *text,
+        int length);
+extern char *gtk_text_buffer_get_text(
+        void *buffer,
+        void *start,
+        void *end,
+        int hidden);
+extern void gtk_text_buffer_insert(
+        void *buffer,
+        void *iter,
+        const char *text,
+        int length);
+extern void gtk_text_buffer_delete(
+        void *buffer,
+        void *start,
+        void *end);
+extern void gtk_text_buffer_place_cursor(
+        void *buffer,
+        void *iter);
+extern void gtk_text_buffer_select_range(
+        void *buffer,
+        void *insert,
+        void *bound);
+extern int gtk_text_buffer_get_selection_bounds(
+        void *buffer,
+        void *start,
+        void *end);
+extern void gtk_text_buffer_get_bounds(
+        void *buffer,
+        void *start,
+        void *end);
+extern int gtk_text_buffer_get_iter_at_line_offset(
+        void *buffer,
+        void *iter,
+        int line,
+        int offset);
+extern void gtk_text_buffer_get_iter_at_mark(
+        void *buffer,
+        void *iter,
+        void *mark);
+extern void *gtk_text_buffer_get_insert(void *buffer);
+extern void *gtk_text_buffer_create_mark(
+        void *buffer,
+        const char *name,
+        void *iter,
+        int left_gravity);
+extern void gtk_text_buffer_move_mark(
+        void *buffer,
+        void *mark,
+        void *iter);
+extern void *gtk_text_buffer_get_tag_table(void *buffer);
+extern void gtk_text_buffer_apply_tag(
+        void *buffer,
+        void *tag,
+        void *start,
+        void *end);
+extern void gtk_text_buffer_remove_tag(
+        void *buffer,
+        void *tag,
+        void *start,
+        void *end);
+extern void gtk_text_buffer_undo(void *buffer);
+extern void gtk_text_buffer_redo(void *buffer);
+extern void gtk_text_buffer_set_enable_undo(
+        void *buffer,
+        int enable);
+extern void *gtk_text_tag_new(const char *name);
+extern int gtk_text_tag_table_add(
+        void *table,
+        void *tag);
+extern void *gtk_text_tag_table_lookup(
+        void *table,
+        const char *name);
+extern int gtk_text_iter_get_line(void *iter);
+extern int gtk_text_iter_get_line_offset(void *iter);
+extern void *gtk_text_view_new_with_buffer(void *buffer);
+extern void gtk_text_view_set_editable(
+        void *view,
+        int editable);
+extern int gtk_text_view_get_editable(void *view);
+extern void gtk_text_view_set_monospace(
+        void *view,
+        int monospace);
+extern int gtk_text_view_get_monospace(void *view);
+extern int gtk_text_view_scroll_to_iter(
+        void *view,
+        void *iter,
+        double margin,
+        int use_align,
+        double xalign,
+        double yalign);
+
+#endif

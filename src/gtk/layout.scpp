@@ -1,0 +1,694 @@
+/* Header bars, menus, popovers, panes,
+ * notebooks, and column views. */
+#include <exceptions>
+#include "gtk-native"
+#include "gtk-globals"
+
+namespace Gtk {
+
+class ColumnSlot {
+public:
+    ColumnSlot();
+    ColumnView *view;
+    long column;
+};
+
+ColumnSlot::ColumnSlot() {
+    view = nullptr;
+    column = 0;
+}
+
+class MenuPick {
+public:
+    MenuPick();
+    MenuButton *button;
+    const char *label;
+};
+
+MenuPick::MenuPick() {
+    button = nullptr;
+    label = nullptr;
+}
+
+static void write_index(char *buf, long index) {
+    char digits[24];
+    long n;
+    long i;
+    long j;
+
+    buf[0] = 'n';
+    if (index <= 0) {
+        buf[1] = '0';
+        buf[2] = 0;
+        return;
+    }
+    n = index;
+    i = 0;
+    while (n > 0 && i < 20) {
+        digits[i] = (char)('0' + (n % 10));
+        n = n / 10;
+        i = i + 1;
+    }
+    j = 0;
+    while (i > 0) {
+        i = i - 1;
+        buf[1 + j] = digits[i];
+        j = j + 1;
+    }
+    buf[1 + j] = 0;
+}
+
+static void write_detailed(char *buf, long index) {
+    char name[24];
+    long i;
+
+    write_index(name, index);
+    buf[0] = 'm';
+    buf[1] = 'e';
+    buf[2] = 'n';
+    buf[3] = 'u';
+    buf[4] = '.';
+    i = 0;
+    while (name[i] != 0) {
+        buf[5 + i] = name[i];
+        i = i + 1;
+    }
+    buf[5 + i] = 0;
+}
+
+static void menu_activate(
+        void *action,
+        void *parameter,
+        void *data) {
+    MenuPick *pick;
+
+    (void)action;
+    (void)parameter;
+    pick = (MenuPick *)data;
+    if (pick == nullptr || pick->button == nullptr)
+        return;
+    if (pick->button->menuAction == nullptr)
+        return;
+    pick->button->menuAction(
+            pick->button->menuData,
+            pick->label);
+}
+
+static void menu_cleanup(Widget *widget) {
+    MenuButton *button;
+
+    button = (MenuButton *)widget;
+    if (button->menuModel != nullptr) {
+        g_object_unref(button->menuModel);
+        button->menuModel = nullptr;
+    }
+    if (button->actionGroup != nullptr) {
+        g_object_unref(button->actionGroup);
+        button->actionGroup = nullptr;
+    }
+}
+
+static void notebook_switch(
+        void *notebook,
+        void *page,
+        unsigned index,
+        void *data) {
+    SignalConnection *slot;
+    void (*action)(void *, long);
+
+    (void)notebook;
+    (void)page;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *, long))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data, (long)index);
+}
+
+static void column_setup(
+        void *factory,
+        void *item,
+        void *data) {
+    void *label;
+
+    (void)factory;
+    (void)data;
+    label = gtk_label_new("");
+    gtk_list_item_set_child(item, label);
+}
+
+static void column_bind(
+        void *factory,
+        void *item,
+        void *data) {
+    ColumnSlot *slot;
+    unsigned position;
+    void *child;
+    const char *text;
+
+    (void)factory;
+    slot = (ColumnSlot *)data;
+    child = gtk_list_item_get_child(item);
+    text = "";
+    if (slot != nullptr && slot->view != nullptr) {
+        position = gtk_list_item_get_position(item);
+        if ((long)position < slot->view->rowCount
+                && slot->column < slot->view->columnCount
+                && slot->column >= 0)
+            text = slot->view->cell(
+                    (long)position,
+                    slot->column);
+    }
+    if (child != nullptr && text != nullptr)
+        gtk_label_set_text(child, text);
+}
+
+static void column_activate(
+        void *view,
+        unsigned position,
+        void *data) {
+    SignalConnection *slot;
+    void (*action)(void *, long);
+
+    (void)view;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *, long))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data, (long)position);
+}
+
+HeaderBar::HeaderBar() : Widget() {
+    native = gtk_sink(gtk_header_bar_new());
+    titleLabel = nullptr;
+}
+
+void HeaderBar::set_title(const char *title) {
+    void *label;
+
+    gtk_use((Widget *)this);
+    gtk_check_text(title);
+    label = gtk_label_new(title);
+    gtk_header_bar_set_title_widget(native, label);
+    titleLabel = label;
+}
+
+const char *HeaderBar::title() const {
+    void *label;
+
+    gtk_use((Widget *)this);
+    label = gtk_header_bar_get_title_widget(native);
+    if (label == nullptr)
+        return "";
+    return gtk_text_or_empty(gtk_label_get_text(label));
+}
+
+void HeaderBar::set_show_title_buttons(bool value) {
+    gtk_use((Widget *)this);
+    gtk_header_bar_set_show_title_buttons(
+            native,
+            gtk_flag(value));
+}
+
+bool HeaderBar::show_title_buttons() const {
+    gtk_use((Widget *)this);
+    return gtk_header_bar_get_show_title_buttons(
+            native) != 0;
+}
+
+void HeaderBar::pack_start(Widget *child) {
+    gtk_check_child((Widget *)this, child);
+    gtk_header_bar_pack_start(native, child->native);
+    gtk_note_child((Widget *)this, child);
+}
+
+void HeaderBar::pack_end(Widget *child) {
+    gtk_check_child((Widget *)this, child);
+    gtk_header_bar_pack_end(native, child->native);
+    gtk_note_child((Widget *)this, child);
+}
+
+MenuButton::MenuButton(const char *label) : Widget() {
+    void (*fn)(Widget *);
+
+    gtk_check_text(label);
+    native = gtk_sink(gtk_menu_button_new());
+    gtk_menu_button_set_label(native, label);
+    menuAction = nullptr;
+    menuData = nullptr;
+    menuModel = nullptr;
+    actionGroup = nullptr;
+    menuLabels = nullptr;
+    menuCount = 0;
+    menuPicks = nullptr;
+    fn = menu_cleanup;
+    cleanup = fn;
+}
+
+void MenuButton::set_label(const char *label) {
+    gtk_use((Widget *)this);
+    gtk_check_text(label);
+    gtk_menu_button_set_label(native, label);
+}
+
+const char *MenuButton::label() const {
+    gtk_use((Widget *)this);
+    return gtk_text_or_empty(
+            gtk_menu_button_get_label(native));
+}
+
+void MenuButton::set_menu(
+        const char **labels,
+        long count,
+        void (*action)(void *, const char *),
+        void *data) {
+    void *model;
+    void *group;
+    long i;
+    char name[24];
+    char detailed[32];
+    void (*typed)(void *, void *, void *);
+    void *handler;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    if (count < 0)
+        gtk_fail("range");
+    if (count > 0 && labels == nullptr)
+        gtk_fail("null");
+    i = 0;
+    while (i < count) {
+        gtk_check_text(labels[i]);
+        i = i + 1;
+    }
+    model = g_menu_new();
+    group = g_simple_action_group_new();
+    if (model == nullptr || group == nullptr)
+        gtk_fail("gtk");
+    menuLabels = new char *[count];
+    menuPicks = new void *[count];
+    menuCount = count;
+    menuAction = action;
+    menuData = data;
+    typed = menu_activate;
+    handler = (void *)typed;
+    i = 0;
+    while (i < count) {
+        MenuPick *pick;
+        void *simple;
+        void *pickPtr;
+        unsigned long id;
+
+        menuLabels[i] = gtk_copy(labels[i]);
+        pick = new MenuPick();
+        pick->button = this;
+        pick->label = menuLabels[i];
+        menuPicks[i] = pick;
+        write_index(name, i);
+        write_detailed(detailed, i);
+        simple = g_simple_action_new(name, nullptr);
+        if (simple == nullptr)
+            gtk_fail("gtk");
+        pickPtr = (void *)pick;
+        id = g_signal_connect_data(
+                simple,
+                "activate",
+                handler,
+                pickPtr,
+                nullptr,
+                0);
+        if (id == 0)
+            gtk_fail("gtk");
+        g_action_map_add_action(group, simple);
+        g_object_unref(simple);
+        g_menu_append(model, labels[i], detailed);
+        i = i + 1;
+    }
+    if (menuModel != nullptr)
+        g_object_unref(menuModel);
+    if (actionGroup != nullptr)
+        g_object_unref(actionGroup);
+    menuModel = model;
+    actionGroup = group;
+    gtk_widget_insert_action_group(
+            native,
+            "menu",
+            group);
+    gtk_menu_button_set_menu_model(native, model);
+}
+
+Popover::Popover() : Widget() {
+    native = gtk_sink(gtk_popover_new());
+}
+
+void Popover::set_child(Widget *child) {
+    gtk_check_child((Widget *)this, child);
+    gtk_require_single((Widget *)this);
+    gtk_popover_set_child(native, child->native);
+    gtk_note_child((Widget *)this, child);
+}
+
+void Popover::popup() {
+    gtk_use((Widget *)this);
+    gtk_popover_popup(native);
+}
+
+void Popover::popdown() {
+    gtk_use((Widget *)this);
+    gtk_popover_popdown(native);
+}
+
+Paned::Paned(int orientation) : Widget() {
+    if (orientation != GTK_HORIZONTAL
+            && orientation != GTK_VERTICAL)
+        gtk_fail("range");
+    orient = orientation;
+    native = gtk_sink(gtk_paned_new(orientation));
+    startChild = nullptr;
+    endChild = nullptr;
+}
+
+int Paned::orientation() const {
+    gtk_use((Widget *)this);
+    return orient;
+}
+
+void Paned::set_start_child(Widget *child) {
+    gtk_use((Widget *)this);
+    if (child == nullptr)
+        gtk_fail("null");
+    if (startChild == child)
+        return;
+    if (startChild != nullptr) {
+        gtk_note_remove((Widget *)this, startChild);
+        startChild = nullptr;
+    }
+    gtk_check_child((Widget *)this, child);
+    gtk_paned_set_start_child(native, child->native);
+    gtk_note_child((Widget *)this, child);
+    startChild = child;
+}
+
+void Paned::set_end_child(Widget *child) {
+    gtk_use((Widget *)this);
+    if (child == nullptr)
+        gtk_fail("null");
+    if (endChild == child)
+        return;
+    if (endChild != nullptr) {
+        gtk_note_remove((Widget *)this, endChild);
+        endChild = nullptr;
+    }
+    gtk_check_child((Widget *)this, child);
+    gtk_paned_set_end_child(native, child->native);
+    gtk_note_child((Widget *)this, child);
+    endChild = child;
+}
+
+void Paned::set_position(long position) {
+    gtk_use((Widget *)this);
+    gtk_paned_set_position(native, gtk_int(position));
+}
+
+long Paned::position() const {
+    gtk_use((Widget *)this);
+    return gtk_paned_get_position(native);
+}
+
+Notebook::Notebook() : Widget() {
+    native = gtk_sink(gtk_notebook_new());
+}
+
+long Notebook::append_page(
+        Widget *child,
+        const char *title) {
+    void *tab;
+    int index;
+
+    gtk_check_child((Widget *)this, child);
+    gtk_check_text(title);
+    tab = gtk_label_new(title);
+    index = gtk_notebook_append_page(
+            native,
+            child->native,
+            tab);
+    if (index < 0)
+        gtk_fail("gtk");
+    gtk_note_child((Widget *)this, child);
+    return index;
+}
+
+void Notebook::remove_page(long index) {
+    Widget *child;
+
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= childCount)
+        gtk_fail("range");
+    child = children[index];
+    gtk_notebook_remove_page(native, gtk_int(index));
+    gtk_note_remove((Widget *)this, child);
+}
+
+long Notebook::current_page() const {
+    gtk_use((Widget *)this);
+    return gtk_notebook_get_current_page(native);
+}
+
+void Notebook::set_current_page(long index) {
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= childCount)
+        gtk_fail("range");
+    gtk_notebook_set_current_page(
+            native,
+            gtk_int(index));
+}
+
+SignalConnection Notebook::on_switch_page(
+        void (*action)(void *, long),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *, unsigned, void *);
+    void *handler;
+    void (*user)(void *, long);
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = notebook_switch;
+    handler = (void *)typed;
+    user = action;
+    userAction = (void *)user;
+    slot = gtk_bind(
+            native,
+            "switch-page",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+ColumnView::ColumnView() : Widget() {
+    void *list;
+    void *selection;
+
+    list = gtk_string_list_new(nullptr);
+    if (list == nullptr)
+        gtk_fail("gtk");
+    selection = gtk_no_selection_new(list);
+    if (selection == nullptr)
+        gtk_fail("gtk");
+    native = gtk_sink(gtk_column_view_new(selection));
+    cells = nullptr;
+    rowCount = 0;
+    rowRoom = 0;
+    columnCount = 0;
+    rows = list;
+    columnData = nullptr;
+}
+
+void ColumnView::append_column(const char *title) {
+    ColumnSlot *slot;
+    void *factory;
+    void *column;
+    void *slotPtr;
+    void (*setup)(void *, void *, void *);
+    void (*bind)(void *, void *, void *);
+    void *handler;
+    void **grown;
+    long i;
+    unsigned long id;
+
+    gtk_use((Widget *)this);
+    gtk_check_text(title);
+    i = 0;
+    while (i < rowCount) {
+        char **widened;
+        long j;
+
+        char **old;
+
+        widened = new char *[columnCount + 1];
+        old = (char **)cells[i];
+        j = 0;
+        while (j < columnCount) {
+            widened[j] = old[j];
+            j = j + 1;
+        }
+        widened[columnCount] = gtk_copy("");
+        cells[i] = widened;
+        i = i + 1;
+    }
+    slot = new ColumnSlot();
+    slot->view = this;
+    slot->column = columnCount;
+    grown = new void *[columnCount + 1];
+    i = 0;
+    while (i < columnCount) {
+        grown[i] = columnData[i];
+        i = i + 1;
+    }
+    grown[columnCount] = slot;
+    columnData = grown;
+    factory = gtk_signal_list_item_factory_new();
+    if (factory == nullptr)
+        gtk_fail("gtk");
+    setup = column_setup;
+    handler = (void *)setup;
+    slotPtr = (void *)slot;
+    id = g_signal_connect_data(
+            factory,
+            "setup",
+            handler,
+            slotPtr,
+            nullptr,
+            0);
+    if (id == 0)
+        gtk_fail("gtk");
+    bind = column_bind;
+    handler = (void *)bind;
+    id = g_signal_connect_data(
+            factory,
+            "bind",
+            handler,
+            slotPtr,
+            nullptr,
+            0);
+    if (id == 0)
+        gtk_fail("gtk");
+    column = gtk_column_view_column_new(title, factory);
+    if (column == nullptr)
+        gtk_fail("gtk");
+    gtk_column_view_append_column(native, column);
+    g_object_unref(column);
+    columnCount = columnCount + 1;
+}
+
+void ColumnView::append_row(
+        const char **cells,
+        long count) {
+    char **row;
+    void **grown;
+    long next;
+    long i;
+
+    gtk_use((Widget *)this);
+    if (count != columnCount)
+        gtk_fail("range");
+    if (count > 0 && cells == nullptr)
+        gtk_fail("null");
+    row = new char *[count];
+    i = 0;
+    while (i < count) {
+        gtk_check_text(cells[i]);
+        row[i] = gtk_copy(cells[i]);
+        i = i + 1;
+    }
+    if (rowCount >= rowRoom) {
+        next = rowRoom * 2;
+        if (next < 4)
+            next = 4;
+        grown = new void *[next];
+        i = 0;
+        while (i < next) {
+            grown[i] = nullptr;
+            i = i + 1;
+        }
+        i = 0;
+        while (i < rowCount) {
+            grown[i] = this->cells[i];
+            i = i + 1;
+        }
+        rowRoom = next;
+        this->cells = grown;
+    }
+    this->cells[rowCount] = row;
+    rowCount = rowCount + 1;
+    gtk_string_list_append((void *)rows, "");
+}
+
+void ColumnView::clear_rows() {
+    gtk_use((Widget *)this);
+    while (rowCount > 0) {
+        rowCount = rowCount - 1;
+        gtk_string_list_remove(
+                (void *)rows,
+                (unsigned)rowCount);
+    }
+    cells = nullptr;
+    rowRoom = 0;
+}
+
+long ColumnView::row_count() const {
+    gtk_use((Widget *)this);
+    return rowCount;
+}
+
+long ColumnView::column_count() const {
+    gtk_use((Widget *)this);
+    return columnCount;
+}
+
+const char *ColumnView::cell(
+        long row,
+        long column) const {
+    char **line;
+
+    gtk_use((Widget *)this);
+    if (row < 0 || row >= rowCount)
+        gtk_fail("range");
+    if (column < 0 || column >= columnCount)
+        gtk_fail("range");
+    line = (char **)cells[row];
+    return gtk_text_or_empty(line[column]);
+}
+
+SignalConnection ColumnView::on_activate(
+        void (*action)(void *, long),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, unsigned, void *);
+    void *handler;
+    void (*user)(void *, long);
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = column_activate;
+    handler = (void *)typed;
+    user = action;
+    userAction = (void *)user;
+    slot = gtk_bind(
+            native,
+            "activate",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+}

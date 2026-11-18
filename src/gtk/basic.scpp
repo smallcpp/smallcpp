@@ -1,0 +1,357 @@
+/* Windows, boxes, labels, buttons, entries,
+ * checks, and scrolled windows. */
+#include <exceptions>
+#include "gtk-native"
+#include "gtk-globals"
+
+namespace Gtk {
+
+static void *handler_of(void (*typed)(void *, void *)) {
+    return (void *)typed;
+}
+
+static void *action_of(void (*typed)(void *)) {
+    return (void *)typed;
+}
+
+static int window_close(void *window, void *data) {
+    SignalConnection *slot;
+    bool (*action)(void *);
+
+    (void)window;
+    slot = (SignalConnection *)data;
+    action = (bool (*)(void *))slot->action;
+    if (slot->live == 0 || action == nullptr)
+        return 0;
+    if (action(slot->data))
+        return 1;
+    return 0;
+}
+
+static void button_clicked(void *button, void *data) {
+    SignalConnection *slot;
+    void (*action)(void *);
+
+    (void)button;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data);
+}
+
+static void entry_changed(void *entry, void *data) {
+    SignalConnection *slot;
+    void (*action)(void *);
+
+    (void)entry;
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *))slot->action;
+    if (slot->live != 0 && action != nullptr)
+        action(slot->data);
+}
+
+static void check_toggled(void *button, void *data) {
+    SignalConnection *slot;
+    void (*action)(void *, bool);
+    int active;
+
+    slot = (SignalConnection *)data;
+    action = (void (*)(void *, bool))slot->action;
+    if (slot->live == 0 || action == nullptr)
+        return;
+    active = gtk_check_button_get_active(button);
+    if (active != 0)
+        action(slot->data, true);
+    else
+        action(slot->data, false);
+}
+
+Window::Window(const char *title) : Widget() {
+    gtk_check_text(title);
+    kind = GTK_KIND_WINDOW;
+    native = gtk_sink(gtk_window_new());
+    gtk_window_set_title(native, title);
+}
+
+void Window::set_title(const char *title) {
+    gtk_use((Widget *)this);
+    gtk_check_text(title);
+    gtk_window_set_title(native, title);
+}
+
+const char *Window::title() const {
+    gtk_use((Widget *)this);
+    return gtk_text_or_empty(gtk_window_get_title(native));
+}
+
+void Window::set_default_size(long width, long height) {
+    gtk_use((Widget *)this);
+    gtk_window_set_default_size(
+            native,
+            gtk_int(width),
+            gtk_int(height));
+}
+
+void Window::set_child(Widget *child) {
+    gtk_check_child((Widget *)this, child);
+    gtk_require_single((Widget *)this);
+    gtk_window_set_child(native, child->native);
+    gtk_note_child((Widget *)this, child);
+}
+
+void Window::remove(Widget *child) {
+    gtk_use((Widget *)this);
+    if (child == nullptr)
+        gtk_fail("null");
+    if (child->parentWidget != (Widget *)this)
+        gtk_fail("child");
+    gtk_window_set_child(native, nullptr);
+    gtk_note_remove((Widget *)this, child);
+}
+
+void Window::present() {
+    gtk_use((Widget *)this);
+    gtk_window_present(native);
+}
+
+void Window::close() {
+    gtk_use((Widget *)this);
+    gtk_window_close(native);
+}
+
+SignalConnection Window::on_close_request(
+        bool (*action)(void *),
+        void *data) {
+    SignalConnection *slot;
+    int (*typed)(void *, void *);
+    void *handler;
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = window_close;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            native,
+            "close-request",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+Box::Box(int orientation, int spacing) : Widget() {
+    if (orientation != GTK_HORIZONTAL
+            && orientation != GTK_VERTICAL)
+        gtk_fail("range");
+    native = gtk_sink(gtk_box_new(orientation, spacing));
+}
+
+void Box::append(Widget *child) {
+    gtk_check_child((Widget *)this, child);
+    gtk_box_append(native, child->native);
+    gtk_note_child((Widget *)this, child);
+}
+
+void Box::remove(Widget *child) {
+    gtk_use((Widget *)this);
+    if (child == nullptr)
+        gtk_fail("null");
+    if (child->parentWidget != (Widget *)this)
+        gtk_fail("child");
+    gtk_box_remove(native, child->native);
+    gtk_note_remove((Widget *)this, child);
+}
+
+Label::Label(const char *text) : Widget() {
+    gtk_check_text(text);
+    native = gtk_sink(gtk_label_new(text));
+}
+
+void Label::set_text(const char *text) {
+    gtk_use((Widget *)this);
+    gtk_check_text(text);
+    gtk_label_set_text(native, text);
+}
+
+const char *Label::text() const {
+    gtk_use((Widget *)this);
+    return gtk_text_or_empty(gtk_label_get_text(native));
+}
+
+Button::Button(const char *label) : Widget() {
+    gtk_check_text(label);
+    native = gtk_sink(gtk_button_new_with_label(label));
+}
+
+void Button::set_label(const char *label) {
+    gtk_use((Widget *)this);
+    gtk_check_text(label);
+    gtk_button_set_label(native, label);
+}
+
+const char *Button::label() const {
+    gtk_use((Widget *)this);
+    return gtk_text_or_empty(gtk_button_get_label(native));
+}
+
+SignalConnection Button::on_clicked(
+        void (*action)(void *),
+        void *data) {
+    SignalConnection *slot;
+    void *handler;
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    handler = handler_of(button_clicked);
+    userAction = action_of(action);
+    slot = gtk_bind(
+            native,
+            "clicked",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+Entry::Entry(const char *text) : Widget() {
+    gtk_check_text(text);
+    native = gtk_sink(gtk_entry_new());
+    gtk_editable_set_text(native, text);
+}
+
+void Entry::set_text(const char *text) {
+    gtk_use((Widget *)this);
+    gtk_check_text(text);
+    gtk_editable_set_text(native, text);
+}
+
+const char *Entry::text() const {
+    gtk_use((Widget *)this);
+    return gtk_text_or_empty(gtk_editable_get_text(native));
+}
+
+SignalConnection Entry::on_changed(
+        void (*action)(void *),
+        void *data) {
+    SignalConnection *slot;
+    void *handler;
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    handler = handler_of(entry_changed);
+    userAction = action_of(action);
+    slot = gtk_bind(
+            native,
+            "changed",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+CheckButton::CheckButton(const char *label) : Widget() {
+    gtk_check_text(label);
+    native = gtk_sink(
+            gtk_check_button_new_with_label(label));
+}
+
+void CheckButton::set_label(const char *label) {
+    gtk_use((Widget *)this);
+    gtk_check_text(label);
+    gtk_check_button_set_label(native, label);
+}
+
+const char *CheckButton::label() const {
+    gtk_use((Widget *)this);
+    return gtk_text_or_empty(
+            gtk_check_button_get_label(native));
+}
+
+void CheckButton::set_active(bool value) {
+    gtk_use((Widget *)this);
+    gtk_check_button_set_active(native, gtk_flag(value));
+}
+
+bool CheckButton::active() const {
+    gtk_use((Widget *)this);
+    return gtk_check_button_get_active(native) != 0;
+}
+
+SignalConnection CheckButton::on_toggled(
+        void (*action)(void *, bool),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *);
+    void *handler;
+    void (*user)(void *, bool);
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = check_toggled;
+    handler = (void *)typed;
+    user = action;
+    userAction = (void *)user;
+    slot = gtk_bind(
+            native,
+            "toggled",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    return *slot;
+}
+
+ScrolledWindow::ScrolledWindow() : Widget() {
+    native = gtk_sink(gtk_scrolled_window_new());
+}
+
+void ScrolledWindow::set_child(Widget *child) {
+    gtk_check_child((Widget *)this, child);
+    gtk_require_single((Widget *)this);
+    gtk_scrolled_window_set_child(native, child->native);
+    gtk_note_child((Widget *)this, child);
+}
+
+void ScrolledWindow::remove(Widget *child) {
+    gtk_use((Widget *)this);
+    if (child == nullptr)
+        gtk_fail("null");
+    if (child->parentWidget != (Widget *)this)
+        gtk_fail("child");
+    gtk_scrolled_window_set_child(native, nullptr);
+    gtk_note_remove((Widget *)this, child);
+}
+
+void ScrolledWindow::set_policy(
+        int horizontal,
+        int vertical) {
+    gtk_use((Widget *)this);
+    if (horizontal < GTK_POLICY_ALWAYS
+            || horizontal > GTK_POLICY_EXTERNAL)
+        gtk_fail("range");
+    if (vertical < GTK_POLICY_ALWAYS
+            || vertical > GTK_POLICY_EXTERNAL)
+        gtk_fail("range");
+    gtk_scrolled_window_set_policy(
+            native,
+            horizontal,
+            vertical);
+}
+
+}

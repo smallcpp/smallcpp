@@ -1271,10 +1271,13 @@ the GTK 4 development files. A program that does not use the wrapper does
 not link those libraries.
 
 The classes are in namespace `Gtk`. `Widget` is the base of `Window`,
-`Box`, `Label`, `Button`, `Entry`, `CheckButton`, and `ScrolledWindow`.
-Enumerators are `GTK_HORIZONTAL` (0), `GTK_VERTICAL` (1),
-`GTK_POLICY_ALWAYS`, `GTK_POLICY_AUTOMATIC`, `GTK_POLICY_NEVER`, and
-`GTK_POLICY_EXTERNAL`.
+`Box`, `Label`, `Button`, `Entry`, `CheckButton`, `ScrolledWindow`,
+`HeaderBar`, `MenuButton`, `Popover`, `Paned`, `Notebook`,
+`ColumnView`, `Dialog`, `DropDown`, `SpinButton`, `Picture`,
+`ProgressBar`, `Spinner`, and `TextView`. `AlertDialog`, `FileDialog`,
+`TextBuffer`, `TextMark`, and `TextIter` are not widgets. Enumerators
+are `GTK_HORIZONTAL` (0), `GTK_VERTICAL` (1), `GTK_POLICY_ALWAYS`,
+`GTK_POLICY_AUTOMATIC`, `GTK_POLICY_NEVER`, and `GTK_POLICY_EXTERNAL`.
 
 ```text
 class SignalConnection {
@@ -1372,6 +1375,194 @@ public:
     void remove(Widget *child);
     void set_policy(int horizontal, int vertical);
 };
+
+class HeaderBar : public Widget {
+public:
+    HeaderBar();
+    void set_title(const char *title);
+    const char *title() const;
+    void set_show_title_buttons(bool value);
+    bool show_title_buttons() const;
+    void pack_start(Widget *child);
+    void pack_end(Widget *child);
+};
+
+class MenuButton : public Widget {
+public:
+    MenuButton(const char *label);
+    void set_label(const char *label);
+    const char *label() const;
+    void set_menu(const char **labels, long count,
+        void (*action)(void *, const char *), void *data);
+};
+
+class Popover : public Widget {
+public:
+    Popover();
+    void set_child(Widget *child);
+    void popup();
+    void popdown();
+};
+
+class Paned : public Widget {
+public:
+    Paned(int orientation);
+    int orientation() const;
+    void set_start_child(Widget *child);
+    void set_end_child(Widget *child);
+    void set_position(long position);
+    long position() const;
+};
+
+class Notebook : public Widget {
+public:
+    Notebook();
+    long append_page(Widget *child, const char *title);
+    void remove_page(long index);
+    long current_page() const;
+    void set_current_page(long index);
+    SignalConnection on_switch_page(
+        void (*action)(void *, long), void *data);
+};
+
+class ColumnView : public Widget {
+public:
+    ColumnView();
+    void append_column(const char *title);
+    void append_row(const char **cells, long count);
+    void clear_rows();
+    long row_count() const;
+    long column_count() const;
+    const char *cell(long row, long column) const;
+    SignalConnection on_activate(
+        void (*action)(void *, long), void *data);
+};
+
+class Dialog : public Widget {
+public:
+    Dialog(const char *title);
+    void set_title(const char *title);
+    const char *title() const;
+    void set_content(Widget *child);
+    void add_button(const char *label, int response);
+    SignalConnection on_response(
+        void (*action)(void *, int), void *data);
+    void present();
+};
+
+class AlertDialog {
+public:
+    AlertDialog(const char *message, const char *detail);
+    const char *message() const;
+    const char *detail() const;
+    void present(void (*confirm)(void *), void *data);
+};
+
+class FileDialog {
+public:
+    FileDialog();
+    void set_title(const char *title);
+    const char *title() const;
+    void open(void (*action)(void *, const char *),
+        void *data);
+    void save(void (*action)(void *, const char *),
+        void *data);
+};
+
+class DropDown : public Widget {
+public:
+    DropDown();
+    void set_items(const char **items, long count);
+    void set_selected(long index);
+    long selected() const;
+    const char *selected_string() const;
+    SignalConnection on_changed(void (*action)(void *),
+        void *data);
+};
+
+class SpinButton : public Widget {
+public:
+    SpinButton(double min, double max, double value);
+    double min() const;
+    double max() const;
+    double value() const;
+    void set_value(double value);
+    SignalConnection on_changed(void (*action)(void *),
+        void *data);
+};
+
+class Picture : public Widget {
+public:
+    Picture();
+    void set_file(const char *path);
+    const char *file() const;
+};
+
+class ProgressBar : public Widget {
+public:
+    ProgressBar();
+    void set_fraction(double fraction);
+    double fraction() const;
+};
+
+class Spinner : public Widget {
+public:
+    Spinner();
+    void start();
+    void stop();
+    bool spinning() const;
+};
+
+class TextIter {
+public:
+    TextIter(long line, long offset);
+    long line() const;
+    long offset() const;
+};
+
+class TextMark {
+public:
+    const char *name() const;
+    void move(long line, long offset);
+    long line() const;
+    long offset() const;
+};
+
+class TextBuffer {
+public:
+    TextBuffer();
+    void set_text(const char *text);
+    const char *get_text();
+    void insert(TextIter *at, const char *text);
+    void delete_range(TextIter *start, TextIter *end);
+    void place_cursor(TextIter *at);
+    void select_range(TextIter *start, TextIter *end);
+    bool selection_bounds(TextIter *start, TextIter *end);
+    void create_tag(const char *name,
+        const char *foreground);
+    void apply_tag(const char *name,
+        TextIter *start, TextIter *end);
+    void remove_tag(const char *name,
+        TextIter *start, TextIter *end);
+    void undo();
+    void redo();
+    SignalConnection on_changed(void (*action)(void *),
+        void *data);
+    TextMark *create_mark(const char *name,
+        long line, long offset);
+};
+
+class TextView : public Widget {
+public:
+    TextView(TextBuffer *buffer);
+    void set_editable(bool value);
+    bool editable() const;
+    void set_monospace(bool value);
+    bool monospace() const;
+    void scroll_to(long line, long offset);
+    SignalConnection on_move_cursor(
+        void (*action)(void *, long, long), void *data);
+};
 ```
 
 Construct one `Application`. The id is a GApplication id, such as
@@ -1387,29 +1578,74 @@ the native application.
 `post` is the one method a thread other than the GUI thread may call. It
 queues `action(data)` on the GUI thread and returns a positive token.
 `cancel` and every widget operation run on the GUI thread. Calling them
-from another thread throws `Exception`. `cancel` returns true when the
-token was still pending. A token is not reused. `post` before `run` and
-`post` after `run` has returned throw `Exception`.
+from another thread throws `Exception` with message `thread`. `cancel`
+returns true when the token was still pending. A token is not reused.
+`post` before `run`, `post` after `run` has returned, and a full queue of
+64 posts throw `Exception` with message `post`. A second `run` throws
+`run`. A second `Application` throws `gtk`. The first widget constructor
+calls `gtk_init_check`. When that fails, the constructor throws `display`.
 
 A callback is a function pointer plus a `void *`. There is no closure
 type. The wrapper retains `data` until `disconnect` or `dispose`. When
 `data` points at a `new` object, that field keeps the object reachable.
 `on_close_request` returns true to reject the close. `on_toggled` passes
 the new active state. `on_changed` runs after the text changes, and the
-program reads `text()`.
+program reads `text()`. `MenuButton::set_menu` installs one action for
+every label. That action receives the chosen label. `Notebook`
+`on_switch_page` and `ColumnView` `on_activate` pass an index.
+`Dialog` `on_response` passes the response id. `AlertDialog::present`
+calls its confirm function when the button choice is 0.
+`FileDialog::open` and `save` call their function with the chosen path,
+or with null when the chooser is cancelled. The path stays reachable from
+the dialog until the next open or save finishes. `TextView`
+`on_move_cursor` runs after the cursor moves and passes the new line and
+character offset.
 
 `dispose` disposes the widget and its children and invalidates aliases. A
-use after `dispose` throws `Exception`. The destructor does not dispose.
-`delete` on a wrapper therefore does not tear the GTK object down, and
-the collector does not tear it down either. Call `dispose` when the
-native widget should go away.
+use after `dispose` throws `Exception` with message `disposed`. The
+destructor does not dispose. `delete` on a wrapper therefore does not
+tear the GTK object down, and the collector does not tear it down either.
+Call `dispose` when the native widget should go away. `AlertDialog`,
+`FileDialog`, and `TextBuffer` release their native object from the
+destructor.
 
 Text is UTF-8. An empty string is valid. A null pointer throws
-`Exception`. Invalid UTF-8 throws `Exception`. Getters return text the
-widget owns until the next setter or `dispose` on that widget. A child
-passed to `set_child` or `append` is live and has no parent. A window is
-not a child. `Window` and `ScrolledWindow` have one child. Remove it
-before setting another. `Box` holds several children.
+`Exception` with message `null`. Invalid UTF-8 throws `utf8`. Getters
+return `""` when GTK has no text. A getter's pointer stays valid until
+the next setter or `dispose` on that object. A child argument is a
+`Widget *`. A `Label *` or other subclass is passed with a cast, as in
+`(Widget *)label`, because a call matches a pointer argument exactly.
+The child is live and has no parent. A window or a dialog is not a
+child. Either case throws `parent`. `Window`, `ScrolledWindow`,
+`Popover`, and a dialog's content each have one child. Setting another
+before `remove` throws `child`. `Box` holds several children.
+`HeaderBar` packs several at the start and the end. `Paned` keeps one
+start child and one end child. An orientation other than
+`GTK_HORIZONTAL` or `GTK_VERTICAL`, a policy outside 0 through 3, or an
+index that does not name an existing row, page, or character throws
+`range`. A GTK call that does not produce the object throws `gtk`.
+
+`HeaderBar` title text is a label the bar owns. `Picture::set_file`
+loads that path. There is no separate image class. `ProgressBar`
+stores a fraction. `Spinner::start` and `stop` change `spinning()`.
+`DropDown` holds a list of strings. `selected()` is `-1` when nothing
+is selected. `SpinButton` uses a step of 1 and reads `min`, `max`, and
+`value`. `ColumnView` is a text grid: `append_column` adds a title,
+`append_row` adds one string per column, and `cell` reads that string.
+`on_activate` passes the row index. The factory that paints the cells
+stays inside the wrapper.
+
+`TextIter` stores a line and a character offset. It is not a live GTK
+iterator. Copy `line()` and `offset()` to keep a position, and pass a
+`TextIter` built from those numbers back to the buffer. `TextMark` is
+created with `create_mark`. `move` places it, and `line()` and
+`offset()` read it. The mark keeps its place in the text when the
+buffer changes. An insertion at the mark leaves the mark after the new
+text. `TextBuffer` edits UTF-8. `delete_range` removes a half-open
+range. `create_tag` names a tag and a foreground color. `apply_tag` and
+`remove_tag` use that name. `undo` and `redo` walk the buffer's own
+history. Scrolling is `TextView::scroll_to`, not a buffer method.
+`TextView` is constructed with the buffer it shows.
 
 ```smallcpp
 #include <gtk>
@@ -1424,7 +1660,7 @@ static void activate(void *data) {
     app = (Application *)data;
     window = new Window("Hello");
     label = new Label("Hello");
-    window->set_child(label);
+    window->set_child((Widget *)label);
     window->present();
 }
 

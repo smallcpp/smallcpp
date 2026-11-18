@@ -1,0 +1,49 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+static int spun;
+
+static void value_changed(void *data) {
+    int *flag;
+
+    flag = (int *)data;
+    *flag = 1;
+}
+
+int main(void) {
+    DropDown *drop;
+    SpinButton *spin;
+    const char *items[2];
+
+    try {
+        drop = new DropDown();
+        items[0] = "red";
+        items[1] = "blue";
+        drop->set_items(items, 2);
+        drop->set_selected(1);
+        spin = new SpinButton(0, 10, 1);
+        spun = 0;
+        spin->on_changed(value_changed, (void *)&spun);
+        spin->set_value(4);
+        if (spun == 0)
+            throw *new Exception("gtk");
+        if (spin->min() != 0 || spin->max() != 10)
+            throw *new Exception("range");
+        print("gtk-input {:s} {:g} {}\n",
+                drop->selected_string(),
+                spin->value(),
+                spun);
+        return 0;
+    } catch (Exception error) {
+        if (error.message != nullptr
+                && strcmp(error.message, "display") == 0) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        if (error.message != nullptr)
+            print("gtk-input fail {:s}\n", error.message);
+        return 1;
+    }
+}
