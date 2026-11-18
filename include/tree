@@ -3,8 +3,17 @@
 
 /* TREE(Name, Type) defines a balanced binary tree of Type.
  * Include this header as <tree>. Type is ordered with <.
- * add inserts. root() is the root value. at walks in order
- * and counts a negative index from the end.
+ * add inserts. An equal value is left in place. root() is
+ * the root value. at walks in order and counts a negative
+ * index from the end. find returns that in-order index for
+ * the first == match, or -1. replace removes the indexed
+ * value and inserts the new one so < stays valid.
+ * insert accepts an index the way a sequence does, then
+ * places the value with <, the same as add. remove deletes
+ * the in-order value at the index. next returns the value
+ * at a caller-owned cursor and writes the following index.
+ * The cursor starts at 0. A null cursor, or a cursor past
+ * either end, throws Exception with message index.
  * Expand the macro in one translation unit.
  *
  *     TREE(IntTree, int)
@@ -31,7 +40,11 @@ class Name { \
     int factor(Name##Node *node); \
     Name##Node *rotate_left(Name##Node *node); \
     Name##Node *rotate_right(Name##Node *node); \
-    Name##Node *insert(Name##Node *node, Type value); \
+    Name##Node *plant(Name##Node *node, Type value); \
+    Name##Node *settle(Name##Node *node); \
+    Name##Node *drop(Name##Node *node, Type value); \
+    int locate(Name##Node *node, Type value, \
+        long *seen, long *out); \
     int pick(Name##Node *node, long *seen, \
         long index, Type *out); \
 public: \
@@ -40,6 +53,11 @@ public: \
     Type at(long index); \
     Type root(void); \
     long size(void); \
+    long find(Type value); \
+    void replace(long index, Type value); \
+    void insert(long index, Type value); \
+    void remove(long index); \
+    Type next(long *cursor); \
 }; \
 Name::Name() { \
     top = nullptr; \
@@ -83,7 +101,7 @@ Name##Node *Name::rotate_right(Name##Node *node) { \
     measure(next); \
     return next; \
 } \
-Name##Node *Name::insert(Name##Node *node, Type value) { \
+Name##Node *Name::plant(Name##Node *node, Type value) { \
     int balance; \
     if (node == nullptr) { \
         node = new Name##Node(); \
@@ -95,9 +113,9 @@ Name##Node *Name::insert(Name##Node *node, Type value) { \
         return node; \
     } \
     if (value < node->value) \
-        node->left = insert(node->left, value); \
+        node->left = plant(node->left, value); \
     else if (node->value < value) \
-        node->right = insert(node->right, value); \
+        node->right = plant(node->right, value); \
     else \
         return node; \
     measure(node); \
@@ -116,6 +134,61 @@ Name##Node *Name::insert(Name##Node *node, Type value) { \
     } \
     return node; \
 } \
+Name##Node *Name::settle(Name##Node *node) { \
+    int balance; \
+    measure(node); \
+    balance = factor(node); \
+    if (balance > 1 && factor(node->left) >= 0) \
+        return rotate_right(node); \
+    if (balance > 1 && factor(node->left) < 0) { \
+        node->left = rotate_left(node->left); \
+        return rotate_right(node); \
+    } \
+    if (balance < -1 && factor(node->right) <= 0) \
+        return rotate_left(node); \
+    if (balance < -1 && factor(node->right) > 0) { \
+        node->right = rotate_right(node->right); \
+        return rotate_left(node); \
+    } \
+    return node; \
+} \
+Name##Node *Name::drop(Name##Node *node, Type value) { \
+    Name##Node *least; \
+    if (node == nullptr) \
+        return nullptr; \
+    if (value < node->value) \
+        node->left = drop(node->left, value); \
+    else if (node->value < value) \
+        node->right = drop(node->right, value); \
+    else if (node->left == nullptr || node->right == nullptr) { \
+        count = count - 1; \
+        if (node->left != nullptr) \
+            return node->left; \
+        return node->right; \
+    } else { \
+        least = node->right; \
+        while (least->left != nullptr) \
+            least = least->left; \
+        node->value = least->value; \
+        node->right = drop(node->right, least->value); \
+    } \
+    return settle(node); \
+} \
+int Name::locate(Name##Node *node, Type value, \
+    long *seen, long *out) { \
+    int found; \
+    if (node == nullptr) \
+        return 0; \
+    found = locate(node->left, value, seen, out); \
+    if (found) \
+        return 1; \
+    if (node->value == value) { \
+        *out = *seen; \
+        return 1; \
+    } \
+    *seen = *seen + 1; \
+    return locate(node->right, value, seen, out); \
+} \
 int Name::pick(Name##Node *node, long *seen, \
     long index, Type *out) { \
     int found; \
@@ -132,7 +205,7 @@ int Name::pick(Name##Node *node, long *seen, \
     return pick(node->right, seen, index, out); \
 } \
 void Name::add(Type value) { \
-    top = insert(top, value); \
+    top = plant(top, value); \
 } \
 Type Name::at(long index) { \
     Type found; \
@@ -152,6 +225,57 @@ Type Name::root(void) { \
 } \
 long Name::size(void) { \
     return count; \
+} \
+long Name::find(Type value) { \
+    long seen; \
+    long out; \
+    seen = 0; \
+    if (locate(top, value, &seen, &out) == 0) \
+        return -1; \
+    return out; \
+} \
+void Name::replace(long index, Type value) { \
+    Type old; \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    old = at(index); \
+    if (old == value) \
+        return; \
+    top = drop(top, old); \
+    add(value); \
+} \
+void Name::insert(long index, Type value) { \
+    /* Sequence bounds. Tree order chooses the place. */ \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0) \
+        index = 0; \
+    if (index > count) \
+        index = count; \
+    add(value); \
+} \
+void Name::remove(long index) { \
+    Type value; \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    value = at(index); \
+    top = drop(top, value); \
+} \
+Type Name::next(long *cursor) { \
+    long index; \
+    if (cursor == nullptr) \
+        throw *new Exception("index"); \
+    index = *cursor; \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    *cursor = index + 1; \
+    return at(index); \
 }
 
 #endif

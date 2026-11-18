@@ -1,0 +1,38 @@
+#include <list>
+
+LIST(IntList, int)
+
+int main(void) {
+    IntList *items;
+    long cursor;
+    long seen;
+    long miss;
+    int first;
+    int second;
+
+    items = new IntList();
+    items->add(4);
+    items->add(5);
+    items->add(6);
+    seen = items->find(5);
+    miss = items->find(9);
+    items->replace(-1, 8);
+    items->insert(1, 7);
+    items->insert(-100, 1);
+    items->insert(100, 9);
+    items->remove(0);
+    items->remove(-1);
+    cursor = 0;
+    first = items->next(&cursor);
+    second = items->next(&cursor);
+    print(
+        "list-edit {} {} {} {} {} {} {}\n",
+        (int)seen,
+        (int)miss,
+        first,
+        second,
+        (int)items->size(),
+        items->from_end(0),
+        items->from_end(1));
+    return 0;
+}

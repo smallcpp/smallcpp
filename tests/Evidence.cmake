@@ -167,6 +167,10 @@ add_exec_line(vector-int vector-int 0 "vector 5 10 20 30 40 50")
 add_exec_line(list-int list-int 0 "list 4 5 6 5")
 add_exec_line(tree-int tree-int 0 "tree 2 1 2 3")
 add_exec_line(hash-int hash-int 0 "hash 3 11 30")
+add_exec_line(vector-edit vector-edit 0 "vector-edit 1 -1 5 15 4 40 2")
+add_exec_line(list-edit list-edit 0 "list-edit 1 -1 4 7 4 8 5")
+add_exec_line(tree-edit tree-edit 0 "tree-edit 2 -1 2 4 4 9 3")
+add_exec_line(hash-edit hash-edit 0 "hash-edit 3 0 1 3 30 4 40 2 25 0")
 
 add_test(
     NAME exec_exec-print-two

@@ -1,0 +1,56 @@
+#include <hash>
+
+HASH(IntMap, int, int)
+
+int main(void) {
+    IntMap *map;
+    long cursor;
+    int held;
+    int missing;
+    int kept;
+    int key;
+    int value;
+    int done;
+    int n0;
+    int n1;
+    int n2;
+    int n3;
+    int n4;
+    int n5;
+
+    map = new IntMap();
+    map->put(1, 10);
+    map->put(2, 20);
+    map->put(3, 30);
+    map->replace(2, 25);
+    map->replace(4, 40);
+    map->remove(1);
+    map->remove(9);
+    held = 0;
+    missing = map->find(1, &held);
+    kept = map->find(2, &held);
+    cursor = 0;
+    map->next(&cursor, &key, &value);
+    n0 = key;
+    n1 = value;
+    map->next(&cursor, &key, &value);
+    n2 = key;
+    n3 = value;
+    map->next(&cursor, &key, &value);
+    n4 = key;
+    n5 = value;
+    done = map->next(&cursor, &key, &value);
+    print(
+        "hash-edit {} {} {} {} {} {} {} {} {} {}\n",
+        (int)map->size(),
+        missing,
+        kept,
+        n0,
+        n1,
+        n2,
+        n3,
+        n4,
+        n5,
+        done);
+    return 0;
+}

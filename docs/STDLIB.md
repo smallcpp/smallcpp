@@ -184,8 +184,19 @@ unit, because those headers define the methods. Expand `VECTOR`, `LIST`,
 `Array::address`, `String::at`, and `at` from `VECTOR`, `LIST`, and
 `TREE` count a negative index from the end. `-1` is the last element.
 `-2` is the one before it. An index past either end throws `Exception`
-with message `index`. `from_end` takes a non-negative index and walks
-from the tail.
+with message `index`. `replace`, `remove`, and `next` on `VECTOR`,
+`LIST`, and `TREE` use that same rule. `insert` counts a negative
+index from the end, appends when the index is past the end, and
+prepends when the index is before the start. `from_end` takes a
+non-negative index and walks from the tail.
+
+`next` on `VECTOR`, `LIST`, and `TREE` is the iteration. Start a
+`long` cursor at 0. While the cursor is less than `size`, call `next`
+with the cursor's address. `next` returns the element at the cursor
+and writes the following index. A null cursor throws `Exception` with
+message `index`. A cursor past either end throws the same message. A
+negative cursor counts from the end, and the stored cursor is the
+following non-negative index.
 
 `new` memory is collected. Growing an array abandons the old buffer.
 The collector reclaims it. `delete` does not free it.
@@ -266,11 +277,20 @@ public:
     Name();
     void add(Type value);
     Type at(long index);
+    long find(Type value);
+    void replace(long index, Type value);
+    void insert(long index, Type value);
+    void remove(long index);
+    Type next(long *cursor);
 };
 ```
 
 `size` is `Array::size`. `at` returns the value at `index`. A negative
-index counts from the end. A program writes the macro once:
+index counts from the end. `find` returns the index of the first `==`
+match, or `-1`. `replace` stores the value at the index. `insert`
+shifts the later values up by one. `remove` shifts them down and drops
+the last slot. `next` is the cursor walk above. A program writes the
+macro once:
 
 ```smallcpp
 #include <vector>
@@ -292,7 +312,9 @@ int main(void) {
 `LIST(Name, Type)` defines a doubly linked list. `add` appends. `at`
 walks from the head. A negative index counts from the end, so `at(-1)`
 is the last value. `from_end` walks from the tail with a non-negative
-index. `size` is the number of nodes.
+index. `size` is the number of nodes. `find`, `replace`, `insert`,
+`remove`, and `next` follow the vector rules. `insert` links a node at
+the index. `remove` unlinks that node. `from_end` stays.
 
 ```smallcpp
 #include <list>
@@ -310,7 +332,15 @@ with `<`. A value that compares equal to one already in the tree is left
 in place. `add` inserts. `root` returns the root value, or throws
 `Exception` with message `empty` when the tree has no nodes. `at` walks
 the values in order. A negative index counts from the end. `size` is
-the number of nodes.
+the number of nodes. `find` returns the in-order index of the first
+`==` match, or `-1`. `replace` removes the value at the index and
+inserts the new one, so `<` order stays valid. When that new value is
+already stored, it is left in place and the indexed value is gone.
+`insert` accepts the index with the sequence bounds above, then places
+the value with `<`, the same as `add`. The in-order index is the one
+`<` chooses. That place is the end when the value is greater than every
+stored value, and the start when it is less. `remove` deletes the value
+at the in-order index. `next` walks in order.
 
 ```smallcpp
 #include <tree>
@@ -327,7 +357,14 @@ Inserting 1, then 2, then 3 leaves 2 at the root. `at(0)`, `at(1)`, and
 an `Array`. `Key` is matched with `==` and hashed as its bytes. `put`
 inserts or replaces. `find` writes `*out` and returns 1, or returns 0
 when the key is absent. A null `out` throws `Exception` with message
-`hash`. `size` is the number of stored keys.
+`hash`. `size` is the number of stored keys. `replace` stores the value
+when the key is present and puts the pair when the key is missing.
+`remove` deletes that key. A missing key leaves the table unchanged.
+There is no second insert. `next(long *, Key *, Value *)` walks filled
+slots. The cursor starts at 0 and names a slot. A call that finds a
+filled slot returns 1, writes the key and value, and stores the
+following slot. A finished walk returns 0. A null cursor, key, or value
+pointer throws `Exception` with message `hash`. The order is slot order.
 
 ```smallcpp
 #include <hash>
