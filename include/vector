@@ -4,6 +4,7 @@
 /* VECTOR(Name, Type) defines a growable array of Type.
  * Include this header as <vector>. Name is the class.
  * Type is copied by assignment. The class uses Array.
+ * at counts a negative index from the end.
  * Expand the macro in one translation unit.
  *
  *     VECTOR(IntVec, int)
@@ -26,12 +27,14 @@ Name::Name() : Array((long)sizeof(Type)) { \
 void Name::add(Type value) { \
     Type *place; \
     reserve(count + 1); \
-    place = (Type *)address(count); \
+    place = (Type *)(bytes + count * stride); \
     *place = value; \
     count = count + 1; \
 } \
 Type Name::at(long index) { \
     Type *place; \
+    if (index < 0) \
+        index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
     place = (Type *)address(index); \

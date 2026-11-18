@@ -1,0 +1,31 @@
+#include <string>
+#include <vector>
+
+VECTOR(IntVec, int)
+
+int main(void) {
+    String *text;
+    IntVec *values;
+    int last;
+    int prev;
+    int end;
+    int before;
+
+    text = new String();
+    text->add("ab");
+    last = (int)text->at(-1);
+    prev = (int)text->at(-2);
+    values = new IntVec();
+    values->add(10);
+    values->add(20);
+    values->add(30);
+    end = values->at(-1);
+    before = values->at(-2);
+    print(
+            "neg-index {:c} {:c} {} {}\n",
+            last,
+            prev,
+            end,
+            before);
+    return 0;
+}

@@ -4,8 +4,12 @@
 /* Growable array of bytes. Include this header as <array>.
  * stride is the element size. count is the number of elements
  * in use. room is how many elements bytes can hold. The first
- * allocation holds 4 elements. Vector and Hash are built on it.
- * A program allocates an Array with new. */
+ * allocation holds 4 elements. address counts a negative index
+ * from the end. -1 is the last element. An index past either
+ * end throws Exception with message index. Vector and Hash
+ * are built on it. A program allocates an Array with new. */
+#include <exceptions>
+
 class Array {
 public:
     char *bytes;
@@ -50,6 +54,10 @@ void Array::reserve(long need) {
 }
 
 char *Array::address(long index) {
+    if (index < 0)
+        index = count + index;
+    if (index < 0 || index >= count)
+        throw *new Exception("index");
     return bytes + index * stride;
 }
 

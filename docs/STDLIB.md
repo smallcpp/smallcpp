@@ -181,7 +181,12 @@ run a constructor. Include `<string>` and `<array>` in one translation
 unit, because those headers define the methods. Expand `VECTOR`, `LIST`,
 `TREE`, or `HASH` for one class name in one translation unit.
 
-An index that is out of range throws `Exception` with message `index`.
+`Array::address`, `String::at`, and `at` from `VECTOR`, `LIST`, and
+`TREE` count a negative index from the end. `-1` is the last element.
+`-2` is the one before it. An index past either end throws `Exception`
+with message `index`. `from_end` takes a non-negative index and walks
+from the tail.
+
 `new` memory is collected. Growing an array abandons the old buffer.
 The collector reclaims it. `delete` does not free it.
 
@@ -208,8 +213,9 @@ public:
 `Array(long)` stores that stride, or 1 when the argument is less than 1.
 `reserve` grows `room` by doubling until it can hold `need` elements and
 copies the bytes already in use. `address` returns the element at
-`index`. `size` returns `count`. `Vector` and `Hash` use `Array` as a
-base. `String` does too, with a stride of 1.
+`index`. A negative index counts from the end. `size` returns `count`.
+`Vector` and `Hash` use `Array` as a base. `String` does too, with a
+stride of 1.
 
 ### `<string>`
 
@@ -231,7 +237,8 @@ public:
 ```
 
 `size`, inherited from `Array`, is the character count. `capacity` is
-the allocated byte count, including the null. `chars` returns the
+the allocated byte count, including the null. `at` returns the character
+at `index`. A negative index counts from the end. `chars` returns the
 buffer. It stays valid until the next `add` that grows the string.
 
 ```smallcpp
@@ -262,7 +269,8 @@ public:
 };
 ```
 
-`size` is `Array::size`. A program writes the macro once:
+`size` is `Array::size`. `at` returns the value at `index`. A negative
+index counts from the end. A program writes the macro once:
 
 ```smallcpp
 #include <vector>
@@ -282,8 +290,9 @@ int main(void) {
 ### `<list>`
 
 `LIST(Name, Type)` defines a doubly linked list. `add` appends. `at`
-walks from the head. `from_end` walks from the tail. `size` is the
-number of nodes.
+walks from the head. A negative index counts from the end, so `at(-1)`
+is the last value. `from_end` walks from the tail with a non-negative
+index. `size` is the number of nodes.
 
 ```smallcpp
 #include <list>
@@ -300,7 +309,8 @@ LIST(IntList, int)
 with `<`. A value that compares equal to one already in the tree is left
 in place. `add` inserts. `root` returns the root value, or throws
 `Exception` with message `empty` when the tree has no nodes. `at` walks
-the values in order. `size` is the number of nodes.
+the values in order. A negative index counts from the end. `size` is
+the number of nodes.
 
 ```smallcpp
 #include <tree>
@@ -309,7 +319,7 @@ TREE(IntTree, int)
 ```
 
 Inserting 1, then 2, then 3 leaves 2 at the root. `at(0)`, `at(1)`, and
-`at(2)` are 1, 2, and 3.
+`at(2)` are 1, 2, and 3. `at(-1)` is 3.
 
 ### `<hash>`
 
