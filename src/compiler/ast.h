@@ -56,6 +56,7 @@ typedef enum AstKind {
     AST_CONDITIONAL,
     AST_CAST,
     AST_SIZEOF,
+    AST_TYPEID,
     AST_PRINT,
     AST_FORMAT,
     AST_NULL,

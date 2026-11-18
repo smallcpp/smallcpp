@@ -119,7 +119,7 @@ struct VBTable {
 struct VTable {
     std::string base;
     std::vector<std::string> path;
-    llvm::GlobalVariable *global = nullptr;
+    llvm::Constant *global = nullptr;
 };
 
 struct Record {
@@ -140,7 +140,7 @@ struct Record {
     int vbptr = -1;
     std::string primary_base;
     bool abstract = false;
-    llvm::GlobalVariable *vtable = nullptr;
+    llvm::Constant *vtable = nullptr;
     std::vector<VSlot> vslots;
     std::vector<VTable> vtables;
     std::vector<VBTable> vbtables;
@@ -306,6 +306,7 @@ private:
     llvm::DIBuilder *di = nullptr;
     llvm::DIFile *di_file = nullptr;
     std::map<std::string, llvm::DIType *> di_types;
+    llvm::StructType *info_layout = nullptr;
 
     void error(const char *message);
     void error_name(const char *message, const char *name);
@@ -363,11 +364,18 @@ private:
     uint64_t path_offset(const std::string &derived, const std::vector<std::string> &path) const;
     uint64_t thunk_delta(const std::string &complete, const std::vector<std::string> &path,
                          const std::string &impl) const;
-    llvm::GlobalVariable *emit_vtable(const std::string &name, const std::vector<llvm::Constant *> &slots);
+    llvm::Constant *emit_vtable(const std::string &name, const std::vector<llvm::Constant *> &slots,
+                                llvm::Constant *info);
+    llvm::StructType *typeinfo_layout();
+    Ty typeid_type();
+    std::string describe_type(const Ty &ty, bool top, bool readable) const;
+    llvm::Constant *type_descriptor(const Ty &ty);
+    llvm::Value *dynamic_type(llvm::Value *object, const std::string &key);
+    RValue emit_typeid(const AstNode *node);
     llvm::Function *make_thunk(llvm::Function *impl, uint64_t delta, const std::string &name);
     llvm::Value *base_ptr(llvm::Value *ptr, const std::string &from, const std::string &base);
     llvm::Value *vptr_addr(llvm::Value *ptr, const std::string &key);
-    llvm::GlobalVariable *view_for(const std::string &complete, const std::vector<std::string> &path);
+    llvm::Constant *view_for(const std::string &complete, const std::vector<std::string> &path);
     void lay_bases(llvm::Value *ptr, const std::string &complete, const std::string &sub,
                    std::vector<std::string> &path);
     void build_views(const std::string &complete, const std::string &sub, std::vector<std::string> &path);

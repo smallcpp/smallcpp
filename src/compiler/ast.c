@@ -482,6 +482,7 @@ const char *ast_kind_name(AstKind kind)
     case AST_CONDITIONAL: return "conditional";
     case AST_CAST: return "cast";
     case AST_SIZEOF: return "sizeof";
+    case AST_TYPEID: return "typeid";
     case AST_PRINT: return "print";
     case AST_FORMAT: return "format";
     case AST_NULL: return "null";
