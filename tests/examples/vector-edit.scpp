@@ -1,0 +1,38 @@
+#include <vector>
+
+VECTOR(IntVec, int)
+
+int main(void) {
+    IntVec *values;
+    long cursor;
+    long seen;
+    long miss;
+    int first;
+    int second;
+
+    values = new IntVec();
+    values->add(10);
+    values->add(20);
+    values->add(30);
+    seen = values->find(20);
+    miss = values->find(7);
+    values->replace(-1, 40);
+    values->insert(1, 15);
+    values->insert(-100, 5);
+    values->insert(50, 50);
+    values->remove(1);
+    values->remove(-1);
+    cursor = 0;
+    first = values->next(&cursor);
+    second = values->next(&cursor);
+    print(
+        "vector-edit {} {} {} {} {} {} {}\n",
+        (int)seen,
+        (int)miss,
+        first,
+        second,
+        (int)values->size(),
+        values->at(-1),
+        (int)values->find(20));
+    return 0;
+}

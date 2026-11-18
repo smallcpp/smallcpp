@@ -1,0 +1,38 @@
+#include <tree>
+
+TREE(IntTree, int)
+
+int main(void) {
+    IntTree *nodes;
+    long cursor;
+    long seen;
+    long miss;
+    int first;
+    int second;
+
+    nodes = new IntTree();
+    nodes->add(2);
+    nodes->add(4);
+    nodes->insert(-5, 1);
+    nodes->insert(50, 5);
+    nodes->insert(2, 3);
+    seen = nodes->find(3);
+    miss = nodes->find(8);
+    nodes->replace(4, 3);
+    nodes->replace(0, 6);
+    nodes->remove(1);
+    nodes->insert(0, 9);
+    cursor = 0;
+    first = nodes->next(&cursor);
+    second = nodes->next(&cursor);
+    print(
+        "tree-edit {} {} {} {} {} {} {}\n",
+        (int)seen,
+        (int)miss,
+        first,
+        second,
+        (int)nodes->size(),
+        nodes->at(-1),
+        (int)nodes->find(9));
+    return 0;
+}

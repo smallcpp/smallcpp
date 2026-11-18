@@ -5,6 +5,13 @@
  * Include this header as <list>. add appends. at walks
  * from the head and counts a negative index from the end.
  * from_end walks from the tail with a non-negative index.
+ * replace, remove, and next use that same negative index.
+ * insert appends past the end and prepends before the
+ * start. find returns the first == match, or -1.
+ * next returns the value at a caller-owned cursor and
+ * writes the following index. The cursor starts at 0.
+ * A null cursor, or a cursor past either end, throws
+ * Exception with message index.
  * Expand the macro in one translation unit.
  *
  *     LIST(IntList, int)
@@ -22,6 +29,7 @@ public: \
     Name##Node *next; \
 }; \
 class Name { \
+    Name##Node *node_at(long index); \
 public: \
     Name##Node *head; \
     Name##Node *tail; \
@@ -31,11 +39,27 @@ public: \
     Type at(long index); \
     Type from_end(long index); \
     long size(void); \
+    long find(Type value); \
+    void replace(long index, Type value); \
+    void insert(long index, Type value); \
+    void remove(long index); \
+    Type next(long *cursor); \
 }; \
 Name::Name() { \
     head = nullptr; \
     tail = nullptr; \
     count = 0; \
+} \
+Name##Node *Name::node_at(long index) { \
+    Name##Node *node; \
+    long i; \
+    node = head; \
+    i = 0; \
+    while (i < index) { \
+        node = node->next; \
+        i = i + 1; \
+    } \
+    return node; \
 } \
 void Name::add(Type value) { \
     Name##Node *node; \
@@ -80,6 +104,87 @@ Type Name::from_end(long index) { \
 } \
 long Name::size(void) { \
     return count; \
+} \
+long Name::find(Type value) { \
+    Name##Node *node; \
+    long i; \
+    node = head; \
+    i = 0; \
+    while (node != nullptr) { \
+        if (node->value == value) \
+            return i; \
+        node = node->next; \
+        i = i + 1; \
+    } \
+    return -1; \
+} \
+void Name::replace(long index, Type value) { \
+    Name##Node *node; \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    node = node_at(index); \
+    node->value = value; \
+} \
+void Name::insert(long index, Type value) { \
+    Name##Node *node; \
+    Name##Node *at; \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0) \
+        index = 0; \
+    if (index > count) \
+        index = count; \
+    if (index == count) { \
+        add(value); \
+        return; \
+    } \
+    node = new Name##Node(); \
+    node->value = value; \
+    if (index == 0) { \
+        node->prev = nullptr; \
+        node->next = head; \
+        head->prev = node; \
+        head = node; \
+        count = count + 1; \
+        return; \
+    } \
+    at = node_at(index); \
+    node->next = at; \
+    node->prev = at->prev; \
+    at->prev->next = node; \
+    at->prev = node; \
+    count = count + 1; \
+} \
+void Name::remove(long index) { \
+    Name##Node *node; \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    node = node_at(index); \
+    if (node->prev == nullptr) \
+        head = node->next; \
+    else \
+        node->prev->next = node->next; \
+    if (node->next == nullptr) \
+        tail = node->prev; \
+    else \
+        node->next->prev = node->prev; \
+    count = count - 1; \
+} \
+Type Name::next(long *cursor) { \
+    long index; \
+    if (cursor == nullptr) \
+        throw *new Exception("index"); \
+    index = *cursor; \
+    if (index < 0) \
+        index = count + index; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    *cursor = index + 1; \
+    return at(index); \
 }
 
 #endif
