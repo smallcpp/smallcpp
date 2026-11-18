@@ -65,6 +65,7 @@ add_library(smallcpp_emit STATIC
     src/emit/link.cpp
     src/emit/lower_scalar.cpp
     src/emit/lower_call.cpp
+    src/emit/lower_vararg.cpp
     src/emit/lower_aggregate.cpp
     src/emit/lower_namespace.cpp
     src/emit/lower_class.cpp

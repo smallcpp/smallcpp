@@ -1,0 +1,41 @@
+#include <stdarg>
+
+int show(int n, ...) {
+    va_list args;
+    va_list copy;
+    int first;
+    int second;
+    int third;
+    int fourth;
+    int fifth;
+    const char *text;
+    int fromCopy;
+
+    va_start(args, n);
+    va_copy(copy, args);
+    first = va_arg(args, int);
+    second = va_arg(args, int);
+    third = va_arg(args, int);
+    fourth = va_arg(args, int);
+    fifth = va_arg(args, int);
+    text = va_arg(args, const char *);
+    fromCopy = va_arg(copy, int);
+    va_end(args);
+    va_end(copy);
+    print(
+            "stdarg {} {} {} {} {} {} {:s} {}\n",
+            n,
+            first,
+            second,
+            third,
+            fourth,
+            fifth,
+            text,
+            fromCopy);
+    return 0;
+}
+
+int main(void) {
+    show(1, 10, 20, 30, 40, 50, "ok");
+    return 0;
+}

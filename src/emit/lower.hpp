@@ -567,6 +567,14 @@ private:
     Func *pick_method(const MethodCall &call, const std::vector<Ty> &args, bool object_const, const char *label);
     Ty type_method_call(const AstNode *node, const MethodCall &call);
     RValue emit_method_call(const AstNode *node, const MethodCall &call);
+    const char *vararg_builtin(const AstNode *callee) const;
+    bool va_list_record(const Ty &ty);
+    bool is_va_list(const Ty &ty);
+    bool va_slot(const Ty &ty);
+    llvm::Function *va_intrinsic(llvm::Intrinsic::ID id);
+    llvm::Value *va_next(llvm::Value *list, llvm::Type *layout, const Ty &value);
+    Ty type_vararg(const AstNode *node);
+    RValue emit_vararg(const AstNode *node);
     Ty type_call(const AstNode *node);
     RValue emit_call(const AstNode *node);
     void record_alias(const std::string &name, Ty ty);

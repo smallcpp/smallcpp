@@ -129,6 +129,37 @@ Direct C calls do not throw. They return the C failure value and set
 `errno`. `<sqlite>`, `<gtk>`, and `<cli>` throw `Exception` for the
 failures named in their sections.
 
+## `<stdarg>`
+
+`#include <stdarg>`. A function with a trailing `...` reads the extra
+arguments. `va_list` holds the position. `va_start` names the last
+fixed parameter. `va_arg` returns the next argument as the type the
+caller names. An `int` and a `const char *` are both read that way.
+`va_copy` copies a list, and the two lists then walk independently.
+`va_end` finishes a list. It is safe on the original and on a copy.
+
+```smallcpp
+#include <stdarg>
+
+int show(int n, ...) {
+    va_list args;
+    va_list copy;
+    int value;
+    const char *text;
+    int again;
+
+    va_start(args, n);
+    va_copy(copy, args);
+    value = va_arg(args, int);
+    text = va_arg(args, const char *);
+    again = va_arg(copy, int);
+    va_end(args);
+    va_end(copy);
+    print("{} {} {:s} {}\n", n, value, text, again);
+    return again;
+}
+```
+
 ## `<typeinfo>`
 
 `#include <typeinfo>`. `typeid(expression)` and `typeid(Type)` yield a

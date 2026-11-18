@@ -2982,6 +2982,8 @@ void Codegen::emit_declaration(const AstNode *node, bool file)
             Slot slot{addr, object};
             if (object.is_union)
                 addr->setAlignment(llvm::Align(record_align(object)));
+            else if (va_list_record(object))
+                addr->setAlignment(llvm::Align(16));
             bind(name, slot);
             declare_local(addr, declared.name->text, object);
             if (declared.init != NULL)
