@@ -216,6 +216,7 @@ function(add_exec_libs name source expect line libs)
 endfunction()
 
 add_exec_line(stdlib-env stdlib-env 0 "stdlib-env 12 hello 1")
+add_exec_line(stdarg stdarg 0 "stdarg 1 10 20 30 40 50 ok 10")
 add_exec_line(stdio-file stdio-file 0 "stdio-file 4 abcd 1")
 add_exec_line(fs-dir fs-dir 0 "fs-dir 4 note 4")
 add_exec_line(glob-star glob-star 0 "glob-star 2 3")

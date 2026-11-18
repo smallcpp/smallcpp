@@ -793,6 +793,8 @@ RValue Codegen::emit_indirect(const AstNode *node, const Ty &ptr_ty)
 Ty Codegen::type_call(const AstNode *node)
 {
     SourceNote here(*this, node);
+    if (vararg_builtin(node->a) != NULL)
+        return type_vararg(node);
     Ty ptr_ty;
     if (pointer_callee(node->a, ptr_ty)) {
         if (ptr_ty.inner != NULL && ptr_ty.inner->inner != NULL)
@@ -827,6 +829,8 @@ Ty Codegen::type_call(const AstNode *node)
 RValue Codegen::emit_call(const AstNode *node)
 {
     SourceNote here(*this, node);
+    if (vararg_builtin(node->a) != NULL)
+        return emit_vararg(node);
     Ty ptr_ty;
     if (pointer_callee(node->a, ptr_ty))
         return emit_indirect(node, ptr_ty);
