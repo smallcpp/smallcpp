@@ -79,6 +79,42 @@ static void trace_location(int index, uint8_t kind, uint16_t reg, int32_t offset
     consider(index, addr);
 }
 
+/* A nested new only has a stack map for the function that called
+ * the allocator. Pointers saved in the callers of that function
+ * still have to keep their objects alive. */
+static void scan_words(int index, uint64_t low, uint64_t high)
+{
+    uint64_t addr;
+
+    if (high < low || high - low > 1024u * 1024u)
+        return;
+    addr = (low + 7u) & ~((uint64_t)7u);
+    while (addr + sizeof(uint64_t) <= high) {
+        uint64_t word;
+
+        memcpy(&word, (void *)addr, sizeof word);
+        consider(index, word);
+        addr += sizeof(uint64_t);
+    }
+}
+
+static void scan_parents(int index, uint64_t frame)
+{
+    int guard;
+
+    for (guard = 0; guard < 32; guard++) {
+        uint64_t parent;
+
+        if (frame < 4096 || (frame % 8u) != 0)
+            return;
+        memcpy(&parent, (void *)frame, sizeof parent);
+        if (parent <= frame || parent - frame > 1024u * 1024u)
+            return;
+        scan_words(index, frame + 16, parent);
+        frame = parent;
+    }
+}
+
 static void trace_record(int index, const uint8_t *map, size_t size, uint64_t cursor, uint64_t fn,
                          uint64_t retaddr, uint64_t caller_rbp, uint64_t caller_rsp)
 {
@@ -155,4 +191,5 @@ void smallcpp_trace(int index, uint64_t caller_rbp, uint64_t retaddr, uint64_t c
             cursor = align8(live_at + 4 + (uint64_t)liveouts * 4);
         }
     }
+    scan_parents(index, caller_rbp);
 }

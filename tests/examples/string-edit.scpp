@@ -1,0 +1,92 @@
+#include <string>
+
+int main(void) {
+    String *text;
+    String *copy;
+    String *bit;
+    String *ab;
+    String *miss;
+    String *wide;
+    int ends;
+    int gone;
+    long at;
+    long from;
+    long back;
+    long order;
+    long more;
+
+    text = new String();
+    text->add("  ab-cd\n");
+    ends = text->strip();
+    gone = text->strip('-');
+    copy = new String(text);
+    bit = new String();
+    bit->add("Z");
+    copy->append('!');
+    copy->append("?");
+    copy->append(bit);
+    copy->prepend('*');
+    copy->prepend("Q");
+    copy->prepend(bit);
+    copy->insert(-1, 'x');
+    copy->insert(1, "y");
+    copy->insert(100, bit);
+    copy->insert(-100, "");
+    copy->replace('y', 'Y');
+    copy->replace("ab", "AB");
+    copy->replace('!', bit);
+    at = copy->find("AB");
+    from = copy->find(-3, 'x');
+    back = copy->rfind(4, 'Z');
+    order = copy->cmp("ZQy", copy);
+    ab = new String();
+    ab->add("AB");
+    more = copy->find(ab);
+    more = more + copy->find(4, "cd");
+    more = more + copy->find(0, ab);
+    more = more + copy->rfind('Z');
+    more = more + copy->rfind("ZZ");
+    more = more + copy->rfind(ab);
+    more = more + copy->rfind(12, 'Z');
+    more = more + copy->rfind(5, "AB");
+    more = more + copy->rfind(5, ab);
+    more = more + copy->rfind(4, "AB");
+    more = more + copy->cmp(copy, copy);
+    more = more + copy->cmp(copy, copy->c_str());
+    more = more + copy->cmp(
+            "ZYQ*ABcdZ?xZZ",
+            "ZYQ*ABcdZ?xZZ");
+    more = more + copy->cmp(ab, "AB");
+    more = more + copy->cmp("AB", ab);
+    more = more + copy->find(100, 'Z');
+    more = more + copy->rfind(100, 'Z');
+    miss = new String();
+    miss->add("no");
+    copy->replace('q', 'z');
+    copy->replace('q', "no");
+    copy->replace('q', miss);
+    copy->replace("no", 'z');
+    copy->replace("no", "zz");
+    copy->replace("no", miss);
+    copy->replace(miss, 'z');
+    copy->replace(miss, "zz");
+    copy->replace(miss, ab);
+    text->truncate(4, 1);
+    text->truncate(1, 4);
+    wide = new String();
+    wide->add("abcdef");
+    wide->truncate(3, 12);
+    print(
+            "string-edit {} {} {} {} {} {} {} {:s} {:s} {:s}\n",
+            ends,
+            gone,
+            (int)at,
+            (int)from,
+            (int)back,
+            (int)order,
+            (int)more,
+            copy->c_str(),
+            text->chars(),
+            wide->chars());
+    return 0;
+}
