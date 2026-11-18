@@ -1,8 +1,8 @@
 #include <exceptions>
 
 int leaf(void) {
-    exception *error;
-    error = new exception("missing");
+    Exception *error;
+    error = new Exception("missing");
     throw *error;
     return 0;
 }
