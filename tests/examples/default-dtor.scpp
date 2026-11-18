@@ -1,0 +1,31 @@
+int hits;
+int last;
+
+int extra(void) {
+    hits = hits + 1;
+    return 3;
+}
+
+class Box {
+public:
+    ~Box(int n = extra()) {
+        last = n;
+    }
+};
+
+int main(void) {
+    Box *omitted;
+    Box *given;
+    int first;
+    int second;
+
+    hits = 0;
+    omitted = new Box();
+    omitted->~Box();
+    first = last;
+    given = new Box();
+    given->~Box(5);
+    second = last;
+    print("default-dtor {} {} {}\n", first, second, hits);
+    return 0;
+}

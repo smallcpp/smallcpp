@@ -1,0 +1,12 @@
+#include <string>
+
+int main(void) {
+    String *text;
+    int shown;
+
+    text = new String();
+    text->add("hi");
+    shown = (int)*text->address(0);
+    print("array-string {:c}\n", shown);
+    return 0;
+}

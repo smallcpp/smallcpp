@@ -1,0 +1,17 @@
+#include <hash>
+
+HASH(IntMap, int, int)
+
+int main(void) {
+    IntMap *map;
+    int held;
+    int found;
+
+    map = new IntMap();
+    map->put(1, 10);
+    map->remove(1);
+    held = 7;
+    found = map->find(1, &held);
+    print("hash-miss {} {}\n", found, held);
+    return 0;
+}

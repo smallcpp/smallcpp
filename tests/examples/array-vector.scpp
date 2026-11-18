@@ -1,0 +1,14 @@
+#include <vector>
+
+VECTOR(IntVec, int)
+
+int main(void) {
+    IntVec *values;
+    int *slot;
+
+    values = new IntVec();
+    values->add(42);
+    slot = (int *)values->address(0);
+    print("array-vector {}\n", *slot);
+    return 0;
+}

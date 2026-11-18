@@ -188,6 +188,18 @@ add_exec_line(tree-text tree-text 0 "tree-text a b c 1")
 add_exec_line(hash-text hash-text 0 "hash-text 1 4 2")
 add_exec_line(tree-order tree-order 0 "tree-order 3 2 1 2")
 add_exec_line(hash-equal hash-equal 0 "hash-equal 1 30 1")
+add_exec_line(fn-ptr-return fn-ptr-return 0 "fn-ptr-return 7")
+add_exec_line(fn-ptr-field fn-ptr-field 0 "fn-ptr-field 7")
+add_exec_line(fn-ptr-array fn-ptr-array 0 "fn-ptr-array 7 3")
+add_exec_line(default-ctor default-ctor 0 "default-ctor 4 9 1")
+add_exec_line(default-dtor default-dtor 0 "default-dtor 3 5 1")
+add_exec_line(inherit-vector inherit-vector 0 "inherit-vector 2 10")
+add_exec_line(inherit-list inherit-list 0 "inherit-list 2 4")
+add_exec_line(array-string array-string 0 "array-string h")
+add_exec_line(array-vector array-vector 0 "array-vector 42")
+add_exec_line(array-hash array-hash 0 "array-hash 1")
+add_exec_line(hash-miss hash-miss 0 "hash-miss 0 7")
+add_exec_line(tree-empty tree-empty 0 "tree-empty empty")
 
 add_test(
     NAME exec_exec-print-two

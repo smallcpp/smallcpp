@@ -1,0 +1,23 @@
+#include <vector>
+
+VECTOR(IntVec, int)
+
+class More : public IntVec {
+public:
+    More() : IntVec() {
+    }
+};
+
+int main(void) {
+    More *values;
+    int count;
+    int first;
+
+    values = new More();
+    values->add(10);
+    values->add(20);
+    count = (int)values->size();
+    first = values->at(0);
+    print("inherit-vector {} {}\n", count, first);
+    return 0;
+}

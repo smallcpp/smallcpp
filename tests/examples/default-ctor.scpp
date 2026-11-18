@@ -1,0 +1,31 @@
+int hits;
+
+int extra(void) {
+    hits = hits + 1;
+    return 4;
+}
+
+class Box {
+    int x;
+public:
+    Box(int n = extra()) : x(n) {
+    }
+    int read(void) {
+        return x;
+    }
+};
+
+int main(void) {
+    Box *omitted;
+    Box *given;
+    int first;
+    int second;
+
+    hits = 0;
+    omitted = new Box();
+    first = omitted->read();
+    given = new Box(9);
+    second = given->read();
+    print("default-ctor {} {} {}\n", first, second, hits);
+    return 0;
+}

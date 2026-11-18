@@ -12,9 +12,10 @@
  * object uses the dynamic type. catch (...) catches every exception type.
  * That ... is not a parameter. A constructor is a method whose name is
  * the class name and that has no return type. A destructor is
- * ~ClassName(), also with no return type. A constructor may have an
+ * ~ClassName() and may take parameters. A constructor may have an
  * initializer list: ClassName(args) : member(expr), base(expr) { ... }.
- * A parameter may have a default, written name = expression. using name;
+ * A parameter may have a default, written name = expression. A
+ * trailing destructor parameter may have one too. using name;
  * and using namespace name; are supported. Anonymous namespaces are not.
  * Two functions may share a name when their parameter lists differ.
  * Operator overloading is not supported. super is not a keyword. A base
@@ -40,7 +41,8 @@
  * namespace name { ... }.
  * A qualified name uses '::'. A new-expression creates a pointer. delete
  * type-checks its pointer and calls the destructor. It does not deallocate.
- * A direct call is object.~Class() or pointer->~Class(). nullptr and NULL are keywords for
+ * A direct call is object.~Class(args) or pointer->~Class(args).
+ * The argument list may be empty. nullptr and NULL are keywords for
  * the same null pointer constant.
  * Source files use the .scpp extension. Ordinary preprocessing is already
  * done. Semantic actions build a syntax tree. They do not generate code.
@@ -257,14 +259,16 @@ static struct AstNode *ctor_spelling(char *spelling, struct AstNode *params,
     return ast_make(AST_CONSTRUCTOR, spelling, params, inits, body, NULL);
 }
 
-static struct AstNode *make_dtor(struct AstNode *name, struct AstNode *body, int is_virtual)
+static struct AstNode *make_dtor(struct AstNode *name, struct AstNode *params,
+                                 struct AstNode *body, int is_virtual)
 {
     return ast_make(AST_DESTRUCTOR, steal_text(name), body,
                     is_virtual ? ast_named(AST_SPECIFIER, "virtual") : NULL,
-                    NULL, NULL);
+                    params, NULL);
 }
 
-static struct AstNode *dtor_call(struct AstNode *object, struct AstNode *name, int arrow)
+static struct AstNode *dtor_call(struct AstNode *object, struct AstNode *name,
+                                 struct AstNode *args, int arrow)
 {
     char *spelling = steal_text(name);
     char *label = NULL;
@@ -280,7 +284,7 @@ static struct AstNode *dtor_call(struct AstNode *object, struct AstNode *name, i
     }
     return ast_make(AST_CALL, NULL,
                     ast_make(arrow ? AST_ARROW : AST_MEMBER, label, object, NULL, NULL, NULL),
-                    NULL, NULL, NULL);
+                    args, NULL, NULL);
 }
 
 static struct AstNode *make_mem_init(struct AstNode *name, struct AstNode *args)
@@ -394,6 +398,7 @@ static struct AstNode *designate(struct AstNode *designators, struct AstNode *va
 %type <node> selection_statement iteration_statement jump_statement
 %type <node> try_statement catch_clause_list catch_clause throw_statement
 %type <node> base_specifier base_specifier_list constructor_member destructor_member
+%type <node> destructor_params
 %type <node> pure_specifier_opt
 %type <node> constructor_definition destructor_definition ctor_initializer_opt
 %type <node> mem_initializer_list mem_initializer using_declaration using_name
@@ -599,7 +604,7 @@ enumerator
  *
  * A constructor is Name(parameters), with no return type, optionally
  * followed by : member(expr), base(expr) and a body. A destructor is
- * ~Name(). Out of line they are Name::Name and Name::~Name.
+ * ~Name(parameters). Out of line they are Name::Name and Name::~Name.
  * Inside a class, the scanner returns the class name as CTOR_NAME when
  * it starts a member and the next token is '('. That keeps the
  * constructor distinct from a declaration that begins with a type name.
@@ -678,26 +683,31 @@ constructor_member
     | CTOR_NAME '(' parameter_type_list ')' ';' { $$ = ast_place(ctor_spelling($1, $3, NULL, NULL), @$.first_line, @$.first_column); }
     ;
 
+destructor_params
+    : '(' ')' { $$ = NULL; }
+    | '(' parameter_type_list ')' { $$ = ast_place($2, @$.first_line, @$.first_column); }
+    ;
+
 destructor_member
-    : '~' name '(' ')' compound_statement {
+    : '~' name destructor_params compound_statement {
         if (!text_is($2, smallcpp_current_class()))
             yylloc = @$, yyerror("destructor name does not match the class");
-        $$ = ast_place(make_dtor($2, $5, 0), @$.first_line, @$.first_column);
+        $$ = ast_place(make_dtor($2, $3, $4, 0), @$.first_line, @$.first_column);
       }
-    | '~' name '(' ')' ';' {
+    | '~' name destructor_params ';' {
         if (!text_is($2, smallcpp_current_class()))
             yylloc = @$, yyerror("destructor name does not match the class");
-        $$ = ast_place(make_dtor($2, NULL, 0), @$.first_line, @$.first_column);
+        $$ = ast_place(make_dtor($2, $3, NULL, 0), @$.first_line, @$.first_column);
       }
-    | VIRTUAL '~' name '(' ')' compound_statement {
+    | VIRTUAL '~' name destructor_params compound_statement {
         if (!text_is($3, smallcpp_current_class()))
             yylloc = @$, yyerror("destructor name does not match the class");
-        $$ = ast_place(make_dtor($3, $6, 1), @$.first_line, @$.first_column);
+        $$ = ast_place(make_dtor($3, $4, $5, 1), @$.first_line, @$.first_column);
       }
-    | VIRTUAL '~' name '(' ')' ';' {
+    | VIRTUAL '~' name destructor_params ';' {
         if (!text_is($3, smallcpp_current_class()))
             yylloc = @$, yyerror("destructor name does not match the class");
-        $$ = ast_place(make_dtor($3, NULL, 1), @$.first_line, @$.first_column);
+        $$ = ast_place(make_dtor($3, $4, NULL, 1), @$.first_line, @$.first_column);
       }
     ;
 
@@ -717,17 +727,17 @@ constructor_definition
     ;
 
 destructor_definition
-    : name SCOPE '~' name '(' ')' compound_statement {
+    : name SCOPE '~' name destructor_params compound_statement {
         if (!names_equal($1, $4))
             yylloc = @$, yyerror("destructor name does not match the class");
         ast_free($1);
-        $$ = ast_place(make_dtor($4, $7, 0), @$.first_line, @$.first_column);
+        $$ = ast_place(make_dtor($4, $5, $6, 0), @$.first_line, @$.first_column);
       }
-    | name SCOPE '~' name '(' ')' ';' {
+    | name SCOPE '~' name destructor_params ';' {
         if (!names_equal($1, $4))
             yylloc = @$, yyerror("destructor name does not match the class");
         ast_free($1);
-        $$ = ast_place(make_dtor($4, NULL, 0), @$.first_line, @$.first_column);
+        $$ = ast_place(make_dtor($4, $5, NULL, 0), @$.first_line, @$.first_column);
       }
     ;
 
@@ -1119,9 +1129,15 @@ postfix_expression
         $$ = ast_place(ast_make(AST_CALL, NULL, $1, $3, NULL, NULL), @$.first_line, @$.first_column);
       }
     | postfix_expression '.' IDENTIFIER { $$ = ast_place(ast_make(AST_MEMBER, $3, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
-    | postfix_expression '.' '~' name '(' ')' { $$ = ast_place(dtor_call($1, $4, 0), @$.first_line, @$.first_column); }
+    | postfix_expression '.' '~' name '(' ')' { $$ = ast_place(dtor_call($1, $4, NULL, 0), @$.first_line, @$.first_column); }
+    | postfix_expression '.' '~' name '(' argument_expression_list ')' {
+        $$ = ast_place(dtor_call($1, $4, $6, 0), @$.first_line, @$.first_column);
+      }
     | postfix_expression ARROW IDENTIFIER { $$ = ast_place(ast_make(AST_ARROW, $3, $1, NULL, NULL, NULL), @$.first_line, @$.first_column); }
-    | postfix_expression ARROW '~' name '(' ')' { $$ = ast_place(dtor_call($1, $4, 1), @$.first_line, @$.first_column); }
+    | postfix_expression ARROW '~' name '(' ')' { $$ = ast_place(dtor_call($1, $4, NULL, 1), @$.first_line, @$.first_column); }
+    | postfix_expression ARROW '~' name '(' argument_expression_list ')' {
+        $$ = ast_place(dtor_call($1, $4, $6, 1), @$.first_line, @$.first_column);
+      }
     | postfix_expression INC { $$ = ast_place(ast_unary("post++", $1), @$.first_line, @$.first_column); }
     | postfix_expression DEC { $$ = ast_place(ast_unary("post--", $1), @$.first_line, @$.first_column); }
     ;
