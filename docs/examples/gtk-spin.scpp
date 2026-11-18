@@ -1,0 +1,51 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int edits;
+
+void changed(void *data) {
+    int *flag;
+
+    flag = (int *)data;
+    *flag = *flag + 1;
+}
+
+int main(void) {
+    SpinButton *spin;
+    int ok;
+
+    try {
+        spin = new SpinButton(0, 10, 1);
+        edits = 0;
+        spin->on_changed(changed, (void *)&edits);
+        spin->set_value(4);
+        ok = 0;
+        if (spin->min() == 0 && spin->max() == 10
+                && spin->value() == 4 && edits == 1)
+            ok = 1;
+        print("gtk-spin {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

@@ -1,0 +1,30 @@
+class Base {
+protected:
+    int n;
+public:
+    Base();
+};
+
+Base::Base() : n(4) {
+}
+
+class Derived : public Base {
+public:
+    Derived();
+    int read(void);
+};
+
+Derived::Derived() : Base() {
+}
+
+int Derived::read(void) {
+    return n;
+}
+
+int main(void) {
+    Derived *object;
+
+    object = new Derived();
+    print("lang-protected {}\n", object->read());
+    return 0;
+}

@@ -1,0 +1,7 @@
+int main(void) {
+    int n;
+
+    n = (int)sizeof(int);
+    print("lang-sizeof {}\n", n);
+    return 0;
+}

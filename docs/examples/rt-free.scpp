@@ -1,0 +1,15 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    char *block;
+
+    block = (char *)malloc(4);
+    free((void *)block);
+    ok = 0;
+    if (1)
+        ok = 1;
+    print("rt-free {}\n", ok);
+    return 0;
+}

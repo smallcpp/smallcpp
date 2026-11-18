@@ -1,0 +1,12 @@
+int flag;
+
+void mark(void) {
+    flag = 4;
+}
+
+int main(void) {
+    flag = 0;
+    mark();
+    print("lang-void {}\n", flag);
+    return 0;
+}

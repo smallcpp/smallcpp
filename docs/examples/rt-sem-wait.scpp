@@ -1,0 +1,14 @@
+#include <pthread>
+
+
+int main(void) {
+    sem_t sem;
+    int ok;
+
+    ok = 0;
+    if (sem_init(&sem, 0, 0) == 0 && sem_post(&sem) == 0
+            && sem_wait(&sem) == 0 && sem_destroy(&sem) == 0)
+        ok = 1;
+    print("rt-sem-wait {}\n", ok);
+    return 0;
+}

@@ -1,0 +1,15 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    char *end;
+    long number;
+
+    number = strtol("16abc", &end, 10);
+    ok = 0;
+    if (number == 16 && end != nullptr && end[0] == 'a')
+        ok = 1;
+    print("rt-strtol {}\n", ok);
+    return 0;
+}

@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (ceil(3.2) == 4.0)
+        ok = 1;
+    print("rt-ceil {}\n", ok);
+    return 0;
+}

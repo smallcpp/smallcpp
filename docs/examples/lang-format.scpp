@@ -1,0 +1,7 @@
+int main(void) {
+    const char *text;
+
+    text = format("n {}", 4);
+    print("lang-format {:s}\n", text);
+    return 0;
+}

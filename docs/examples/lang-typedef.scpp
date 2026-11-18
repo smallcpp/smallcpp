@@ -1,0 +1,9 @@
+typedef int Number;
+
+int main(void) {
+    Number n;
+
+    n = 6;
+    print("lang-typedef {}\n", n);
+    return 0;
+}

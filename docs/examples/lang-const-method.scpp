@@ -1,0 +1,21 @@
+class Box {
+    int n;
+public:
+    Box(int value);
+    int read(void) const;
+};
+
+Box::Box(int value) : n(value) {
+}
+
+int Box::read(void) const {
+    return n;
+}
+
+int main(void) {
+    Box *box;
+
+    box = new Box(8);
+    print("lang-const-method {}\n", box->read());
+    return 0;
+}

@@ -1,0 +1,15 @@
+#include <signal>
+
+int main(void) {
+    int ok;
+
+    extern int getpid(void);
+    int rc;
+
+    rc = kill(getpid(), 0);
+    ok = 0;
+    if (rc == 0)
+        ok = 1;
+    print("rt-kill {}\n", ok);
+    return 0;
+}

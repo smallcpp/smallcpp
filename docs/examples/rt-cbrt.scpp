@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (cbrt(8.0) == 2.0)
+        ok = 1;
+    print("rt-cbrt {}\n", ok);
+    return 0;
+}

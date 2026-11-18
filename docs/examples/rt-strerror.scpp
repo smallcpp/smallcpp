@@ -1,0 +1,14 @@
+#include <errno>
+
+int main(void) {
+    int ok;
+
+    char *text;
+
+    text = strerror(0);
+    ok = 0;
+    if (text != nullptr && text[0] != 0)
+        ok = 1;
+    print("rt-strerror {}\n", ok);
+    return 0;
+}

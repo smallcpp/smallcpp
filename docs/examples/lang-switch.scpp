@@ -1,0 +1,20 @@
+int main(void) {
+    int n;
+    int shown;
+
+    n = 2;
+    shown = 0;
+    switch (n) {
+    case 1:
+        shown = 1;
+        break;
+    case 2:
+        shown = 7;
+        break;
+    default:
+        shown = 0;
+        break;
+    }
+    print("lang-switch {}\n", shown);
+    return 0;
+}

@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (floorf(3.7f) > 2.85f && floorf(3.7f) < 3.15f)
+        ok = 1;
+    print("rt-floorf {}\n", ok);
+    return 0;
+}

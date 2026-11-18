@@ -1,0 +1,98 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int edits;
+
+void buffer_changed(void *data) {
+    int *flag;
+
+    flag = (int *)data;
+    *flag = *flag + 1;
+}
+
+void moved(void *data, long line, long offset) {
+    (void)data;
+    (void)line;
+    (void)offset;
+}
+
+int main(void) {
+    TextBuffer *buffer;
+    TextMark *mark;
+    TextIter *at;
+    TextIter *start;
+    TextIter *end;
+    TextView *view;
+    SignalConnection slot;
+    int bounds;
+    int ok;
+
+    try {
+        buffer = new TextBuffer();
+        edits = 0;
+        buffer->on_changed(buffer_changed, (void *)&edits);
+        buffer->set_text("ab");
+        mark = buffer->create_mark("caret", 0, 1);
+        at = new TextIter(0, 1);
+        buffer->insert(at, "X");
+        buffer->undo();
+        buffer->redo();
+        start = new TextIter(0, 0);
+        end = new TextIter(0, 1);
+        buffer->delete_range(start, end);
+        buffer->set_text("hello");
+        start = new TextIter(0, 0);
+        end = new TextIter(0, 5);
+        buffer->place_cursor(start);
+        buffer->select_range(start, end);
+        bounds = 0;
+        if (buffer->selection_bounds(start, end))
+            bounds = 1;
+        buffer->create_tag("note", "blue");
+        buffer->apply_tag("note", start, end);
+        buffer->remove_tag("note", start, end);
+        mark->move(0, 2);
+        view = new TextView(buffer);
+        view->set_monospace(true);
+        view->set_editable(false);
+        view->scroll_to(0, 0);
+        slot = view->on_move_cursor(moved, nullptr);
+        ok = 0;
+        if (same(buffer->get_text(), "hello")
+                && edits > 0
+                && bounds == 1
+                && at->line() == 0
+                && same(mark->name(), "caret")
+                && mark->line() == 0
+                && mark->offset() == 2
+                && end->offset() == 5
+                && view->monospace()
+                && view->editable() == false
+                && slot.connected())
+            ok = 1;
+        print("gtk-text {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

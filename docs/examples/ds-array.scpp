@@ -1,0 +1,18 @@
+#include <array>
+
+int main(void) {
+    Array *bytes;
+    char *last;
+
+    bytes = new Array(1);
+    bytes->reserve(8);
+    bytes->bytes[0] = 'h';
+    bytes->bytes[1] = 'i';
+    bytes->count = 2;
+    last = bytes->address(-1);
+    print("array {} {:c} {:c}\n",
+        (int)bytes->size(),
+        (int)*bytes->address(0),
+        (int)*last);
+    return 0;
+}

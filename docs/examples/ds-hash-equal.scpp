@@ -1,0 +1,36 @@
+#include <hash>
+
+HASH(IntMap, int, int)
+
+class AbsMap : public IntMap {
+public:
+    AbsMap();
+    long compare(int left, int right);
+};
+
+AbsMap::AbsMap() : IntMap() {
+}
+
+long AbsMap::compare(int left, int right) {
+    if (left < 0)
+        left = -left;
+    if (right < 0)
+        right = -right;
+    if (left == right)
+        return (long)0;
+    return (long)1;
+}
+
+int main(void) {
+    AbsMap *map;
+    int value;
+    int found;
+
+    map = new AbsMap();
+    map->put(1, 10);
+    map->replace(-1, 30);
+    value = 0;
+    found = map->find(1, &value);
+    print("hash-equal {} {} {}\n", found, value, (int)map->size());
+    return 0;
+}

@@ -1,0 +1,15 @@
+#include <gtk>
+
+using namespace Gtk;
+
+
+void confirmed(void *data) {
+    (void)data;
+}
+
+void ask(void) {
+    AlertDialog *alert;
+
+    alert = new AlertDialog("Hello", "Detail");
+    alert->present(confirmed, nullptr);
+}

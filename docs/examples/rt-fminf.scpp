@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (fminf(2.0f, 5.0f) > 1.85f && fminf(2.0f, 5.0f) < 2.15f)
+        ok = 1;
+    print("rt-fminf {}\n", ok);
+    return 0;
+}

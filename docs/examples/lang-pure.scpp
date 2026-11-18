@@ -1,0 +1,21 @@
+class Base {
+public:
+    virtual int id(void) = 0;
+};
+
+class Derived : public Base {
+public:
+    int id(void);
+};
+
+int Derived::id(void) {
+    return 8;
+}
+
+int main(void) {
+    Base *base;
+
+    base = new Derived();
+    print("lang-pure {}\n", base->id());
+    return 0;
+}

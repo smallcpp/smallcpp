@@ -1,0 +1,51 @@
+class V {
+public:
+    int x;
+    V();
+};
+
+V::V() : x(0) {
+}
+
+class L : public virtual V {
+public:
+    L();
+    void set(int value);
+};
+
+L::L() {
+}
+
+void L::set(int value) {
+    x = value;
+}
+
+class R : public virtual V {
+public:
+    R();
+    int get(void);
+};
+
+R::R() {
+}
+
+int R::get(void) {
+    return x;
+}
+
+class D : public L, public R {
+public:
+    D();
+};
+
+D::D() {
+}
+
+int main(void) {
+    D *object;
+
+    object = new D();
+    object->set(5);
+    print("lang-virtual-base {}\n", object->get());
+    return 0;
+}

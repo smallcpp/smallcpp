@@ -1,0 +1,26 @@
+#include <pthread>
+
+
+sem_t done;
+
+void *work(void *arg) {
+    (void)arg;
+    sem_post(&done);
+    return nullptr;
+}
+
+int main(void) {
+    pthread_t thread;
+    int ok;
+
+    ok = 0;
+    if (sem_init(&done, 0, 0) == 0
+            && pthread_create(
+                &thread, nullptr, work, nullptr) == 0
+            && pthread_detach(thread) == 0
+            && sem_wait(&done) == 0
+            && sem_destroy(&done) == 0)
+        ok = 1;
+    print("rt-pthread-detach {}\n", ok);
+    return 0;
+}

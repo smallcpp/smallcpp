@@ -1,0 +1,18 @@
+#include <sqlite>
+
+using namespace Sqlite;
+
+
+int main(void) {
+    Database *database;
+    int ok;
+
+    database = new Connection(":memory:");
+    ok = 0;
+    if (database->is_open()
+            && database->set_busy_timeout(1000))
+        ok = 1;
+    database->close();
+    print("sql-timeout {}\n", ok);
+    return 0;
+}

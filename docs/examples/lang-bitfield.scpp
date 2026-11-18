@@ -1,0 +1,11 @@
+struct Flag {
+    unsigned n : 3;
+};
+
+int main(void) {
+    struct Flag flag;
+
+    flag.n = 5;
+    print("lang-bitfield {}\n", (int)flag.n);
+    return 0;
+}

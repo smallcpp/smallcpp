@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (sqrt(9.0) == 3.0)
+        ok = 1;
+    print("rt-sqrt {}\n", ok);
+    return 0;
+}

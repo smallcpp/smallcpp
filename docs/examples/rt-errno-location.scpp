@@ -1,0 +1,14 @@
+#include <errno>
+
+int main(void) {
+    int *slot;
+    int ok;
+
+    slot = __errno_location();
+    *slot = EPERM;
+    ok = 0;
+    if (errno == EPERM)
+        ok = 1;
+    print("rt-errno-location {}\n", ok);
+    return 0;
+}

@@ -1,0 +1,14 @@
+#include <pthread>
+
+
+int main(void) {
+    pthread_t self;
+    int ok;
+
+    self = pthread_self();
+    ok = 0;
+    if (self != 0)
+        ok = 1;
+    print("rt-pthread-self {}\n", ok);
+    return 0;
+}

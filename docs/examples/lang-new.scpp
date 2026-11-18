@@ -1,0 +1,19 @@
+class Box {
+public:
+    int n;
+    Box(int value);
+};
+
+Box::Box(int value) : n(value) {
+}
+
+int main(void) {
+    int *numbers;
+    Box *box;
+
+    numbers = new int[3];
+    numbers[0] = 5;
+    box = new Box(3);
+    print("lang-new {} {}\n", numbers[0], box->n);
+    return 0;
+}

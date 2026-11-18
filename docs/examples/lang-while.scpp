@@ -1,0 +1,13 @@
+int main(void) {
+    int n;
+    int sum;
+
+    n = 0;
+    sum = 0;
+    while (n < 3) {
+        sum = sum + n;
+        n = n + 1;
+    }
+    print("lang-while {}\n", sum);
+    return 0;
+}

@@ -1,0 +1,14 @@
+#include <pthread>
+
+
+int main(void) {
+    pthread_mutex_t mutex;
+    int ok;
+
+    ok = 0;
+    if (pthread_mutex_init(&mutex, nullptr) == 0
+            && pthread_mutex_destroy(&mutex) == 0)
+        ok = 1;
+    print("rt-mutex-destroy {}\n", ok);
+    return 0;
+}

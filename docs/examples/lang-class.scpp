@@ -1,0 +1,21 @@
+class Point {
+    int x;
+public:
+    Point(int ax);
+    int read(void);
+};
+
+Point::Point(int ax) : x(ax) {
+}
+
+int Point::read(void) {
+    return x;
+}
+
+int main(void) {
+    Point *point;
+
+    point = new Point(6);
+    print("lang-class {}\n", point->read());
+    return 0;
+}

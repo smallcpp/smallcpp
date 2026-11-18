@@ -1,0 +1,15 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    char *end;
+    double number;
+
+    number = strtod("2.5x", &end);
+    ok = 0;
+    if (number > 2.4 && number < 2.6 && end[0] == 'x')
+        ok = 1;
+    print("rt-strtod {}\n", ok);
+    return 0;
+}

@@ -1,0 +1,11 @@
+#include <gtk>
+
+using namespace Gtk;
+
+
+void hide_pop(void) {
+    Popover *popover;
+
+    popover = new Popover();
+    popover->popdown();
+}

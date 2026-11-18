@@ -1,0 +1,39 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    Picture *picture;
+    int ok;
+
+    try {
+        picture = new Picture();
+        picture->set_file("/etc/os-release");
+        ok = 0;
+        if (same(picture->file(), "/etc/os-release"))
+            ok = 1;
+        print("gtk-picture {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

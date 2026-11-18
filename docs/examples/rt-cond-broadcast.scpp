@@ -1,0 +1,39 @@
+#include <pthread>
+
+
+int ready;
+pthread_mutex_t mutex;
+pthread_cond_t cond;
+
+void *work(void *arg) {
+    (void)arg;
+    pthread_mutex_lock(&mutex);
+    ready = 1;
+    pthread_cond_broadcast(&cond);
+    pthread_mutex_unlock(&mutex);
+    return nullptr;
+}
+
+int main(void) {
+    pthread_t thread;
+    int ok;
+
+    ready = 0;
+    ok = 0;
+    if (pthread_mutex_init(&mutex, nullptr) != 0)
+        return 1;
+    if (pthread_cond_init(&cond, nullptr) != 0)
+        return 1;
+    if (pthread_create(&thread, nullptr, work, nullptr) != 0)
+        return 1;
+    pthread_mutex_lock(&mutex);
+    while (ready == 0)
+        pthread_cond_wait(&cond, &mutex);
+    pthread_mutex_unlock(&mutex);
+    if (pthread_join(thread, nullptr) == 0 && ready == 1)
+        ok = 1;
+    pthread_cond_destroy(&cond);
+    pthread_mutex_destroy(&mutex);
+    print("rt-cond-broadcast {}\n", ok);
+    return 0;
+}

@@ -1,0 +1,53 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+bool keep_open(void *data) {
+    (void)data;
+    return true;
+}
+
+int main(void) {
+    Window *window;
+    Label *child;
+    SignalConnection slot;
+    int ok;
+
+    try {
+        window = new Window("Docs");
+        window->set_title("Hello");
+        window->set_default_size(200, 100);
+        child = new Label("Hi");
+        window->set_child((Widget *)child);
+        window->remove((Widget *)child);
+        slot = window->on_close_request(keep_open, nullptr);
+        window->present();
+        window->close();
+        ok = 0;
+        if (same(window->title(), "Hello") && slot.connected())
+            ok = 1;
+        print("gtk-window {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

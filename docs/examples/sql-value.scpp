@@ -1,0 +1,39 @@
+#include <sqlite>
+
+using namespace Sqlite;
+
+
+int main(void) {
+    Value *nullValue;
+    Value *whole;
+    Value *real;
+    Value *text;
+    Value *blob;
+    char bytes[2];
+    double number;
+    int ok;
+
+    bytes[0] = 'Z';
+    bytes[1] = 'Q';
+    nullValue = new Value();
+    whole = new Value((long)7);
+    real = new Value(1.5);
+    text = new Value("hi");
+    blob = new Value((const void *)bytes, (long)2);
+    number = real->as_real();
+    ok = 0;
+    if (nullValue->is_null()
+            && nullValue->kind() == SQL_NULL
+            && whole->kind() == SQL_INTEGER
+            && whole->as_integer() == 7
+            && number > 1.4 && number < 1.6
+            && real->kind() == SQL_REAL
+            && text->kind() == SQL_TEXT
+            && text->as_text()[0] == 'h'
+            && blob->kind() == SQL_BLOB
+            && blob->blob_size() == 2
+            && ((char *)blob->as_blob())[0] == 'Z')
+        ok = 1;
+    print("sql-value {}\n", ok);
+    return 0;
+}

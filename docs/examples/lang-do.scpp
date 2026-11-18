@@ -1,0 +1,10 @@
+int main(void) {
+    int n;
+
+    n = 0;
+    do {
+        n = n + 1;
+    } while (n < 1);
+    print("lang-do {}\n", n);
+    return 0;
+}

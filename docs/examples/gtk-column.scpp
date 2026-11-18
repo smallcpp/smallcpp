@@ -1,0 +1,57 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+void activated(void *data, long row) {
+    (void)data;
+    (void)row;
+}
+
+int main(void) {
+    ColumnView *view;
+    SignalConnection slot;
+    const char *row[2];
+    int ok;
+
+    try {
+        view = new ColumnView();
+        view->append_column("Name");
+        view->append_column("Year");
+        row[0] = "Ada";
+        row[1] = "1815";
+        view->append_row(row, 2);
+        slot = view->on_activate(activated, nullptr);
+        ok = 0;
+        if (view->column_count() == 2
+                && view->row_count() == 1
+                && same(view->cell(0, 0), "Ada")
+                && slot.connected()) {
+            view->clear_rows();
+            if (view->row_count() == 0)
+                ok = 1;
+        }
+        print("gtk-column {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

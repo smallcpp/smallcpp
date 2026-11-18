@@ -1,0 +1,4 @@
+int main(void) {
+    print("lang-main 0\n");
+    return 0;
+}

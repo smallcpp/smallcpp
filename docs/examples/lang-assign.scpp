@@ -1,0 +1,12 @@
+int main(void) {
+    int n;
+
+    n = 6;
+    n += 2;
+    n -= 1;
+    n *= 2;
+    n /= 2;
+    n %= 5;
+    print("lang-assign {}\n", n);
+    return 0;
+}

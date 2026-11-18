@@ -1,0 +1,45 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+void clicked(void *data) {
+    (void)data;
+}
+
+int main(void) {
+    Button *button;
+    SignalConnection slot;
+    int ok;
+
+    try {
+        button = new Button("Go");
+        button->set_label("Click");
+        slot = button->on_clicked(clicked, nullptr);
+        ok = 0;
+        if (same(button->label(), "Click") && slot.connected())
+            ok = 1;
+        print("gtk-button {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

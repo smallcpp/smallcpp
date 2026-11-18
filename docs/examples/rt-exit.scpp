@@ -1,0 +1,7 @@
+#include <stdlib>
+
+int main(void) {
+    print("rt-exit 1\n");
+    exit(0);
+    return 1;
+}

@@ -1,0 +1,28 @@
+#include <hash>
+
+HASH(IntMap, int, int)
+
+int main(void) {
+    IntMap *map;
+    long cursor;
+    int key;
+    int value;
+    int found;
+    int walked;
+
+    map = new IntMap();
+    map->put(1, 10);
+    map->put(2, 20);
+    map->replace(1, 12);
+    map->remove(2);
+    found = 0;
+    map->find(1, &found);
+    cursor = 0;
+    walked = map->next(&cursor, &key, &value);
+    print("hash {} {} {} {}\n",
+        found,
+        walked,
+        key,
+        value);
+    return 0;
+}

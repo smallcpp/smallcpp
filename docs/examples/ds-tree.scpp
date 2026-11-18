@@ -1,0 +1,50 @@
+#include <tree>
+
+TREE(IntTree, int)
+
+class RevTree : public IntTree {
+public:
+    RevTree();
+    long compare(int left, int right);
+};
+
+RevTree::RevTree() : IntTree() {
+}
+
+long RevTree::compare(int left, int right) {
+    if (left < right)
+        return (long)1;
+    if (right < left)
+        return (long)-1;
+    return (long)0;
+}
+
+int main(void) {
+    IntTree *nodes;
+    RevTree *rev;
+    long cursor;
+    int first;
+    int found;
+
+    nodes = new IntTree();
+    nodes->add(2);
+    nodes->add(1);
+    nodes->add(3);
+    nodes->insert(0, 9);
+    nodes->replace(1, 8);
+    cursor = 0;
+    first = nodes->next(&cursor);
+    rev = new RevTree();
+    rev->add(1);
+    rev->add(2);
+    rev->add(3);
+    found = (int)nodes->find(3);
+    nodes->remove(found);
+    print("tree {} {} {} {} {}\n",
+        first,
+        nodes->at(0),
+        found,
+        (int)nodes->size(),
+        rev->at(0));
+    return 0;
+}

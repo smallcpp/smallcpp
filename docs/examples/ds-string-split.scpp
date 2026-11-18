@@ -1,0 +1,29 @@
+#include <string>
+
+int main(void) {
+    String *text;
+    String *gaps;
+    StringVec *parts;
+    StringVec *wide;
+    String *joined;
+    String *spaced;
+    const char *word;
+    long cursor;
+
+    text = new String();
+    text->add("a,b,c");
+    parts = text->split(",");
+    joined = text->join(parts, "-");
+    gaps = new String();
+    gaps->add("a b");
+    wide = gaps->split();
+    spaced = gaps->join(wide);
+    cursor = 0;
+    word = text->token(&cursor, ',');
+    print("string-split {} {:s} {:s} {:s}\n",
+        (int)parts->size(),
+        joined->c_str(),
+        spaced->c_str(),
+        word);
+    return 0;
+}

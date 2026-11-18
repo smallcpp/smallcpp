@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (expf(0.0f) > 0.85f && expf(0.0f) < 1.15f)
+        ok = 1;
+    print("rt-expf {}\n", ok);
+    return 0;
+}

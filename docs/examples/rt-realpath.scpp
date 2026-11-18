@@ -1,0 +1,15 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    char resolved[4096];
+    char *path;
+
+    path = realpath("/tmp", resolved);
+    ok = 0;
+    if (path != nullptr && path[0] == '/')
+        ok = 1;
+    print("rt-realpath {}\n", ok);
+    return 0;
+}

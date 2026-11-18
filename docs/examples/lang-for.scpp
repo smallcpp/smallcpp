@@ -1,0 +1,11 @@
+int main(void) {
+    int i;
+    int sum;
+
+    sum = 0;
+    for (i = 0; i < 4; i = i + 1) {
+        sum = sum + i;
+    }
+    print("lang-for {}\n", sum);
+    return 0;
+}

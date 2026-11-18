@@ -1,0 +1,15 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    int rc;
+
+    setenv("SMALLCPP_DOC_UNSET", "x", 1);
+    rc = unsetenv("SMALLCPP_DOC_UNSET");
+    ok = 0;
+    if (rc == 0 && getenv("SMALLCPP_DOC_UNSET") == nullptr)
+        ok = 1;
+    print("rt-unsetenv {}\n", ok);
+    return 0;
+}

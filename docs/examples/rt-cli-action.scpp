@@ -1,0 +1,56 @@
+#include <cli>
+
+using namespace Cli;
+
+int starts(const char *text, const char *prefix) {
+    long i;
+
+    i = 0;
+    while (prefix[i] != 0) {
+        if (text == nullptr || text[i] != prefix[i])
+            return 0;
+        i = i + 1;
+    }
+    return 1;
+}
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    CommandLine *command;
+    Option *help;
+    Positional *input;
+    char *args[3];
+    int ok;
+
+    command = new CommandLine("demo", "action", "1");
+    help = new Option();
+    help->long_name = "help";
+    help->name = "help";
+    help->action = CLI_HELP;
+    command->add_option(help);
+    input = new Positional();
+    input->name = "input";
+    input->required = true;
+    command->add_positional(input);
+    args[0] = "demo";
+    args[1] = "--help";
+    command->parse(2, args);
+    ok = 0;
+    if (command->current_action() == CLI_HELP)
+        ok = 1;
+    print("rt-cli-action {}\n", ok);
+    return 0;
+}

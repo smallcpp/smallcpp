@@ -1,0 +1,47 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    HeaderBar *bar;
+    Label *start;
+    Label *end;
+    int ok;
+
+    try {
+        bar = new HeaderBar();
+        bar->set_title("Title");
+        bar->set_show_title_buttons(false);
+        start = new Label("L");
+        end = new Label("R");
+        bar->pack_start((Widget *)start);
+        bar->pack_end((Widget *)end);
+        ok = 0;
+        if (same(bar->title(), "Title")
+                && bar->show_title_buttons() == false)
+            ok = 1;
+        print("gtk-header {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

@@ -1,0 +1,32 @@
+#include <string>
+
+int main(void) {
+    String *text;
+    String *copy;
+    String *piece;
+    int room;
+
+    text = new String();
+    text->add('a');
+    text->add("bc");
+    text->append('d');
+    text->append("e");
+    piece = new String();
+    piece->add("Z");
+    text->append(piece);
+    text->prepend('Q');
+    text->prepend("P");
+    text->prepend(piece);
+    text->insert(1, 'x');
+    copy = new String(text);
+    room = 0;
+    if (text->capacity() >= text->size() + 1)
+        room = 1;
+    print("string-build {:s} {:s} {} {:c} {}\n",
+        text->c_str(),
+        copy->chars(),
+        (int)text->size(),
+        (int)text->at(0),
+        room);
+    return 0;
+}

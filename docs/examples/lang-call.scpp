@@ -1,0 +1,8 @@
+int add(int left, int right) {
+    return left + right;
+}
+
+int main(void) {
+    print("lang-call {}\n", add(2, 3));
+    return 0;
+}

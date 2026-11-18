@@ -1,0 +1,6 @@
+int main(void) {
+    const int n = 3;
+
+    print("lang-const {}\n", n);
+    return 0;
+}

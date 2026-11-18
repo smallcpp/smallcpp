@@ -1,0 +1,33 @@
+class Left {
+public:
+    int left(void);
+};
+
+int Left::left(void) {
+    return 2;
+}
+
+class Right {
+public:
+    int right(void);
+};
+
+int Right::right(void) {
+    return 4;
+}
+
+class Both : public Left, public Right {
+public:
+    Both();
+};
+
+Both::Both() {
+}
+
+int main(void) {
+    Both *both;
+
+    both = new Both();
+    print("lang-bases {}\n", both->left() + both->right());
+    return 0;
+}

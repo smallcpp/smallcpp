@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (pow(2.0, 3.0) == 8.0)
+        ok = 1;
+    print("rt-pow {}\n", ok);
+    return 0;
+}

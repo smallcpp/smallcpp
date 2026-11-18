@@ -1,0 +1,10 @@
+int main(void) {
+    int n;
+
+    n = 1;
+    goto done;
+    n = 0;
+done:
+    print("lang-goto {}\n", n);
+    return 0;
+}

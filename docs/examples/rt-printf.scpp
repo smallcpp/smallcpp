@@ -1,0 +1,11 @@
+
+#include <stdio>
+
+int main(void) {
+    int count;
+
+    count = printf("rt-printf 1\n");
+    if (count < 0)
+        return 1;
+    return 0;
+}

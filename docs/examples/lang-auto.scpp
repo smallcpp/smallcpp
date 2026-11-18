@@ -1,0 +1,7 @@
+int main(void) {
+    auto int n;
+
+    n = 3;
+    print("lang-auto {}\n", n);
+    return 0;
+}

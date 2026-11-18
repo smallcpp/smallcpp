@@ -1,0 +1,31 @@
+#include <string>
+
+int main(void) {
+    String *text;
+    String *other;
+    int ends;
+    int gone;
+    long at;
+    long back;
+    long order;
+
+    text = new String();
+    text->add("  ab-cd\n");
+    ends = text->strip();
+    gone = text->strip('-');
+    other = new String();
+    other->add("abcd");
+    at = text->find("bc");
+    back = text->rfind('d');
+    order = text->cmp(text, other);
+    text->replace('a', 'A');
+    text->truncate(1, 3);
+    print("string-find {} {} {} {} {} {:s}\n",
+        ends,
+        gone,
+        (int)at,
+        (int)back,
+        (int)order,
+        text->c_str());
+    return 0;
+}

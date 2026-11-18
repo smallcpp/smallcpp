@@ -1,0 +1,17 @@
+#include <time>
+
+int main(void) {
+    int ok;
+
+    struct timespec req;
+    int rc;
+
+    req.tv_sec = 0;
+    req.tv_nsec = 1000000;
+    rc = nanosleep(&req, nullptr);
+    ok = 0;
+    if (rc == 0)
+        ok = 1;
+    print("rt-nanosleep {}\n", ok);
+    return 0;
+}

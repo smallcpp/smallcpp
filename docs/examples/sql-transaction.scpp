@@ -1,0 +1,41 @@
+#include <sqlite>
+
+using namespace Sqlite;
+
+
+int main(void) {
+    Database *database;
+    Transaction *tx;
+    Statement *query;
+    int ok;
+
+    database = new Connection(":memory:");
+    ok = 0;
+    if (!database->execute("CREATE TABLE sample (n)"))
+        return 1;
+    tx = database->begin_transaction();
+    if (tx == nullptr || !tx->is_active())
+        return 1;
+    if (!database->execute("INSERT INTO sample VALUES (1)"))
+        return 1;
+    if (!tx->rollback() || tx->is_active())
+        return 1;
+    tx->close();
+    tx = database->begin_transaction();
+    if (tx == nullptr)
+        return 1;
+    if (!database->execute("INSERT INTO sample VALUES (2)"))
+        return 1;
+    if (!tx->commit())
+        return 1;
+    tx->close();
+    query = database->prepare("SELECT n FROM sample");
+    if (query == nullptr || !query->step())
+        return 1;
+    if (query->value(0)->as_integer() == 2)
+        ok = 1;
+    query->close();
+    database->close();
+    print("sql-transaction {}\n", ok);
+    return 0;
+}

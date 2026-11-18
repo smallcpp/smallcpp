@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (cosh(0.0) == 1.0)
+        ok = 1;
+    print("rt-cosh {}\n", ok);
+    return 0;
+}

@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (roundf(3.2f) > 2.85f && roundf(3.2f) < 3.15f)
+        ok = 1;
+    print("rt-roundf {}\n", ok);
+    return 0;
+}

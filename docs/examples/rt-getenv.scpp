@@ -1,0 +1,14 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    char *text;
+
+    text = getenv("PATH");
+    ok = 0;
+    if (text != nullptr && text[0] != 0)
+        ok = 1;
+    print("rt-getenv {}\n", ok);
+    return 0;
+}

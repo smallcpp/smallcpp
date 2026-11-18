@@ -1,0 +1,11 @@
+int add(int left, int right) {
+    return left + right;
+}
+
+int main(void) {
+    int (*fn)(int, int);
+
+    fn = &add;
+    print("lang-fn-ptr {}\n", (*fn)(2, 5));
+    return 0;
+}
