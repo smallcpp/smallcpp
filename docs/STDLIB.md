@@ -137,6 +137,8 @@ fixed parameter. `va_arg` returns the next argument as the type the
 caller names. An `int` and a `const char *` are both read that way.
 `va_copy` copies a list, and the two lists then walk independently.
 `va_end` finishes a list. It is safe on the original and on a copy.
+`format` and `print` take their values at the call and do not accept a
+`va_list`. `va_list` only walks a function's own extra arguments.
 
 ```smallcpp
 #include <stdarg>
