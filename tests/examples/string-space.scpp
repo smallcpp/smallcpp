@@ -1,0 +1,30 @@
+#include <string>
+
+int main(void) {
+    String *text;
+    String *gaps;
+    String *joined;
+    String *kept;
+    StringVec *parts;
+    StringVec *wide;
+    String *mid;
+
+    text = new String();
+    text->append("a b\nc");
+    parts = text->split();
+    joined = text->join(parts);
+    gaps = new String();
+    gaps->append("a  b");
+    wide = gaps->split();
+    mid = wide->at(1);
+    kept = gaps->join(wide, "-");
+    print(
+            "string-space {} {:s} {} {} {:s} {:s}\n",
+            (int)parts->size(),
+            joined->c_str(),
+            (int)wide->size(),
+            (int)mid->size(),
+            kept->c_str(),
+            gaps->c_str());
+    return 0;
+}

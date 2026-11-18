@@ -284,10 +284,10 @@ public:
     void replace(const String *needle, char value);
     void replace(const String *needle, const char *text);
     void replace(const String *needle, const String *text);
-    void split(char separator, StringVec *out);
-    void split(const char *separator, StringVec *out);
-    void join(char separator, StringVec *source);
-    void join(const char *separator, StringVec *source);
+    StringVec *split(const char *separator);
+    StringVec *split(void);
+    String *join(StringVec *source, const char *separator);
+    String *join(StringVec *source);
     const char *token(long *cursor, char separator);
     const char *token(long *cursor, const char *separator);
 };
@@ -315,14 +315,33 @@ the first bound is past the second, nothing is removed. `replace`
 replaces the first match. A missing needle leaves the string unchanged.
 
 `<string>` defines `StringVec` with `VECTOR(StringVec, String *)`.
-The caller allocates that vector. `split` appends `String *` pieces
-and does not clear the vector. A missing separator appends one copy
-of the whole string. Consecutive separators append an empty string.
-An empty separator throws `Exception` with message `string`. A null
-separator or a null vector does too. `join` clears this string and
-fills it from a `StringVec`. An empty separator concatenates the
-pieces. A null separator, a null vector, or a null element throws
-`Exception` with message `string`.
+`split(const char *)` returns a new `StringVec`. The caller
+receives that pointer. Each piece is a new `String *`. A missing
+separator returns one copy of the whole string. Consecutive
+separators yield an empty string. An empty separator throws
+`Exception` with message `string`. A null separator does too.
+`split()` separates on `' '`, `'\n'`, and `'\r'`, the characters
+`strip()` treats as space. Each of those characters is a
+separator, so a run of them yields an empty piece.
+
+`join(StringVec *, const char *)` returns a new `String *`. It
+does not clear this string. The separator is written between
+pieces. An empty separator concatenates them. `join(StringVec *)`
+uses one space. A null source, a null separator, or a null element
+throws `Exception` with message `string`.
+
+```smallcpp
+String *text;
+StringVec *parts;
+String *joined;
+
+text = new String();
+text->append("a,,b");
+parts = text->split(",");
+joined = text->join(parts, "-");
+```
+
+`joined` is `a--b`. `text` is still `a,,b`.
 
 `token` walks the string from a caller-owned `long` cursor. The
 cursor starts at 0. A `char` separator is that character. A

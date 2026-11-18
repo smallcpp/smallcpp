@@ -12,11 +12,19 @@
  * insert appends past the end and prepends before the start.
  * truncate clamps each bound and removes nothing when the
  * first bound is past the second. cmp returns what strcmp
- * would return. split appends String pieces to a StringVec.
- * join clears this string and fills it from one. token
- * walks the characters and does not write them. A null
- * pointer is not a string. An empty string is valid. A
- * program allocates a String with new. */
+ * would return. split returns a new StringVec. Each
+ * piece is a new String. split() separates on space,
+ * newline, and return. A missing separator returns one
+ * copy. Consecutive separators yield an empty string.
+ * An empty separator throws Exception with message
+ * string. join returns a new String and leaves this
+ * string as it was. join with no separator uses one
+ * space. An empty separator concatenates. A null
+ * source, separator, or element throws Exception with
+ * message string. token walks the characters and does
+ * not write them. A null pointer is not a string. An
+ * empty string is valid. A program allocates a String
+ * with new. */
 #include <array>
 #include <exceptions>
 #include <vector>
@@ -72,10 +80,10 @@ public:
     void replace(const String *needle, char value);
     void replace(const String *needle, const char *text);
     void replace(const String *needle, const String *text);
-    void split(char separator, StringVec *out);
-    void split(const char *separator, StringVec *out);
-    void join(char separator, StringVec *source);
-    void join(const char *separator, StringVec *source);
+    StringVec *split(const char *separator);
+    StringVec *split(void);
+    String *join(StringVec *source, const char *separator);
+    String *join(StringVec *source);
     const char *token(long *cursor, char separator);
     const char *token(long *cursor, const char *separator);
 private:
@@ -106,7 +114,7 @@ String::String(const String *other) : Array(1) {
     bytes[0] = 0;
     if (other == nullptr)
         throw *new Exception("string");
-    add(other->chars());
+    append(other->c_str());
 }
 
 void String::add(char value) {
@@ -308,13 +316,13 @@ long String::find(const char *text) {
 long String::find(long index, const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    return find(index, text->chars());
+    return find(index, text->c_str());
 }
 
 long String::find(const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    return find(text->chars());
+    return find(text->c_str());
 }
 
 long String::rfind(long index, char value) {
@@ -388,13 +396,13 @@ long String::rfind(const char *text) {
 long String::rfind(long index, const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    return rfind(index, text->chars());
+    return rfind(index, text->c_str());
 }
 
 long String::rfind(const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    return rfind(text->chars());
+    return rfind(text->c_str());
 }
 
 long String::cmp(const char *left, const char *right) {
@@ -415,19 +423,19 @@ long String::cmp(const char *left, const char *right) {
 long String::cmp(const String *left, const String *right) {
     if (left == nullptr || right == nullptr)
         throw *new Exception("string");
-    return cmp(left->chars(), right->chars());
+    return cmp(left->c_str(), right->c_str());
 }
 
 long String::cmp(const char *left, const String *right) {
     if (left == nullptr || right == nullptr)
         throw *new Exception("string");
-    return cmp(left, right->chars());
+    return cmp(left, right->c_str());
 }
 
 long String::cmp(const String *left, const char *right) {
     if (left == nullptr || right == nullptr)
         throw *new Exception("string");
-    return cmp(left->chars(), right);
+    return cmp(left->c_str(), right);
 }
 
 void String::append(char value) {
@@ -443,7 +451,7 @@ void String::append(const char *text) {
 void String::append(const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    append(text->chars());
+    append(text->c_str());
 }
 
 void String::prepend(char value) {
@@ -459,7 +467,7 @@ void String::prepend(const char *text) {
 void String::prepend(const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    prepend(text->chars());
+    prepend(text->c_str());
 }
 
 void String::insert(long index, const char *text) {
@@ -485,7 +493,7 @@ void String::insert(long index, char value) {
 void String::insert(long index, const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    insert(index, text->chars());
+    insert(index, text->c_str());
 }
 
 void String::truncate(long from, long to) {
@@ -541,7 +549,7 @@ void String::replace(char needle, const char *text) {
 void String::replace(char needle, const String *text) {
     if (text == nullptr)
         throw *new Exception("string");
-    replace(needle, text->chars());
+    replace(needle, text->c_str());
 }
 
 void String::replace(const char *needle, char value) {
@@ -576,25 +584,25 @@ void String::replace(const char *needle, const char *text) {
 void String::replace(const char *needle, const String *text) {
     if (needle == nullptr || text == nullptr)
         throw *new Exception("string");
-    replace(needle, text->chars());
+    replace(needle, text->c_str());
 }
 
 void String::replace(const String *needle, char value) {
     if (needle == nullptr)
         throw *new Exception("string");
-    replace(needle->chars(), value);
+    replace(needle->c_str(), value);
 }
 
 void String::replace(const String *needle, const char *text) {
     if (needle == nullptr || text == nullptr)
         throw *new Exception("string");
-    replace(needle->chars(), text);
+    replace(needle->c_str(), text);
 }
 
 void String::replace(const String *needle, const String *text) {
     if (needle == nullptr || text == nullptr)
         throw *new Exception("string");
-    replace(needle->chars(), text->chars());
+    replace(needle->c_str(), text->c_str());
 }
 
 void String::drop_saved(void) {
@@ -682,24 +690,18 @@ const char *String::keep_span(long from, long to) {
     return buf;
 }
 
-void String::split(char separator, StringVec *out) {
-    char text[2];
-
-    text[0] = separator;
-    text[1] = 0;
-    split(text, out);
-}
-
-void String::split(const char *separator, StringVec *out) {
+StringVec *String::split(const char *separator) {
+    StringVec *out;
     long n;
     long i;
     long start;
 
-    if (separator == nullptr || out == nullptr)
+    if (separator == nullptr)
         throw *new Exception("string");
     n = text_length(separator);
     if (n == 0)
         throw *new Exception("string");
+    out = new StringVec();
     start = 0;
     i = 0;
     while (i + n <= count) {
@@ -712,71 +714,55 @@ void String::split(const char *separator, StringVec *out) {
         }
     }
     out->add(copy_span(start, count));
+    return out;
 }
 
-void String::join(char separator, StringVec *source) {
-    char text[2];
+StringVec *String::split(void) {
+    StringVec *out;
+    long i;
+    long start;
 
-    text[0] = separator;
-    text[1] = 0;
-    join(text, source);
+    out = new StringVec();
+    start = 0;
+    i = 0;
+    while (i < count) {
+        if (blank(bytes[i]) == 1) {
+            out->add(copy_span(start, i));
+            i = i + 1;
+            start = i;
+        } else {
+            i = i + 1;
+        }
+    }
+    out->add(copy_span(start, count));
+    return out;
 }
 
-void String::join(const char *separator, StringVec *source) {
+String *String::join(StringVec *source, const char *separator) {
+    String *result;
+    String *part;
     long n;
     long i;
-    long sep;
-    long total;
-    long at;
-    long next;
-    long part_n;
-    char *fresh;
-    String *part;
 
-    if (separator == nullptr || source == nullptr)
+    if (source == nullptr || separator == nullptr)
         throw *new Exception("string");
-    sep = text_length(separator);
+    result = new String();
     n = source->size();
-    total = 0;
     i = 0;
     while (i < n) {
         part = source->at(i);
         if (part == nullptr)
             throw *new Exception("string");
         if (i > 0)
-            total = total + sep;
-        total = total + part->count;
+            result->append(separator);
+        result->append(part);
         i = i + 1;
     }
-    next = room;
-    while (next < total + 1)
-        next = next * 2;
-    fresh = new char[next];
-    at = 0;
-    i = 0;
-    while (i < n) {
-        part = source->at(i);
-        if (i > 0) {
-            part_n = 0;
-            while (part_n < sep) {
-                fresh[at] = separator[part_n];
-                at = at + 1;
-                part_n = part_n + 1;
-            }
-        }
-        part_n = 0;
-        while (part_n < part->count) {
-            fresh[at] = part->bytes[part_n];
-            at = at + 1;
-            part_n = part_n + 1;
-        }
-        i = i + 1;
-    }
-    fresh[at] = 0;
-    drop_saved();
-    bytes = fresh;
-    count = at;
-    room = next;
+    return result;
+}
+
+String *String::join(StringVec *source) {
+    return join(source, " ");
 }
 
 const char *String::token(long *cursor, char separator) {

@@ -21,13 +21,10 @@ int main(void) {
     int end;
 
     text = new String();
-    text->add("a,,b");
-    parts = new StringVec();
-    text->split(',', parts);
-    joined = new String();
-    joined->join('-', parts);
-    flat = new String();
-    flat->join("", parts);
+    text->append("a,,b");
+    parts = text->split(",");
+    joined = text->join(parts, "-");
+    flat = text->join(parts, "");
     cursor = 0;
     comma = text->token(&cursor, ',');
     done = text->token(&cursor, ',');
@@ -36,38 +33,35 @@ int main(void) {
     if (done == nullptr)
         end = 1;
     bits = new String();
-    bits->add("a::b::");
-    cuts = new StringVec();
-    bits->split("::", cuts);
-    wide = new String();
-    wide->join(",", cuts);
+    bits->append("a::b::");
+    cuts = bits->split("::");
+    wide = bits->join(cuts, ",");
     cursor = 0;
     second = bits->token(&cursor, ':');
     second = bits->token(&cursor, ':');
     marks = new String();
-    marks->add("a:b,c");
+    marks->append("a:b,c");
     cursor = 0;
     colon = marks->token(&cursor, ":,");
     next = marks->token(&cursor, ":,");
     whole = new String();
-    whole->add("hi");
-    one = new StringVec();
-    whole->split('z', one);
+    whole->append("hi");
+    one = whole->split("z");
     piece = one->at(0);
     print(
             "parts {} {:s} {:s} {:s} {:s} {} {:s} {:s} {:s} {:s} {} {:s} {}\n",
             (int)parts->size(),
-            joined->chars(),
-            flat->chars(),
+            joined->c_str(),
+            flat->c_str(),
             comma,
-            text->chars(),
+            text->c_str(),
             (int)cuts->size(),
-            wide->chars(),
+            wide->c_str(),
             second,
             colon,
             next,
             (int)one->size(),
-            piece->chars(),
+            piece->c_str(),
             end);
     return 0;
 }
