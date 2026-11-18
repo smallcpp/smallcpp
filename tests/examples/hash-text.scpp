@@ -1,0 +1,21 @@
+#include <hash>
+
+HASH(TextMap, const char *, int)
+
+int main(void) {
+    TextMap *map;
+    char key[3];
+    int value;
+    int ok;
+
+    map = new TextMap();
+    map->put("hi", 4);
+    map->put("yo", 9);
+    key[0] = 'h';
+    key[1] = 'i';
+    key[2] = 0;
+    value = 0;
+    ok = map->find(key, &value);
+    print("hash-text {} {} {}\n", ok, value, (int)map->size());
+    return 0;
+}
