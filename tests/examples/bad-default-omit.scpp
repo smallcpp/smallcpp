@@ -1,0 +1,7 @@
+int f(int a, int b = 2) {
+    return a + b;
+}
+
+int main(void) {
+    return f();
+}

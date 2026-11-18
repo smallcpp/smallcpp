@@ -141,6 +141,7 @@ void Codegen::install_method(const std::string &key, MethodDecl decl, Ty ret, st
     for (const Param &param : params) {
         incoming.params.push_back(param.ty);
         incoming.defaults.push_back(param.fallback);
+        incoming.default_exprs.push_back(param.expr);
         incoming.names.push_back(param.name);
     }
     install(std::move(incoming));
@@ -1515,6 +1516,9 @@ RValue Codegen::emit_method_call(const AstNode *node, const MethodCall &call)
     Func *target = pick_method(call, types, object_const, label);
     if (target == NULL || failed)
         return fallback();
+    llvm::Function *callee_fn = target->fn;
+    int vindex = target->vindex;
+    Ty ret = drop(target->ret);
     std::vector<llvm::Value *> values;
     values.push_back(self);
     unsigned user = static_cast<unsigned>(target->params.size() - 1);
@@ -1522,22 +1526,22 @@ RValue Codegen::emit_method_call(const AstNode *node, const MethodCall &call)
     unsigned limit = provided < user ? provided : user;
     for (unsigned i = 0; i < limit; i++)
         values.push_back(convert(args[i].v, args[i].ty, target->params[i + 1]));
-    for (unsigned i = limit; i < user; i++)
-        values.push_back(target->defaults[i + 1]);
-    llvm::Value *callee = target->fn;
-    if (!call.qualified && target->vindex >= 0 && records.count(call.owner) != 0) {
+    append_omitted(values, *target, limit + 1,
+                   static_cast<unsigned>(target->params.size()), -1);
+    llvm::Value *callee = callee_fn;
+    if (!call.qualified && vindex >= 0 && records.count(call.owner) != 0) {
         auto *ptr_ty = llvm::PointerType::get(context, 0);
         llvm::Value *table = builder.CreateLoad(ptr_ty, vptr_addr(self, call.owner));
         llvm::Value *index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),
-                                                    static_cast<uint64_t>(target->vindex));
+                                                    static_cast<uint64_t>(vindex));
         llvm::Value *slot = builder.CreateInBoundsGEP(ptr_ty, table, {index});
         callee = builder.CreateLoad(ptr_ty, slot);
     }
     if (failed)
         return fallback();
-    llvm::Value *result = builder.CreateCall(target->fn->getFunctionType(), callee, values);
+    llvm::Value *result = builder.CreateCall(callee_fn->getFunctionType(), callee, values);
     RValue out;
-    out.ty = drop(target->ret);
+    out.ty = ret;
     out.v = out.ty.is_void ? nullptr : result;
     return out;
 }
@@ -1638,20 +1642,19 @@ void Codegen::emit_ctor_call(llvm::Value *self, const std::string &owner, const 
     Func *target = resolve_keys({ir_name}, types, last.c_str());
     if (target == NULL || failed)
         return;
+    llvm::Function *callee = target->fn;
     std::vector<llvm::Value *> operands;
     operands.push_back(self);
-    unsigned user = static_cast<unsigned>(target->params.size() - 1);
+    unsigned count = static_cast<unsigned>(target->params.size());
+    unsigned user = count - 1;
     unsigned provided = static_cast<unsigned>(values.size());
     unsigned limit = provided < user ? provided : user;
     for (unsigned i = 0; i < limit; i++)
         operands.push_back(convert(values[i].v, values[i].ty, target->params[i + 1]));
-    for (unsigned i = limit; i < user; i++) {
-        if (i + 1 < target->names.size() && target->names[i + 1] == ".most")
-            operands.push_back(ctor_flag(most_derived));
-        else
-            operands.push_back(target->defaults[i + 1]);
-    }
-    builder.CreateCall(target->fn->getFunctionType(), target->fn, operands);
+    append_omitted(operands, *target, limit + 1, count, most_derived ? 1 : 0);
+    if (failed)
+        return;
+    builder.CreateCall(callee->getFunctionType(), callee, operands);
 }
 
 void Codegen::emit_inits(Func &fn)

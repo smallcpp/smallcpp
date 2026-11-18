@@ -1,0 +1,12 @@
+class Box {
+public:
+    int take(int n = 4);
+};
+
+int Box::take(int n = 5) {
+    return n;
+}
+
+int main(void) {
+    return 0;
+}

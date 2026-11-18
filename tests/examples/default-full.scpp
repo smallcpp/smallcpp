@@ -1,0 +1,19 @@
+int hits;
+
+int extra(void) {
+    hits = hits + 1;
+    return 5;
+}
+
+int add(int n, int k = extra()) {
+    return n + k;
+}
+
+int main(void) {
+    int shown;
+
+    hits = 0;
+    shown = add(2, 9);
+    print("default-full {} {}\n", shown, hits);
+    return 0;
+}
