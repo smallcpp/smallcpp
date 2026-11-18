@@ -230,27 +230,109 @@ stride of 1.
 
 ### `<string>`
 
-`String` is a growable array of `char` with a trailing null. `add`
-copies characters. It does not keep the caller's pointer. An empty
-string is valid. `add(const char *)` throws `Exception` when the pointer
-is null.
+`String` is a growable array of `char` with a trailing null. `add`,
+`append`, `prepend`, `insert`, and `replace` copy characters into the
+string's own buffer. They do not keep the caller's pointer. An empty
+string is valid. A null `const char *` or `String *` throws `Exception`
+with message `string`.
 
 ```text
 class String : public Array {
 public:
     String();
+    String(const String *other);
     void add(char value);
     void add(const char *text);
     long capacity(void);
     char at(long index);
-    const char *chars(void);
+    const char *chars(void) const;
+    const char *c_str(void) const;
+    int strip(void);
+    int strip(char value);
+    long find(char value);
+    long find(const char *text);
+    long find(const String *text);
+    long find(long index, char value);
+    long find(long index, const char *text);
+    long find(long index, const String *text);
+    long rfind(char value);
+    long rfind(const char *text);
+    long rfind(const String *text);
+    long rfind(long index, char value);
+    long rfind(long index, const char *text);
+    long rfind(long index, const String *text);
+    long cmp(const String *left, const String *right);
+    long cmp(const char *left, const char *right);
+    long cmp(const char *left, const String *right);
+    long cmp(const String *left, const char *right);
+    void append(char value);
+    void append(const char *text);
+    void append(const String *text);
+    void prepend(char value);
+    void prepend(const char *text);
+    void prepend(const String *text);
+    void insert(long index, char value);
+    void insert(long index, const char *text);
+    void insert(long index, const String *text);
+    void truncate(long from, long to);
+    void replace(char needle, char value);
+    void replace(char needle, const char *text);
+    void replace(char needle, const String *text);
+    void replace(const char *needle, char value);
+    void replace(const char *needle, const char *text);
+    void replace(const char *needle, const String *text);
+    void replace(const String *needle, char value);
+    void replace(const String *needle, const char *text);
+    void replace(const String *needle, const String *text);
+    void split(char separator, StringVec *out);
+    void split(const char *separator, StringVec *out);
+    void join(char separator, StringVec *source);
+    void join(const char *separator, StringVec *source);
+    const char *token(long *cursor, char separator);
+    const char *token(long *cursor, const char *separator);
 };
 ```
 
+`String(const String *)` copies the characters into a new buffer.
 `size`, inherited from `Array`, is the character count. `capacity` is
 the allocated byte count, including the null. `at` returns the character
-at `index`. A negative index counts from the end. `chars` returns the
-buffer. It stays valid until the next `add` that grows the string.
+at `index`. A negative index counts from the end. `chars` and `c_str`
+return the buffer. It stays valid until the next operation that
+replaces it.
+
+`strip()` removes `' '`, `'\n'`, and `'\r'` from both ends.
+`strip(char)` removes every instance of that character. Both return
+how many characters were removed. `find` returns the index where the
+match begins, or `-1`. `rfind` searches toward the front. A negative
+start counts from the end. A `find` start past the end returns `-1`.
+An `rfind` index is the last place a match may begin. An index past
+the end searches the whole string. `cmp` returns what `strcmp` would
+return. `append` adds at the end and `prepend` inserts at the front.
+`insert` appends when the index is past the end and prepends when it
+is before the start. `truncate` removes characters from the first
+index up to but not including the second, and clamps each bound. When
+the first bound is past the second, nothing is removed. `replace`
+replaces the first match. A missing needle leaves the string unchanged.
+
+`<string>` defines `StringVec` with `VECTOR(StringVec, String *)`.
+The caller allocates that vector. `split` appends `String *` pieces
+and does not clear the vector. A missing separator appends one copy
+of the whole string. Consecutive separators append an empty string.
+An empty separator throws `Exception` with message `string`. A null
+separator or a null vector does too. `join` clears this string and
+fills it from a `StringVec`. An empty separator concatenates the
+pieces. A null separator, a null vector, or a null element throws
+`Exception` with message `string`.
+
+`token` walks the string from a caller-owned `long` cursor. The
+cursor starts at 0. A `char` separator is that character. A
+`const char *` separator is the set of separator characters. `token`
+skips those characters and does not return an empty token. It
+returns null when no token remains. An empty separator or a null
+cursor throws `Exception` with message `string`. The pointer is a
+null-terminated copy in storage the string owns. It stays valid
+until the next call that changes the string. `token` does not write
+the character buffer.
 
 ```smallcpp
 #include <string>

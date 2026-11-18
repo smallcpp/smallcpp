@@ -4,27 +4,113 @@
 /* Growable array of char. Include this header as <string>.
  * size() is the character count. capacity() is the allocated
  * bytes, including the trailing null. add copies characters.
- * at counts a negative index from the end. A null pointer
- * is not a string. An empty string is valid.
- * A program allocates a String with new. */
+ * at, find, rfind, insert, and truncate count a negative
+ * index from the end. find returns -1 when the text is
+ * missing or the start is past the end. rfind walks toward
+ * the front. Its index is the last place a match may begin.
+ * An rfind index past the end searches the whole string.
+ * insert appends past the end and prepends before the start.
+ * truncate clamps each bound and removes nothing when the
+ * first bound is past the second. cmp returns what strcmp
+ * would return. split appends String pieces to a StringVec.
+ * join clears this string and fills it from one. token
+ * walks the characters and does not write them. A null
+ * pointer is not a string. An empty string is valid. A
+ * program allocates a String with new. */
 #include <array>
 #include <exceptions>
+#include <vector>
+
+class String;
+
+VECTOR(StringVec, String *)
 
 class String : public Array {
 public:
     String();
+    String(const String *other);
     void add(char value);
     void add(const char *text);
     long capacity(void);
     char at(long index);
-    const char *chars(void);
+    const char *chars(void) const;
+    const char *c_str(void) const;
+    int strip(void);
+    int strip(char value);
+    long find(char value);
+    long find(const char *text);
+    long find(const String *text);
+    long find(long index, char value);
+    long find(long index, const char *text);
+    long find(long index, const String *text);
+    long rfind(char value);
+    long rfind(const char *text);
+    long rfind(const String *text);
+    long rfind(long index, char value);
+    long rfind(long index, const char *text);
+    long rfind(long index, const String *text);
+    long cmp(const String *left, const String *right);
+    long cmp(const char *left, const char *right);
+    long cmp(const char *left, const String *right);
+    long cmp(const String *left, const char *right);
+    void append(char value);
+    void append(const char *text);
+    void append(const String *text);
+    void prepend(char value);
+    void prepend(const char *text);
+    void prepend(const String *text);
+    void insert(long index, char value);
+    void insert(long index, const char *text);
+    void insert(long index, const String *text);
+    void truncate(long from, long to);
+    void replace(char needle, char value);
+    void replace(char needle, const char *text);
+    void replace(char needle, const String *text);
+    void replace(const char *needle, char value);
+    void replace(const char *needle, const char *text);
+    void replace(const char *needle, const String *text);
+    void replace(const String *needle, char value);
+    void replace(const String *needle, const char *text);
+    void replace(const String *needle, const String *text);
+    void split(char separator, StringVec *out);
+    void split(const char *separator, StringVec *out);
+    void join(char separator, StringVec *source);
+    void join(const char *separator, StringVec *source);
+    const char *token(long *cursor, char separator);
+    const char *token(long *cursor, const char *separator);
+private:
+    char **saved;
+    long saved_count;
+    long saved_room;
+    int blank(char value);
+    long text_length(const char *text);
+    void splice(long at, long n, const char *text);
+    void drop_saved(void);
+    int same_at(long index, const char *text, long n);
+    int is_break(char value, const char *separator);
+    String *copy_span(long from, long to);
+    const char *keep_span(long from, long to);
 };
 
 String::String() : Array(1) {
+    saved = nullptr;
+    saved_count = 0;
+    saved_room = 0;
     bytes[0] = 0;
 }
 
+String::String(const String *other) : Array(1) {
+    saved = nullptr;
+    saved_count = 0;
+    saved_room = 0;
+    bytes[0] = 0;
+    if (other == nullptr)
+        throw *new Exception("string");
+    add(other->chars());
+}
+
 void String::add(char value) {
+    drop_saved();
     reserve(count + 2);
     bytes[count] = value;
     count = count + 1;
@@ -55,8 +141,674 @@ char String::at(long index) {
     return bytes[index];
 }
 
-const char *String::chars(void) {
+const char *String::chars(void) const {
     return bytes;
+}
+
+const char *String::c_str(void) const {
+    return bytes;
+}
+
+int String::blank(char value) {
+    if (value == ' ' || value == '\n' || value == '\r')
+        return 1;
+    return 0;
+}
+
+int String::strip(void) {
+    long begin;
+    long end;
+    long kept;
+    long i;
+    int removed;
+
+    begin = 0;
+    while (begin < count && blank(bytes[begin]) == 1)
+        begin = begin + 1;
+    end = count;
+    while (end > begin && blank(bytes[end - 1]) == 1)
+        end = end - 1;
+    removed = (int)(begin + count - end);
+    if (removed == 0)
+        return 0;
+    drop_saved();
+    kept = end - begin;
+    i = 0;
+    while (i < kept) {
+        bytes[i] = bytes[begin + i];
+        i = i + 1;
+    }
+    count = kept;
+    bytes[count] = 0;
+    return removed;
+}
+
+int String::strip(char value) {
+    long read;
+    long write;
+    int removed;
+
+    drop_saved();
+    read = 0;
+    write = 0;
+    removed = 0;
+    while (read < count) {
+        if (bytes[read] == value)
+            removed = removed + 1;
+        else {
+            bytes[write] = bytes[read];
+            write = write + 1;
+        }
+        read = read + 1;
+    }
+    count = write;
+    bytes[count] = 0;
+    return removed;
+}
+
+long String::text_length(const char *text) {
+    long n;
+
+    n = 0;
+    while (text[n] != 0)
+        n = n + 1;
+    return n;
+}
+
+void String::splice(long at, long n, const char *text) {
+    long m;
+    long i;
+    long tail;
+    long next;
+    long after;
+    char *fresh;
+
+    m = text_length(text);
+    if (n == 0 && m == 0)
+        return;
+    drop_saved();
+    next = room;
+    while (next < count - n + m + 1)
+        next = next * 2;
+    fresh = new char[next];
+    after = at + n;
+    tail = count - after;
+    i = 0;
+    while (i < at) {
+        fresh[i] = bytes[i];
+        i = i + 1;
+    }
+    i = 0;
+    while (i < m) {
+        fresh[at + i] = text[i];
+        i = i + 1;
+    }
+    i = 0;
+    while (i < tail) {
+        fresh[at + m + i] = bytes[after + i];
+        i = i + 1;
+    }
+    count = at + m + tail;
+    fresh[count] = 0;
+    bytes = fresh;
+    room = next;
+}
+
+long String::find(long index, char value) {
+    if (index < 0)
+        index = count + index;
+    if (index < 0 || index >= count)
+        return -1;
+    while (index < count) {
+        if (bytes[index] == value)
+            return index;
+        index = index + 1;
+    }
+    return -1;
+}
+
+long String::find(char value) {
+    return find((long)0, value);
+}
+
+long String::find(long index, const char *text) {
+    long n;
+    long i;
+    long j;
+
+    if (text == nullptr)
+        throw *new Exception("string");
+    if (index < 0)
+        index = count + index;
+    if (index < 0 || index > count)
+        return -1;
+    n = text_length(text);
+    if (n == 0)
+        return index;
+    if (index >= count)
+        return -1;
+    i = index;
+    while (i + n <= count) {
+        j = 0;
+        while (j < n && bytes[i + j] == text[j])
+            j = j + 1;
+        if (j == n)
+            return i;
+        i = i + 1;
+    }
+    return -1;
+}
+
+long String::find(const char *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    return find((long)0, text);
+}
+
+long String::find(long index, const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    return find(index, text->chars());
+}
+
+long String::find(const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    return find(text->chars());
+}
+
+long String::rfind(long index, char value) {
+    if (index < 0)
+        index = count + index;
+    if (index < 0 || count == 0)
+        return -1;
+    if (index >= count)
+        index = count - 1;
+    while (index >= 0) {
+        if (bytes[index] == value)
+            return index;
+        index = index - 1;
+    }
+    return -1;
+}
+
+long String::rfind(char value) {
+    if (count == 0)
+        return -1;
+    return rfind(count - 1, value);
+}
+
+long String::rfind(long index, const char *text) {
+    long n;
+    long i;
+    long j;
+    long last;
+
+    if (text == nullptr)
+        throw *new Exception("string");
+    if (index < 0)
+        index = count + index;
+    n = text_length(text);
+    if (n == 0) {
+        if (index < 0)
+            return -1;
+        if (index > count)
+            return count;
+        return index;
+    }
+    if (index < 0 || count < n)
+        return -1;
+    last = count - n;
+    if (index < last)
+        last = index;
+    i = last;
+    while (i >= 0) {
+        j = 0;
+        while (j < n && bytes[i + j] == text[j])
+            j = j + 1;
+        if (j == n)
+            return i;
+        if (i == 0)
+            break;
+        i = i - 1;
+    }
+    return -1;
+}
+
+long String::rfind(const char *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    if (text[0] == 0)
+        return count;
+    if (count == 0)
+        return -1;
+    return rfind(count - 1, text);
+}
+
+long String::rfind(long index, const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    return rfind(index, text->chars());
+}
+
+long String::rfind(const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    return rfind(text->chars());
+}
+
+long String::cmp(const char *left, const char *right) {
+    long i;
+    unsigned char a;
+    unsigned char b;
+
+    if (left == nullptr || right == nullptr)
+        throw *new Exception("string");
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    a = (unsigned char)left[i];
+    b = (unsigned char)right[i];
+    return (long)a - (long)b;
+}
+
+long String::cmp(const String *left, const String *right) {
+    if (left == nullptr || right == nullptr)
+        throw *new Exception("string");
+    return cmp(left->chars(), right->chars());
+}
+
+long String::cmp(const char *left, const String *right) {
+    if (left == nullptr || right == nullptr)
+        throw *new Exception("string");
+    return cmp(left, right->chars());
+}
+
+long String::cmp(const String *left, const char *right) {
+    if (left == nullptr || right == nullptr)
+        throw *new Exception("string");
+    return cmp(left->chars(), right);
+}
+
+void String::append(char value) {
+    add(value);
+}
+
+void String::append(const char *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    insert(count, text);
+}
+
+void String::append(const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    append(text->chars());
+}
+
+void String::prepend(char value) {
+    insert((long)0, value);
+}
+
+void String::prepend(const char *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    insert((long)0, text);
+}
+
+void String::prepend(const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    prepend(text->chars());
+}
+
+void String::insert(long index, const char *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    if (index < 0)
+        index = count + index;
+    if (index < 0)
+        index = 0;
+    if (index > count)
+        index = count;
+    splice(index, (long)0, text);
+}
+
+void String::insert(long index, char value) {
+    char text[2];
+
+    text[0] = value;
+    text[1] = 0;
+    insert(index, text);
+}
+
+void String::insert(long index, const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    insert(index, text->chars());
+}
+
+void String::truncate(long from, long to) {
+    long i;
+    long tail;
+
+    if (from < 0)
+        from = count + from;
+    if (to < 0)
+        to = count + to;
+    if (from < 0)
+        from = 0;
+    if (to < 0)
+        to = 0;
+    if (from > count)
+        from = count;
+    if (to > count)
+        to = count;
+    if (from >= to)
+        return;
+    drop_saved();
+    tail = count - to;
+    i = 0;
+    while (i < tail) {
+        bytes[from + i] = bytes[to + i];
+        i = i + 1;
+    }
+    count = from + tail;
+    bytes[count] = 0;
+}
+
+void String::replace(char needle, char value) {
+    long at;
+
+    at = find(needle);
+    if (at < 0)
+        return;
+    drop_saved();
+    bytes[at] = value;
+}
+
+void String::replace(char needle, const char *text) {
+    long at;
+
+    if (text == nullptr)
+        throw *new Exception("string");
+    at = find(needle);
+    if (at < 0)
+        return;
+    splice(at, (long)1, text);
+}
+
+void String::replace(char needle, const String *text) {
+    if (text == nullptr)
+        throw *new Exception("string");
+    replace(needle, text->chars());
+}
+
+void String::replace(const char *needle, char value) {
+    char text[2];
+    long at;
+    long n;
+
+    if (needle == nullptr)
+        throw *new Exception("string");
+    at = find(needle);
+    if (at < 0)
+        return;
+    n = text_length(needle);
+    text[0] = value;
+    text[1] = 0;
+    splice(at, n, text);
+}
+
+void String::replace(const char *needle, const char *text) {
+    long at;
+    long n;
+
+    if (needle == nullptr || text == nullptr)
+        throw *new Exception("string");
+    at = find(needle);
+    if (at < 0)
+        return;
+    n = text_length(needle);
+    splice(at, n, text);
+}
+
+void String::replace(const char *needle, const String *text) {
+    if (needle == nullptr || text == nullptr)
+        throw *new Exception("string");
+    replace(needle, text->chars());
+}
+
+void String::replace(const String *needle, char value) {
+    if (needle == nullptr)
+        throw *new Exception("string");
+    replace(needle->chars(), value);
+}
+
+void String::replace(const String *needle, const char *text) {
+    if (needle == nullptr || text == nullptr)
+        throw *new Exception("string");
+    replace(needle->chars(), text);
+}
+
+void String::replace(const String *needle, const String *text) {
+    if (needle == nullptr || text == nullptr)
+        throw *new Exception("string");
+    replace(needle->chars(), text->chars());
+}
+
+void String::drop_saved(void) {
+    saved = nullptr;
+    saved_count = 0;
+    saved_room = 0;
+}
+
+int String::same_at(long index, const char *text, long n) {
+    long j;
+
+    j = 0;
+    while (j < n) {
+        if (bytes[index + j] != text[j])
+            return 0;
+        j = j + 1;
+    }
+    return 1;
+}
+
+int String::is_break(char value, const char *separator) {
+    long i;
+
+    i = 0;
+    while (separator[i] != 0) {
+        if (separator[i] == value)
+            return 1;
+        i = i + 1;
+    }
+    return 0;
+}
+
+String *String::copy_span(long from, long to) {
+    String *part;
+    long n;
+    long i;
+
+    part = new String();
+    n = to - from;
+    if (n < 1)
+        return part;
+    part->reserve(n + 1);
+    i = 0;
+    while (i < n) {
+        part->bytes[i] = bytes[from + i];
+        i = i + 1;
+    }
+    part->count = n;
+    part->bytes[n] = 0;
+    return part;
+}
+
+const char *String::keep_span(long from, long to) {
+    char *buf;
+    char *raw;
+    char **fresh;
+    long n;
+    long next;
+    long i;
+
+    n = to - from;
+    buf = new char[n + 1];
+    i = 0;
+    while (i < n) {
+        buf[i] = bytes[from + i];
+        i = i + 1;
+    }
+    buf[n] = 0;
+    if (saved_count == saved_room) {
+        next = saved_room * 2;
+        if (next < 4)
+            next = 4;
+        raw = new char[next * (long)sizeof(char *)];
+        fresh = (char **)raw;
+        i = 0;
+        while (i < saved_count) {
+            fresh[i] = saved[i];
+            i = i + 1;
+        }
+        saved = fresh;
+        saved_room = next;
+    }
+    saved[saved_count] = buf;
+    saved_count = saved_count + 1;
+    return buf;
+}
+
+void String::split(char separator, StringVec *out) {
+    char text[2];
+
+    text[0] = separator;
+    text[1] = 0;
+    split(text, out);
+}
+
+void String::split(const char *separator, StringVec *out) {
+    long n;
+    long i;
+    long start;
+
+    if (separator == nullptr || out == nullptr)
+        throw *new Exception("string");
+    n = text_length(separator);
+    if (n == 0)
+        throw *new Exception("string");
+    start = 0;
+    i = 0;
+    while (i + n <= count) {
+        if (same_at(i, separator, n) == 1) {
+            out->add(copy_span(start, i));
+            i = i + n;
+            start = i;
+        } else {
+            i = i + 1;
+        }
+    }
+    out->add(copy_span(start, count));
+}
+
+void String::join(char separator, StringVec *source) {
+    char text[2];
+
+    text[0] = separator;
+    text[1] = 0;
+    join(text, source);
+}
+
+void String::join(const char *separator, StringVec *source) {
+    long n;
+    long i;
+    long sep;
+    long total;
+    long at;
+    long next;
+    long part_n;
+    char *fresh;
+    String *part;
+
+    if (separator == nullptr || source == nullptr)
+        throw *new Exception("string");
+    sep = text_length(separator);
+    n = source->size();
+    total = 0;
+    i = 0;
+    while (i < n) {
+        part = source->at(i);
+        if (part == nullptr)
+            throw *new Exception("string");
+        if (i > 0)
+            total = total + sep;
+        total = total + part->count;
+        i = i + 1;
+    }
+    next = room;
+    while (next < total + 1)
+        next = next * 2;
+    fresh = new char[next];
+    at = 0;
+    i = 0;
+    while (i < n) {
+        part = source->at(i);
+        if (i > 0) {
+            part_n = 0;
+            while (part_n < sep) {
+                fresh[at] = separator[part_n];
+                at = at + 1;
+                part_n = part_n + 1;
+            }
+        }
+        part_n = 0;
+        while (part_n < part->count) {
+            fresh[at] = part->bytes[part_n];
+            at = at + 1;
+            part_n = part_n + 1;
+        }
+        i = i + 1;
+    }
+    fresh[at] = 0;
+    drop_saved();
+    bytes = fresh;
+    count = at;
+    room = next;
+}
+
+const char *String::token(long *cursor, char separator) {
+    char text[2];
+
+    text[0] = separator;
+    text[1] = 0;
+    return token(cursor, text);
+}
+
+const char *String::token(long *cursor, const char *separator) {
+    long i;
+    long start;
+
+    if (cursor == nullptr || separator == nullptr)
+        throw *new Exception("string");
+    if (separator[0] == 0)
+        throw *new Exception("string");
+    i = *cursor;
+    if (i < 0 || i >= count)
+        return nullptr;
+    while (i < count && is_break(bytes[i], separator) == 1)
+        i = i + 1;
+    if (i >= count) {
+        *cursor = count;
+        return nullptr;
+    }
+    start = i;
+    while (i < count && is_break(bytes[i], separator) == 0)
+        i = i + 1;
+    *cursor = i;
+    return keep_span(start, i);
 }
 
 #endif
