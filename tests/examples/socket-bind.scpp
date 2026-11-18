@@ -1,0 +1,40 @@
+#include <socket>
+#include <unistd>
+
+void zero(void *ptr, long n) {
+    char *bytes;
+    long i;
+
+    bytes = (char *)ptr;
+    i = 0;
+    while (i < n) {
+        bytes[i] = 0;
+        i = i + 1;
+    }
+}
+
+int main(void) {
+    int fd;
+    int rc;
+    struct sockaddr_in addr;
+    socklen_t len;
+
+    if ((long)sizeof(struct sockaddr_in) != 16)
+        return 1;
+    fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0)
+        return 1;
+    zero((void *)&addr, (long)sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(0);
+    if (inet_pton(AF_INET, "127.0.0.1", (void *)&addr.sin_addr) != 1)
+        return 1;
+    len = (socklen_t)sizeof(addr);
+    rc = bind(fd, (struct sockaddr *)&addr, len);
+    if (rc != 0)
+        return 1;
+    if (listen(fd, 1) != 0 || close(fd) != 0)
+        return 1;
+    print("socket-bind {}\n", rc);
+    return 0;
+}

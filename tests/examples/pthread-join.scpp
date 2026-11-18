@@ -1,0 +1,50 @@
+#include <pthread>
+
+int box;
+
+void *work(void *arg) {
+    int *slot;
+
+    slot = (int *)arg;
+    *slot = 7;
+    return nullptr;
+}
+
+int main(void) {
+    pthread_t thread;
+    pthread_mutex_t mutex;
+    sem_t sem;
+    int ok;
+
+    if ((long)sizeof(pthread_mutex_t) != 40)
+        return 1;
+    if ((long)sizeof(sem_t) != 32)
+        return 1;
+    ok = 7;
+    box = 0;
+    if (pthread_mutex_init(&mutex, nullptr) != 0)
+        ok = 0;
+    if (ok == 7 && pthread_mutex_lock(&mutex) != 0)
+        ok = 0;
+    if (ok == 7 && pthread_mutex_unlock(&mutex) != 0)
+        ok = 0;
+    if (ok == 7 && pthread_mutex_destroy(&mutex) != 0)
+        ok = 0;
+    if (ok == 7 && sem_init(&sem, 0, 0) != 0)
+        ok = 0;
+    if (ok == 7 && sem_post(&sem) != 0)
+        ok = 0;
+    if (ok == 7 && sem_wait(&sem) != 0)
+        ok = 0;
+    if (ok == 7 && sem_destroy(&sem) != 0)
+        ok = 0;
+    if (ok == 7
+        && pthread_create(&thread, nullptr, work, (void *)&box) != 0)
+        ok = 0;
+    if (ok == 7 && pthread_join(thread, nullptr) != 0)
+        ok = 0;
+    if (box != 7)
+        ok = 0;
+    print("pthread-join {}\n", ok);
+    return 0;
+}

@@ -2,8 +2,15 @@ if(NOT DEFINED COMPILER OR NOT DEFINED SOURCE OR NOT DEFINED PROGRAM OR NOT DEFI
     message(FATAL_ERROR "run check is missing a path")
 endif()
 
+set(compile_command "${COMPILER}")
+if(DEFINED LIBS AND NOT "${LIBS}" STREQUAL "")
+    foreach(lib IN LISTS LIBS)
+        list(APPEND compile_command -l "${lib}")
+    endforeach()
+endif()
+list(APPEND compile_command "${SOURCE}" "${PROGRAM}")
 execute_process(
-    COMMAND "${COMPILER}" "${SOURCE}" "${PROGRAM}"
+    COMMAND ${compile_command}
     RESULT_VARIABLE compile_status
     ERROR_VARIABLE compile_error)
 if(NOT compile_status EQUAL 0)

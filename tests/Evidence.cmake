@@ -201,6 +201,34 @@ add_exec_line(array-hash array-hash 0 "array-hash 1")
 add_exec_line(hash-miss hash-miss 0 "hash-miss 0 7")
 add_exec_line(tree-empty tree-empty 0 "tree-empty empty")
 
+function(add_exec_libs name source expect line libs)
+    add_test(
+        NAME exec_${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCOMPILER=$<TARGET_FILE:scpp>
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/${source}.scpp
+            -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/exec-${name}
+            -DEXPECT=${expect}
+            "-DEXPECT_OUT=${line}"
+            -DEXPECT_NL=1
+            "-DLIBS=${libs}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+endfunction()
+
+add_exec_line(stdlib-env stdlib-env 0 "stdlib-env 12 hello 1")
+add_exec_line(stdio-file stdio-file 0 "stdio-file 4 abcd 1")
+add_exec_line(fs-dir fs-dir 0 "fs-dir 4 note 4")
+add_exec_line(glob-star glob-star 0 "glob-star 2 3")
+add_exec_line(stdio-out stdio-out 0 "stdio-out hello")
+add_exec_libs(math-sqrt math-sqrt 0 "math-sqrt 3 4 1" m)
+add_exec_line(socket-bind socket-bind 0 "socket-bind 0")
+add_exec_line(time-clock time-clock 0 "time-clock 0")
+add_exec_line(spawn-true spawn-true 0 "spawn-true 0 1 0")
+add_exec_line(term-tty term-tty 0 "term-tty 0 1")
+add_exec_line(random-byte random-byte 0 "random-byte 1")
+add_exec_libs(pthread-join pthread-join 0 "pthread-join 7" pthread)
+add_exec_line(cli-parse cli-parse 0 "cli-parse out.txt file.scpp FOO BAR 1 usage")
+
 add_test(
     NAME exec_exec-print-two
     COMMAND ${CMAKE_COMMAND}

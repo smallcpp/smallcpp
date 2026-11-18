@@ -1,0 +1,1029 @@
+#ifndef SMALLCPP_CLI
+#define SMALLCPP_CLI
+
+/* Command-line parser. Include this header as <cli>.
+ * The classes are Option, Positional, and CommandLine,
+ * in namespace Cli. parse copies the argument text it
+ * keeps. A usage error throws Exception with message
+ * usage. CLI_HELP and CLI_VERSION stop before the
+ * required checks. */
+
+#include <exceptions>
+#include <stdlib>
+
+namespace Cli {
+
+enum {
+    CLI_FLAG,
+    CLI_COUNTER,
+    CLI_STRING,
+    CLI_NUMBER
+};
+
+enum {
+    CLI_NONE,
+    CLI_HELP,
+    CLI_VERSION
+};
+
+class Option {
+public:
+    const char *short_name;
+    const char *long_name;
+    const char *name;
+    int value_type;
+    bool is_list;
+    char list_separator;
+    int action;
+    Option();
+};
+
+class Positional {
+public:
+    const char *name;
+    bool required;
+    bool is_list;
+    Positional();
+};
+
+class CommandLine {
+public:
+    CommandLine(const char *program, const char *summary,
+        const char *version);
+    ~CommandLine();
+    void set_capture_remainder(bool enabled);
+    void add_option(Option *option);
+    void add_positional(Positional *positional);
+    void parse(int argc, char **argv);
+    bool was_provided(const char *name);
+    bool switch_value(const char *name);
+    int count(const char *name);
+    bool has_value(const char *name);
+    const char *value(const char *name);
+    int value_count(const char *name);
+    const char *value_at(const char *name, int index);
+    bool contains_item(const char *name, const char *item);
+    int positional_count();
+    const char *positional_at(int index);
+    int remainder_count();
+    const char *remainder_at(int index);
+    int current_action();
+    const char *help_text();
+    const char *version_text();
+private:
+    const char *program;
+    const char *summary;
+    const char *version;
+    bool capture;
+    int action;
+    Option **options;
+    long optionCount;
+    long optionRoom;
+    Positional **positionals;
+    long positionalCount;
+    long positionalRoom;
+    long *got;
+    long filled;
+    char **owned;
+    long ownedCount;
+    long ownedRoom;
+    char ***items;
+    long *itemCount;
+    int *seen;
+    int *counts;
+    long slotCount;
+    char **positions;
+    long positionCount;
+    char **remainders;
+    long remainderCount;
+    char *built;
+    long builtUsed;
+    long builtRoom;
+    void fail(void);
+    long length(const char *text);
+    int same(const char *left, const char *right);
+    int number_text(const char *text);
+    void keep(char *text);
+    char *slice(const char *text, long from, long to);
+    char *copy_text(const char *text);
+    void clear_parse(void);
+    void prepare(void);
+    Option *find_name(const char *name);
+    Option *find_long(const char *name);
+    Option *find_short(char name);
+    long option_index(Option *option);
+    long find_slot(const char *name);
+    void mark(Option *option);
+    void bump(Option *option);
+    void add_item(long index, char *copy);
+    void add_piece(long index, const char *text, long from,
+        long to);
+    void record(Option *option, const char *text);
+    void add_positional_value(const char *text);
+    void add_remainder(const char *text);
+    void apply(Option *option, int has, char *attached,
+        int *index, int argc, char **argv, int *stop);
+    void parse_long(char *arg, int *index, int argc,
+        char **argv, int *stop);
+    void parse_short(char *arg, int *index, int argc,
+        char **argv, int *stop);
+    void check_required(void);
+    void reset_built(void);
+    void append_text(const char *text);
+    void finish_built(void);
+};
+
+Option::Option() {
+    short_name = nullptr;
+    long_name = nullptr;
+    name = nullptr;
+    value_type = CLI_FLAG;
+    is_list = false;
+    list_separator = ':';
+    action = CLI_NONE;
+}
+
+Positional::Positional() {
+    name = nullptr;
+    required = false;
+    is_list = false;
+}
+
+CommandLine::CommandLine(
+    const char *program,
+    const char *summary,
+    const char *version) {
+    this->program = program;
+    this->summary = summary;
+    this->version = version;
+    capture = false;
+    action = CLI_NONE;
+    options = nullptr;
+    optionCount = 0;
+    optionRoom = 0;
+    positionals = nullptr;
+    positionalCount = 0;
+    positionalRoom = 0;
+    got = nullptr;
+    filled = 0;
+    owned = nullptr;
+    ownedCount = 0;
+    ownedRoom = 0;
+    items = nullptr;
+    itemCount = nullptr;
+    seen = nullptr;
+    counts = nullptr;
+    slotCount = 0;
+    positions = nullptr;
+    positionCount = 0;
+    remainders = nullptr;
+    remainderCount = 0;
+    built = nullptr;
+    builtUsed = 0;
+    builtRoom = 0;
+}
+
+void CommandLine::fail(void) {
+    Exception *error;
+
+    error = new Exception("usage");
+    throw *error;
+}
+
+long CommandLine::length(const char *text) {
+    long n;
+
+    if (text == nullptr)
+        return 0;
+    n = 0;
+    while (text[n] != 0)
+        n = n + 1;
+    return n;
+}
+
+int CommandLine::same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr) {
+        if (left == right)
+            return 1;
+        return 0;
+    }
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+int CommandLine::number_text(const char *text) {
+    long i;
+
+    if (text == nullptr || text[0] == 0)
+        return 0;
+    i = 0;
+    if (text[0] == '+' || text[0] == '-')
+        i = 1;
+    if (text[i] == 0)
+        return 0;
+    while (text[i] != 0) {
+        if (text[i] < '0' || text[i] > '9')
+            return 0;
+        i = i + 1;
+    }
+    return 1;
+}
+
+void CommandLine::keep(char *text) {
+    char **grown;
+    long next;
+
+    if (ownedCount >= ownedRoom) {
+        next = ownedRoom * 2;
+        if (next < 4)
+            next = 4;
+        grown = (char **)realloc((void *)owned,
+            (unsigned long)next * sizeof(char *));
+        if (grown == nullptr)
+            fail();
+        owned = grown;
+        ownedRoom = next;
+    }
+    owned[ownedCount] = text;
+    ownedCount = ownedCount + 1;
+}
+
+char *CommandLine::slice(const char *text, long from, long to) {
+    char *out;
+    long n;
+    long i;
+
+    n = to - from;
+    if (n < 0)
+        n = 0;
+    out = (char *)malloc((unsigned long)(n + 1));
+    if (out == nullptr)
+        fail();
+    i = 0;
+    while (i < n) {
+        out[i] = text[from + i];
+        i = i + 1;
+    }
+    out[n] = 0;
+    keep(out);
+    return out;
+}
+
+char *CommandLine::copy_text(const char *text) {
+    if (text == nullptr)
+        fail();
+    return slice(text, 0, length(text));
+}
+
+void CommandLine::clear_parse(void) {
+    long i;
+
+    i = 0;
+    while (i < slotCount) {
+        free((void *)items[i]);
+        i = i + 1;
+    }
+    free((void *)items);
+    free((void *)itemCount);
+    free((void *)seen);
+    free((void *)counts);
+    items = nullptr;
+    itemCount = nullptr;
+    seen = nullptr;
+    counts = nullptr;
+    slotCount = 0;
+    free((void *)positions);
+    positions = nullptr;
+    positionCount = 0;
+    free((void *)remainders);
+    remainders = nullptr;
+    remainderCount = 0;
+    i = 0;
+    while (i < ownedCount) {
+        free((void *)owned[i]);
+        i = i + 1;
+    }
+    free((void *)owned);
+    owned = nullptr;
+    ownedCount = 0;
+    ownedRoom = 0;
+    built = nullptr;
+    builtUsed = 0;
+    builtRoom = 0;
+    action = CLI_NONE;
+    filled = 0;
+    i = 0;
+    while (i < positionalCount) {
+        got[i] = 0;
+        i = i + 1;
+    }
+}
+
+void CommandLine::prepare(void) {
+    long i;
+
+    if (optionCount > 0) {
+        items = (char ***)malloc(
+            (unsigned long)optionCount * sizeof(char **));
+        itemCount = (long *)malloc(
+            (unsigned long)optionCount * sizeof(long));
+        seen = (int *)malloc(
+            (unsigned long)optionCount * sizeof(int));
+        counts = (int *)malloc(
+            (unsigned long)optionCount * sizeof(int));
+        if (items == nullptr || itemCount == nullptr
+            || seen == nullptr || counts == nullptr)
+            fail();
+        slotCount = optionCount;
+        i = 0;
+        while (i < optionCount) {
+            items[i] = nullptr;
+            itemCount[i] = 0;
+            seen[i] = 0;
+            counts[i] = 0;
+            i = i + 1;
+        }
+    }
+    i = 0;
+    while (i < positionalCount) {
+        got[i] = 0;
+        i = i + 1;
+    }
+}
+
+CommandLine::~CommandLine() {
+    clear_parse();
+    free((void *)options);
+    free((void *)positionals);
+    free((void *)got);
+    options = nullptr;
+    positionals = nullptr;
+    got = nullptr;
+}
+
+void CommandLine::set_capture_remainder(bool enabled) {
+    capture = enabled;
+}
+
+Option *CommandLine::find_name(const char *name) {
+    long i;
+
+    if (name == nullptr)
+        return nullptr;
+    i = 0;
+    while (i < optionCount) {
+        if (same(options[i]->name, name))
+            return options[i];
+        i = i + 1;
+    }
+    return nullptr;
+}
+
+Option *CommandLine::find_long(const char *name) {
+    long i;
+
+    if (name == nullptr)
+        return nullptr;
+    i = 0;
+    while (i < optionCount) {
+        if (options[i]->long_name != nullptr
+            && same(options[i]->long_name, name))
+            return options[i];
+        i = i + 1;
+    }
+    return nullptr;
+}
+
+Option *CommandLine::find_short(char name) {
+    long i;
+
+    i = 0;
+    while (i < optionCount) {
+        const char *text;
+
+        text = options[i]->short_name;
+        if (text != nullptr && text[0] == name && text[1] == 0)
+            return options[i];
+        i = i + 1;
+    }
+    return nullptr;
+}
+
+long CommandLine::option_index(Option *option) {
+    long i;
+
+    i = 0;
+    while (i < optionCount) {
+        if (options[i] == option)
+            return i;
+        i = i + 1;
+    }
+    return -1;
+}
+
+long CommandLine::find_slot(const char *name) {
+    Option *option;
+
+    option = find_name(name);
+    if (option == nullptr)
+        return -1;
+    return option_index(option);
+}
+
+void CommandLine::add_option(Option *option) {
+    Option **grown;
+    long next;
+    int hasShort;
+    int hasLong;
+
+    if (option == nullptr || option->name == nullptr
+        || option->name[0] == 0)
+        fail();
+    hasShort = 0;
+    if (option->short_name != nullptr
+        && option->short_name[0] != 0)
+        hasShort = 1;
+    hasLong = 0;
+    if (option->long_name != nullptr
+        && option->long_name[0] != 0)
+        hasLong = 1;
+    if (hasShort == 0 && hasLong == 0)
+        fail();
+    if (hasShort != 0 && option->short_name[1] != 0)
+        fail();
+    if (option->is_list
+        && (option->value_type == CLI_FLAG
+            || option->value_type == CLI_COUNTER))
+        fail();
+    if (find_name(option->name) != nullptr)
+        fail();
+    if (hasLong != 0 && find_long(option->long_name) != nullptr)
+        fail();
+    if (hasShort != 0
+        && find_short(option->short_name[0]) != nullptr)
+        fail();
+    if (optionCount >= optionRoom) {
+        next = optionRoom * 2;
+        if (next < 4)
+            next = 4;
+        grown = (Option **)realloc((void *)options,
+            (unsigned long)next * sizeof(Option *));
+        if (grown == nullptr)
+            fail();
+        options = grown;
+        optionRoom = next;
+    }
+    options[optionCount] = option;
+    optionCount = optionCount + 1;
+}
+
+void CommandLine::add_positional(Positional *positional) {
+    Positional **grown;
+    long *more;
+    long next;
+    long i;
+
+    if (positional == nullptr || positional->name == nullptr
+        || positional->name[0] == 0)
+        fail();
+    if (positionalCount > 0
+        && positionals[positionalCount - 1]->is_list)
+        fail();
+    if (positionalCount >= positionalRoom) {
+        next = positionalRoom * 2;
+        if (next < 4)
+            next = 4;
+        grown = (Positional **)realloc((void *)positionals,
+            (unsigned long)next * sizeof(Positional *));
+        if (grown == nullptr)
+            fail();
+        positionals = grown;
+        more = (long *)malloc((unsigned long)next * sizeof(long));
+        if (more == nullptr)
+            fail();
+        i = 0;
+        while (i < positionalCount) {
+            more[i] = got[i];
+            i = i + 1;
+        }
+        while (i < next) {
+            more[i] = 0;
+            i = i + 1;
+        }
+        free((void *)got);
+        got = more;
+        positionalRoom = next;
+    }
+    positionals[positionalCount] = positional;
+    got[positionalCount] = 0;
+    positionalCount = positionalCount + 1;
+}
+
+void CommandLine::mark(Option *option) {
+    long index;
+
+    index = option_index(option);
+    if (index < 0)
+        fail();
+    seen[index] = 1;
+}
+
+void CommandLine::bump(Option *option) {
+    long index;
+
+    index = option_index(option);
+    if (index < 0)
+        fail();
+    counts[index] = counts[index] + 1;
+}
+
+void CommandLine::add_item(long index, char *copy) {
+    char **grown;
+    long n;
+
+    n = itemCount[index];
+    grown = (char **)realloc((void *)items[index],
+        (unsigned long)(n + 1) * sizeof(char *));
+    if (grown == nullptr)
+        fail();
+    items[index] = grown;
+    items[index][n] = copy;
+    itemCount[index] = n + 1;
+}
+
+void CommandLine::add_piece(
+    long index,
+    const char *text,
+    long from,
+    long to) {
+    add_item(index, slice(text, from, to));
+}
+
+void CommandLine::record(Option *option, const char *text) {
+    long index;
+    long start;
+    long at;
+
+    index = option_index(option);
+    if (index < 0)
+        fail();
+    if (option->is_list == false) {
+        free((void *)items[index]);
+        items[index] = nullptr;
+        itemCount[index] = 0;
+        add_item(index, copy_text(text));
+        return;
+    }
+    start = 0;
+    at = 0;
+    while (text[at] != 0) {
+        if (text[at] == option->list_separator) {
+            add_piece(index, text, start, at);
+            start = at + 1;
+        }
+        at = at + 1;
+    }
+    add_piece(index, text, start, at);
+}
+
+void CommandLine::add_positional_value(const char *text) {
+    Positional *slot;
+    long slotIndex;
+    char *copy;
+    char **grown;
+
+    if (positionalCount < 1)
+        fail();
+    slotIndex = filled;
+    if (slotIndex >= positionalCount)
+        slotIndex = positionalCount - 1;
+    slot = positionals[slotIndex];
+    if (slot->is_list == false && filled >= positionalCount)
+        fail();
+    copy = copy_text(text);
+    grown = (char **)realloc((void *)positions,
+        (unsigned long)(positionCount + 1) * sizeof(char *));
+    if (grown == nullptr)
+        fail();
+    positions = grown;
+    positions[positionCount] = copy;
+    positionCount = positionCount + 1;
+    got[slotIndex] = got[slotIndex] + 1;
+    if (slot->is_list == false)
+        filled = filled + 1;
+}
+
+void CommandLine::add_remainder(const char *text) {
+    char *copy;
+    char **grown;
+
+    copy = copy_text(text);
+    grown = (char **)realloc((void *)remainders,
+        (unsigned long)(remainderCount + 1) * sizeof(char *));
+    if (grown == nullptr)
+        fail();
+    remainders = grown;
+    remainders[remainderCount] = copy;
+    remainderCount = remainderCount + 1;
+}
+
+void CommandLine::apply(
+    Option *option,
+    int has,
+    char *attached,
+    int *index,
+    int argc,
+    char **argv,
+    int *stop) {
+    char *text;
+
+    if (option->action != CLI_NONE) {
+        if (has != 0)
+            fail();
+        action = option->action;
+        *stop = 1;
+        return;
+    }
+    if (option->value_type == CLI_FLAG
+        || option->value_type == CLI_COUNTER) {
+        if (has != 0)
+            fail();
+        mark(option);
+        if (option->value_type == CLI_COUNTER)
+            bump(option);
+        return;
+    }
+    if (has != 0)
+        text = attached;
+    else {
+        *index = *index + 1;
+        if (*index >= argc)
+            fail();
+        text = argv[*index];
+    }
+    if (text == nullptr || text[0] == 0)
+        fail();
+    if (option->value_type == CLI_NUMBER && number_text(text) == 0)
+        fail();
+    record(option, text);
+    mark(option);
+}
+
+void CommandLine::parse_long(
+    char *arg,
+    int *index,
+    int argc,
+    char **argv,
+    int *stop) {
+    long end;
+    char *name;
+    char *attached;
+    int has;
+    Option *option;
+
+    end = 2;
+    while (arg[end] != 0 && arg[end] != '=')
+        end = end + 1;
+    name = slice(arg, 2, end);
+    has = 0;
+    attached = nullptr;
+    if (arg[end] == '=') {
+        has = 1;
+        attached = slice(arg, end + 1, length(arg));
+    }
+    option = find_long(name);
+    if (option == nullptr)
+        fail();
+    apply(option, has, attached, index, argc, argv, stop);
+}
+
+void CommandLine::parse_short(
+    char *arg,
+    int *index,
+    int argc,
+    char **argv,
+    int *stop) {
+    long at;
+    Option *option;
+
+    at = 1;
+    while (arg[at] != 0) {
+        option = find_short(arg[at]);
+        if (option == nullptr)
+            fail();
+        if ((option->value_type == CLI_FLAG
+                || option->value_type == CLI_COUNTER)
+            && option->action == CLI_NONE) {
+            if (arg[at + 1] == '=') {
+                apply(option, 1, slice(arg, at + 2, length(arg)),
+                    index, argc, argv, stop);
+                return;
+            }
+            apply(option, 0, nullptr, index, argc, argv, stop);
+            if (*stop != 0)
+                return;
+            at = at + 1;
+            continue;
+        }
+        if (arg[at + 1] != 0) {
+            long start;
+
+            start = at + 1;
+            if (arg[start] == '=')
+                start = start + 1;
+            apply(option, 1, slice(arg, start, length(arg)),
+                index, argc, argv, stop);
+            return;
+        }
+        apply(option, 0, nullptr, index, argc, argv, stop);
+        return;
+    }
+}
+
+void CommandLine::check_required(void) {
+    long i;
+
+    i = 0;
+    while (i < positionalCount) {
+        if (positionals[i]->required && got[i] == 0)
+            fail();
+        i = i + 1;
+    }
+}
+
+void CommandLine::parse(int argc, char **argv) {
+    int index;
+    int stop;
+    int only;
+
+    clear_parse();
+    prepare();
+    stop = 0;
+    only = 0;
+    index = 1;
+    while (index < argc && stop == 0) {
+        char *arg;
+
+        arg = argv[index];
+        if (arg == nullptr) {
+            index = index + 1;
+            continue;
+        }
+        if (only == 0 && same(arg, "--")) {
+            only = 1;
+            index = index + 1;
+            continue;
+        }
+        if (only == 0 && arg[0] == '-' && arg[1] == '-'
+            && arg[2] != 0) {
+            parse_long(arg, &index, argc, argv, &stop);
+            index = index + 1;
+            continue;
+        }
+        if (only == 0 && arg[0] == '-' && arg[1] != 0) {
+            parse_short(arg, &index, argc, argv, &stop);
+            index = index + 1;
+            continue;
+        }
+        if (only != 0 && capture)
+            add_remainder(arg);
+        else
+            add_positional_value(arg);
+        index = index + 1;
+    }
+    if (stop != 0)
+        return;
+    check_required();
+}
+
+bool CommandLine::was_provided(const char *name) {
+    long index;
+
+    index = find_slot(name);
+    if (index < 0 || seen == nullptr)
+        return false;
+    if (seen[index] != 0)
+        return true;
+    return false;
+}
+
+bool CommandLine::switch_value(const char *name) {
+    return was_provided(name);
+}
+
+int CommandLine::count(const char *name) {
+    long index;
+
+    index = find_slot(name);
+    if (index < 0 || counts == nullptr)
+        return 0;
+    return counts[index];
+}
+
+int CommandLine::value_count(const char *name) {
+    long index;
+
+    index = find_slot(name);
+    if (index < 0 || itemCount == nullptr)
+        return 0;
+    return (int)itemCount[index];
+}
+
+bool CommandLine::has_value(const char *name) {
+    if (value_count(name) > 0)
+        return true;
+    return false;
+}
+
+const char *CommandLine::value(const char *name) {
+    long index;
+    long n;
+
+    index = find_slot(name);
+    if (index < 0 || itemCount == nullptr)
+        return nullptr;
+    n = itemCount[index];
+    if (n < 1)
+        return nullptr;
+    return items[index][n - 1];
+}
+
+const char *CommandLine::value_at(const char *name, int index) {
+    long slot;
+
+    slot = find_slot(name);
+    if (slot < 0 || itemCount == nullptr)
+        return nullptr;
+    if (index < 0 || (long)index >= itemCount[slot])
+        return nullptr;
+    return items[slot][index];
+}
+
+bool CommandLine::contains_item(
+    const char *name,
+    const char *item) {
+    long slot;
+    long i;
+
+    slot = find_slot(name);
+    if (slot < 0 || itemCount == nullptr || item == nullptr)
+        return false;
+    i = 0;
+    while (i < itemCount[slot]) {
+        if (same(items[slot][i], item) != 0)
+            return true;
+        i = i + 1;
+    }
+    return false;
+}
+
+int CommandLine::positional_count() {
+    return (int)positionCount;
+}
+
+const char *CommandLine::positional_at(int index) {
+    if (positions == nullptr)
+        return nullptr;
+    if (index < 0 || (long)index >= positionCount)
+        return nullptr;
+    return positions[index];
+}
+
+int CommandLine::remainder_count() {
+    return (int)remainderCount;
+}
+
+const char *CommandLine::remainder_at(int index) {
+    if (remainders == nullptr)
+        return nullptr;
+    if (index < 0 || (long)index >= remainderCount)
+        return nullptr;
+    return remainders[index];
+}
+
+int CommandLine::current_action() {
+    return action;
+}
+
+void CommandLine::reset_built(void) {
+    built = nullptr;
+    builtUsed = 0;
+    builtRoom = 0;
+}
+
+void CommandLine::append_text(const char *text) {
+    long n;
+    long i;
+    char *grown;
+    long next;
+
+    if (text == nullptr)
+        return;
+    n = length(text);
+    if (builtUsed + n + 1 > builtRoom) {
+        next = builtRoom * 2;
+        if (next < builtUsed + n + 1)
+            next = builtUsed + n + 1;
+        if (next < 32)
+            next = 32;
+        grown = (char *)realloc((void *)built, (unsigned long)next);
+        if (grown == nullptr)
+            fail();
+        built = grown;
+        builtRoom = next;
+    }
+    i = 0;
+    while (i < n) {
+        built[builtUsed + i] = text[i];
+        i = i + 1;
+    }
+    builtUsed = builtUsed + n;
+    built[builtUsed] = 0;
+}
+
+void CommandLine::finish_built(void) {
+    if (built == nullptr)
+        append_text("");
+    keep(built);
+}
+
+const char *CommandLine::help_text() {
+    long i;
+
+    reset_built();
+    append_text("Usage: ");
+    append_text(program);
+    append_text(" [options]");
+    i = 0;
+    while (i < positionalCount) {
+        append_text(" ");
+        if (positionals[i]->required)
+            append_text("<");
+        else
+            append_text("[");
+        append_text(positionals[i]->name);
+        if (positionals[i]->is_list)
+            append_text("...");
+        if (positionals[i]->required)
+            append_text(">");
+        else
+            append_text("]");
+        i = i + 1;
+    }
+    append_text("\n");
+    if (summary != nullptr) {
+        append_text(summary);
+        append_text("\n");
+    }
+    append_text("Options:\n");
+    i = 0;
+    while (i < optionCount) {
+        Option *option;
+
+        option = options[i];
+        append_text("  ");
+        if (option->short_name != nullptr
+            && option->short_name[0] != 0) {
+            append_text("-");
+            append_text(option->short_name);
+        }
+        if (option->long_name != nullptr
+            && option->long_name[0] != 0) {
+            if (option->short_name != nullptr
+                && option->short_name[0] != 0)
+                append_text(", ");
+            append_text("--");
+            append_text(option->long_name);
+        }
+        if (option->action == CLI_NONE
+            && (option->value_type == CLI_STRING
+                || option->value_type == CLI_NUMBER)) {
+            if (option->is_list)
+                append_text(" <value>...");
+            else
+                append_text(" <value>");
+        }
+        append_text("\n");
+        i = i + 1;
+    }
+    finish_built();
+    return built;
+}
+
+const char *CommandLine::version_text() {
+    reset_built();
+    append_text(program);
+    append_text(": v");
+    append_text(version);
+    finish_built();
+    return built;
+}
+
+}
+#endif

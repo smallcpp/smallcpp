@@ -1,0 +1,32 @@
+#ifndef SMALLCPP_STDLIB
+#define SMALLCPP_STDLIB
+
+/* Program exit, the environment, conversion, and heap memory.
+ * Include this header as <stdlib>. exit ends the process.
+ * It does not run destructors. malloc memory is not collected.
+ * Release it with free. realpath, mkstemp, and mkdtemp are
+ * declared here too. */
+
+#ifndef SMALLCPP_SIZE_T
+#define SMALLCPP_SIZE_T
+typedef unsigned long size_t;
+#endif
+
+extern void exit(int code);
+extern void abort(void);
+extern char *getenv(const char *name);
+extern int setenv(const char *name, const char *value,
+    int overwrite);
+extern int unsetenv(const char *name);
+extern int atoi(const char *text);
+extern long atol(const char *text);
+extern long strtol(const char *text, char **end, int base);
+extern double strtod(const char *text, char **end);
+extern void *malloc(unsigned long size);
+extern void *realloc(void *ptr, unsigned long size);
+extern void free(void *ptr);
+extern char *realpath(const char *path, char *resolved);
+extern int mkstemp(char *pattern);
+extern char *mkdtemp(char *pattern);
+
+#endif

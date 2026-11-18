@@ -1,0 +1,102 @@
+#include <fcntl>
+#include <glob>
+#include <stdlib>
+#include <unistd>
+
+void copy_text(char *buf, const char *text) {
+    long i;
+
+    i = 0;
+    while (text[i] != 0) {
+        buf[i] = text[i];
+        i = i + 1;
+    }
+    buf[i] = 0;
+}
+
+void join_path(char *buf, const char *dir, const char *name) {
+    long i;
+    long n;
+
+    i = 0;
+    while (dir[i] != 0) {
+        buf[i] = dir[i];
+        i = i + 1;
+    }
+    buf[i] = '/';
+    i = i + 1;
+    n = 0;
+    while (name[n] != 0) {
+        buf[i] = name[n];
+        i = i + 1;
+        n = n + 1;
+    }
+    buf[i] = 0;
+}
+
+void zero(void *ptr, long n) {
+    char *bytes;
+    long i;
+
+    bytes = (char *)ptr;
+    i = 0;
+    while (i < n) {
+        bytes[i] = 0;
+        i = i + 1;
+    }
+}
+
+int touch(const char *path) {
+    int fd;
+
+    fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 420);
+    if (fd < 0)
+        return 1;
+    if (close(fd) != 0)
+        return 1;
+    return 0;
+}
+
+int main(void) {
+    char pattern[40];
+    char path[80];
+    char match[80];
+    char miss[80];
+    char *dir;
+    glob_t found;
+    glob_t none;
+    int rc;
+
+    if ((long)sizeof(glob_t) != 72)
+        return 1;
+    copy_text(pattern, "/tmp/scpp-glob-XXXXXX");
+    dir = mkdtemp(pattern);
+    if (dir == nullptr)
+        return 1;
+    join_path(path, dir, "a.txt");
+    if (touch(path) != 0)
+        return 1;
+    join_path(path, dir, "b.txt");
+    if (touch(path) != 0)
+        return 1;
+    join_path(match, dir, "*.txt");
+    join_path(miss, dir, "*.nope");
+    zero((void *)&found, (long)sizeof(found));
+    zero((void *)&none, (long)sizeof(none));
+    rc = glob(match, 0, nullptr, &found);
+    if (rc != 0 || found.gl_pathc != 2)
+        return 1;
+    globfree(&found);
+    rc = glob(miss, 0, nullptr, &none);
+    if (rc != GLOB_NOMATCH)
+        return 1;
+    globfree(&none);
+    join_path(path, dir, "a.txt");
+    if (unlink(path) != 0)
+        return 1;
+    join_path(path, dir, "b.txt");
+    if (unlink(path) != 0 || rmdir(dir) != 0)
+        return 1;
+    print("glob-star {} {}\n", (long)2, rc);
+    return 0;
+}

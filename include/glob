@@ -1,0 +1,26 @@
+#ifndef SMALLCPP_GLOB
+#define SMALLCPP_GLOB
+
+/* POSIX glob. Include this header as <glob>. Patterns are
+ * *, ?, and [...]. Results are sorted. glob returns 0 when
+ * it finds matches. GLOB_NOMATCH means there were none.
+ * globfree releases the result. errfunc may be null. */
+
+struct GlobResult {
+    unsigned long gl_pathc;
+    char **gl_pathv;
+    unsigned long gl_offs;
+    int gl_flags;
+    char gl_pad[44];
+};
+
+typedef struct GlobResult glob_t;
+
+extern int glob(const char *pattern, int flags,
+    int (*errfunc)(const char *path, int error),
+    glob_t *out);
+extern void globfree(glob_t *out);
+
+#define GLOB_NOMATCH 3
+
+#endif

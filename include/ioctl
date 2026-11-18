@@ -1,0 +1,19 @@
+#ifndef SMALLCPP_IOCTL
+#define SMALLCPP_IOCTL
+
+/* Terminal size. Include this header as <ioctl>.
+ * TIOCGWINSZ fills ws_row and ws_col. These calls do
+ * not change the terminal mode. */
+
+struct winsize {
+    unsigned short ws_row;
+    unsigned short ws_col;
+    unsigned short ws_xpixel;
+    unsigned short ws_ypixel;
+};
+
+extern int ioctl(int fd, unsigned long request, ...);
+
+#define TIOCGWINSZ 21523
+
+#endif

@@ -1,0 +1,19 @@
+#include <math>
+
+int main(void) {
+    double root;
+    long absolute;
+    float small;
+    int close;
+
+    root = sqrt(9.0);
+    absolute = labs(-4);
+    small = sqrtf(9.0f);
+    close = 0;
+    if (small > 2.9f && small < 3.1f)
+        close = 1;
+    if (fabs(-2.0) != 2.0)
+        return 1;
+    print("math-sqrt {:g} {} {}\n", root, (int)absolute, close);
+    return 0;
+}

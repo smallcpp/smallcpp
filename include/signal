@@ -1,0 +1,30 @@
+#ifndef SMALLCPP_SIGNAL
+#define SMALLCPP_SIGNAL
+
+/* Signals. Include this header as <signal>. kill sends a
+ * signal. sigaction installs a handler. SIG_IGN ignores
+ * the signal. A parent that writes a pipe sets SIGPIPE
+ * to SIG_IGN when a dead child should not kill it. */
+
+#ifndef SMALLCPP_PID_T
+#define SMALLCPP_PID_T
+typedef int pid_t;
+#endif
+
+struct sigaction {
+    void (*sa_handler)(int);
+    unsigned long sa_mask[16];
+    int sa_flags;
+    char pad[12];
+};
+
+extern int kill(pid_t pid, int sig);
+extern int sigaction(int sig, const struct sigaction *act,
+    struct sigaction *old);
+
+#define SIGKILL 9
+#define SIGPIPE 13
+#define SIGTERM 15
+#define SIG_IGN ((void (*)(int))1)
+
+#endif

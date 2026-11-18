@@ -1,0 +1,61 @@
+#include <errno>
+#include <stdio>
+#include <stdlib>
+#include <unistd>
+
+void copy_text(char *buf, const char *text) {
+    long i;
+
+    i = 0;
+    while (text[i] != 0) {
+        buf[i] = text[i];
+        i = i + 1;
+    }
+    buf[i] = 0;
+}
+
+int main(void) {
+    char pattern[32];
+    char data[8];
+    File *stream;
+    int fd;
+    int failed;
+    unsigned long count;
+    char *text;
+
+    failed = 0;
+    stream = fopen("no-such-smallcpp-file", "rb");
+    if (stream != nullptr)
+        return 1;
+    if (errno == 0)
+        failed = 1;
+    text = strerror(errno);
+    if (text == nullptr || text[0] == 0)
+        failed = 1;
+    copy_text(pattern, "/tmp/scpp-io-XXXXXX");
+    fd = mkstemp(pattern);
+    if (fd < 0)
+        return 1;
+    if (close(fd) != 0)
+        return 1;
+    stream = fopen(pattern, "wb");
+    if (stream == nullptr)
+        return 1;
+    count = fwrite((void *)"abcd", 1, 4, stream);
+    if (count != 4 || fclose(stream) != 0)
+        return 1;
+    stream = fopen(pattern, "r+b");
+    if (stream == nullptr)
+        return 1;
+    if (fseek(stream, 0, SEEK_END) != 0 || ftell(stream) != 4)
+        return 1;
+    rewind(stream);
+    count = fread((void *)data, 1, 4, stream);
+    data[4] = 0;
+    if (fclose(stream) != 0 || remove(pattern) != 0)
+        return 1;
+    if (count != 4)
+        return 1;
+    print("stdio-file {} {:s} {}\n", (long)count, data, failed + 1);
+    return 0;
+}
