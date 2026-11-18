@@ -1,0 +1,18 @@
+#include <tree>
+
+TREE(IntTree, int)
+
+int main(void) {
+    IntTree *nodes;
+
+    nodes = new IntTree();
+    nodes->add(1);
+    nodes->add(2);
+    nodes->add(3);
+    print("tree {} {} {} {}\n",
+        nodes->root(),
+        nodes->at(0),
+        nodes->at(1),
+        nodes->at(2));
+    return 0;
+}

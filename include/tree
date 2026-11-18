@@ -1,0 +1,154 @@
+#ifndef SMALLCPP_TREE
+#define SMALLCPP_TREE
+
+/* TREE(Name, Type) defines a balanced binary tree of Type.
+ * Include this header as <tree>. Type is ordered with <.
+ * add inserts. root() is the root value. at walks in order.
+ * Expand the macro in one translation unit.
+ *
+ *     TREE(IntTree, int)
+ *     IntTree *nodes;
+ *     nodes = new IntTree();
+ *     nodes->add(1);
+ */
+#include <exceptions>
+
+#define TREE(Name, Type) \
+class Name##Node { \
+public: \
+    Type value; \
+    int height; \
+    Name##Node *left; \
+    Name##Node *right; \
+}; \
+class Name { \
+    Name##Node *top; \
+    long count; \
+    int height_of(Name##Node *node); \
+    int taller(Name##Node *left, Name##Node *right); \
+    void measure(Name##Node *node); \
+    int factor(Name##Node *node); \
+    Name##Node *rotate_left(Name##Node *node); \
+    Name##Node *rotate_right(Name##Node *node); \
+    Name##Node *insert(Name##Node *node, Type value); \
+    int pick(Name##Node *node, long *seen, \
+        long index, Type *out); \
+public: \
+    Name(); \
+    void add(Type value); \
+    Type at(long index); \
+    Type root(void); \
+    long size(void); \
+}; \
+Name::Name() { \
+    top = nullptr; \
+    count = 0; \
+} \
+int Name::height_of(Name##Node *node) { \
+    if (node == nullptr) \
+        return 0; \
+    return node->height; \
+} \
+int Name::taller(Name##Node *left, Name##Node *right) { \
+    int a; \
+    int b; \
+    a = height_of(left); \
+    b = height_of(right); \
+    if (a > b) \
+        return a; \
+    return b; \
+} \
+void Name::measure(Name##Node *node) { \
+    node->height = 1 + taller(node->left, node->right); \
+} \
+int Name::factor(Name##Node *node) { \
+    return height_of(node->left) - height_of(node->right); \
+} \
+Name##Node *Name::rotate_left(Name##Node *node) { \
+    Name##Node *next; \
+    next = node->right; \
+    node->right = next->left; \
+    next->left = node; \
+    measure(node); \
+    measure(next); \
+    return next; \
+} \
+Name##Node *Name::rotate_right(Name##Node *node) { \
+    Name##Node *next; \
+    next = node->left; \
+    node->left = next->right; \
+    next->right = node; \
+    measure(node); \
+    measure(next); \
+    return next; \
+} \
+Name##Node *Name::insert(Name##Node *node, Type value) { \
+    int balance; \
+    if (node == nullptr) { \
+        node = new Name##Node(); \
+        node->value = value; \
+        node->left = nullptr; \
+        node->right = nullptr; \
+        node->height = 1; \
+        count = count + 1; \
+        return node; \
+    } \
+    if (value < node->value) \
+        node->left = insert(node->left, value); \
+    else if (node->value < value) \
+        node->right = insert(node->right, value); \
+    else \
+        return node; \
+    measure(node); \
+    balance = factor(node); \
+    if (balance > 1 && value < node->left->value) \
+        return rotate_right(node); \
+    if (balance < -1 && node->right->value < value) \
+        return rotate_left(node); \
+    if (balance > 1 && node->left->value < value) { \
+        node->left = rotate_left(node->left); \
+        return rotate_right(node); \
+    } \
+    if (balance < -1 && value < node->right->value) { \
+        node->right = rotate_right(node->right); \
+        return rotate_left(node); \
+    } \
+    return node; \
+} \
+int Name::pick(Name##Node *node, long *seen, \
+    long index, Type *out) { \
+    int found; \
+    if (node == nullptr) \
+        return 0; \
+    found = pick(node->left, seen, index, out); \
+    if (found) \
+        return 1; \
+    if (*seen == index) { \
+        *out = node->value; \
+        return 1; \
+    } \
+    *seen = *seen + 1; \
+    return pick(node->right, seen, index, out); \
+} \
+void Name::add(Type value) { \
+    top = insert(top, value); \
+} \
+Type Name::at(long index) { \
+    Type found; \
+    long seen; \
+    if (index < 0 || index >= count) \
+        throw *new Exception("index"); \
+    seen = 0; \
+    pick(top, &seen, index, &found); \
+    return found; \
+} \
+Type Name::root(void) { \
+    if (top == nullptr) \
+        throw *new Exception("empty"); \
+    return top->value; \
+} \
+long Name::size(void) { \
+    return count; \
+}
+
+#endif

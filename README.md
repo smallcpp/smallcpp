@@ -23,7 +23,7 @@ Binaries are written to `bin/` and libraries to `lib/`. A normal build writes `s
 ## Layout
 
 - `src/scpp` — the `scpp` driver. It coordinates `preproc`, `scpp_cc`, and the Clang link
-- `include` — language headers. `<exceptions>` defines the base `Exception` class
+- `include` — language headers. `<exceptions>` defines the base `Exception` class. `<string>`, `<array>`, `<vector>`, `<list>`, `<tree>`, and `<hash>` are the collections
 - `src/runtime` — precise collector, `print` and `format`, and `Exception`. `smallcpp_alloc` traces stack maps at safepoints. `delete` does not free. An exception nothing catches aborts and prints a stack
 - `src/compiler` — Bison grammar and Flex scanner
 - `src/preprocessor` — source directory for a later target

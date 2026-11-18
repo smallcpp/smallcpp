@@ -1,0 +1,15 @@
+#include <string>
+
+int main(void) {
+    String *text;
+    int count;
+    int room;
+
+    text = new String();
+    text->add("hello");
+    text->add(" world");
+    count = (int)text->size();
+    room = (int)text->capacity();
+    print("string {} {} {:s}\n", count, room, text->chars());
+    return 0;
+}

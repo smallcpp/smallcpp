@@ -1,0 +1,59 @@
+#ifndef SMALLCPP_STRING
+#define SMALLCPP_STRING
+
+/* Growable array of char. Include this header as <string>.
+ * size() is the character count. capacity() is the allocated
+ * bytes, including the trailing null. add copies characters.
+ * A null pointer is not a string. An empty string is valid.
+ * A program allocates a String with new. */
+#include <array>
+#include <exceptions>
+
+class String : public Array {
+public:
+    String();
+    void add(char value);
+    void add(const char *text);
+    long capacity(void);
+    char at(long index);
+    const char *chars(void);
+};
+
+String::String() : Array(1) {
+    bytes[0] = 0;
+}
+
+void String::add(char value) {
+    reserve(count + 2);
+    bytes[count] = value;
+    count = count + 1;
+    bytes[count] = 0;
+}
+
+void String::add(const char *text) {
+    long i;
+
+    if (text == nullptr)
+        throw *new Exception("string");
+    i = 0;
+    while (text[i] != 0) {
+        add(text[i]);
+        i = i + 1;
+    }
+}
+
+long String::capacity(void) {
+    return room;
+}
+
+char String::at(long index) {
+    if (index < 0 || index >= count)
+        throw *new Exception("index");
+    return bytes[index];
+}
+
+const char *String::chars(void) {
+    return bytes;
+}
+
+#endif

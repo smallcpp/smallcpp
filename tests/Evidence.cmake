@@ -161,6 +161,11 @@ add_exec_line(short-circuit-or short-circuit-or 0 "short-circuit-or 1 0")
 add_exec_line(this-field this-field 0 "this-field 4")
 add_exec_line(libc libc 0 "libc 5 12")
 add_exec_line(typeid typeid 0 "typeid 1 1 1")
+add_exec_line(string-grow string-grow 0 "string 11 16 hello world")
+add_exec_line(vector-int vector-int 0 "vector 5 10 20 30 40 50")
+add_exec_line(list-int list-int 0 "list 4 5 6 5")
+add_exec_line(tree-int tree-int 0 "tree 2 1 2 3")
+add_exec_line(hash-int hash-int 0 "hash 3 11 30")
 
 add_test(
     NAME exec_exec-print-two

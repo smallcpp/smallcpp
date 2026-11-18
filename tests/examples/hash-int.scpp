@@ -1,0 +1,21 @@
+#include <hash>
+
+HASH(IntMap, int, int)
+
+int main(void) {
+    IntMap *map;
+    int first;
+    int third;
+
+    map = new IntMap();
+    map->put(1, 10);
+    map->put(2, 20);
+    map->put(3, 30);
+    map->put(1, 11);
+    first = 0;
+    third = 0;
+    map->find(1, &first);
+    map->find(3, &third);
+    print("hash {} {} {}\n", (int)map->size(), first, third);
+    return 0;
+}
