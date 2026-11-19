@@ -27,7 +27,26 @@ exit
 
 The shell reads `.project_env`, puts `bin/` and `scripts/` on `PATH`, and changes to `build/`. `build` and `rebuild` are functions in that shell. `build` compiles the default targets. `build test` builds those targets and `command_line_test`, `prefix_test`, `parse_test`, and `verify_module`, then runs the suite. `rebuild` is a clean-first build. A name after `build` or `rebuild` is a target. `exit` leaves the shell. The `./bin/scpp` lines above run from the checkout root. `parse_test` exists after `build test`.
 
-Binaries are written to `bin/` and libraries to `lib/`. A normal `build` writes `scpp`, `scpp_cc`, `preproc`, and the libraries.
+Binaries are written to `bin/` and libraries to `lib/`. A normal `build` writes `scpp`, `scpp_cc`, `preproc`, `scpp-format`, and the libraries.
+
+## Format
+
+`scpp-format` rewrites one source to the coding style below. A path is a file. `-` reads standard input. With no `-i`, the result is written to standard output. `-i` or `--in-place` replaces each file. `-i -` is an error. `-v` or `--verbose`, with `-i`, prints each path on standard error. `--help` and `--version` print to standard output. `--version` prints `scpp-format: v0.1`. A usage error exits 2. A file that cannot be read, or a token the formatter cannot scan, exits 1. Without `-i`, that file's original text is still written to standard output.
+
+```sh
+./bin/scpp-format src/format/main.scpp
+./bin/scpp-format -i src/format/main.scpp
+./bin/scpp-format - < src/format/main.scpp
+./bin/scpp-format --help
+./bin/scpp-format --version
+```
+
+The style is fixed:
+
+- Indent is 4 spaces. A continuation inside `()` is 8 spaces past the block indent. A line stays under 80 columns. A parenthesized list that does not fit breaks after `(`, one item per line, and `)` stays on the last item. `[]` is not broken. A class base list stays on one line. A line with no comma to break may run past 80.
+- One space around `=` and binary operators, including `&&` and `||`. Unary `+`, `-`, `!`, and `~` stay tight. In a declaration, `*` and `&` stay tight to the name. After `=` or in an expression they are the binary or unary operators.
+- One space after a comma, none before. No space inside `()` or `[]`. One space before `{` when it shares the line. A newline follows `{` and precedes `}`. `else`, `catch`, and the `while` of `do` stay on the `}` line.
+- `case`, `default`, `public`, `private`, and `protected` use the enclosing block's indent. A comment-only line uses that indent. A goto label stays at column 0. A preprocessor line stays at column 0. Comments are not reflowed. Blank lines collapse to one.
 
 ## Install
 
@@ -61,6 +80,7 @@ libc=/lib/x86_64-linux-gnu/libc.so
 ## Layout
 
 - `src/scpp` — the `scpp` driver. It coordinates `preproc`, `scpp_cc`, and the Clang link
+- `src/format` — `scpp-format`. A normal build writes it beside `scpp`, and install copies it to the same `bin/`
 - `include` — language headers. `<exceptions>` defines the base `Exception` class. `<string>`, `<array>`, `<vector>`, `<list>`, `<tree>`, and `<hash>` are the collections
 - `src/runtime` — precise collector, `print` and `format`, and `Exception`. `smallcpp_alloc` traces stack maps at safepoints. `delete` does not free. An exception nothing catches aborts and prints a stack
 - `src/compiler` — Bison grammar and Flex scanner

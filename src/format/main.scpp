@@ -1,0 +1,2136 @@
+/* scpp-format rewrites smallcpp source to the coding standard.
+ * A file is formatted on standard output. -i rewrites it in
+ * place. A path of - reads standard input. */
+
+#include <cli>
+#include <exceptions>
+#include <stdio>
+#include <stdlib>
+#include <string>
+
+using namespace Cli;
+
+enum {
+    TOK_WORD = 1,
+    TOK_NUM,
+    TOK_STR,
+    TOK_CHAR,
+    TOK_NOTE,
+    TOK_HASH,
+    TOK_OP
+};
+
+enum {
+    FR_BRACE = 1,
+    FR_PAREN,
+    FR_BRACKET,
+    FR_STMT
+};
+
+enum {
+    OP_NONE = 0,
+    OP_IF,
+    OP_WHILE,
+    OP_FOR,
+    OP_DO,
+    OP_SWITCH,
+    OP_OTHER
+};
+
+enum {
+    BK_BLOCK = 1,
+    BK_ENUM,
+    BK_INIT,
+    BK_CLASS,
+    BK_DO
+};
+
+enum {
+    MODE_TIGHT = 0,
+    MODE_BINARY,
+    MODE_PTR,
+    MODE_LABEL
+};
+
+enum {
+    INDENT_NORMAL = 0,
+    INDENT_OUT,
+    INDENT_ZERO,
+    INDENT_BLOCK
+};
+
+enum {
+    COLUMN_LIMIT = 79,
+    FRAME_MAX = 64
+};
+
+struct Tok {
+    int kind;
+    char *text;
+    int line;
+    int column;
+    int blanks;
+    int solo;
+};
+
+struct Frame {
+    int kind;
+    int broken;
+    int expr;
+    int param;
+    int is_for;
+    int opener;
+    int brace_kind;
+    int ternary;
+};
+
+long text_length(const char *text) {
+    long n;
+
+    if (text == nullptr)
+        return 0;
+    n = 0;
+    while (text[n] != 0)
+        n = n + 1;
+    return n;
+}
+
+int text_is(const char *text, const char *want) {
+    long i;
+
+    if (text == nullptr || want == nullptr)
+        return 0;
+    i = 0;
+    while (text[i] != 0 && text[i] == want[i])
+        i = i + 1;
+    if (text[i] == 0 && want[i] == 0)
+        return 1;
+    return 0;
+}
+
+int is_space(char value) {
+    if (value == ' ' || value == '\t')
+        return 1;
+    if (value == '\v' || value == '\f')
+        return 1;
+    return 0;
+}
+
+int is_alpha(char value) {
+    if (value >= 'a' && value <= 'z')
+        return 1;
+    if (value >= 'A' && value <= 'Z')
+        return 1;
+    if (value == '_')
+        return 1;
+    return 0;
+}
+
+int is_digit(char value) {
+    if (value >= '0' && value <= '9')
+        return 1;
+    return 0;
+}
+
+int is_type_name(const char *text) {
+    if (text_is(text, "void") || text_is(text, "bool"))
+        return 1;
+    if (text_is(text, "char") || text_is(text, "short"))
+        return 1;
+    if (text_is(text, "int") || text_is(text, "long"))
+        return 1;
+    if (text_is(text, "float") || text_is(text, "double"))
+        return 1;
+    if (text_is(text, "signed") || text_is(text, "unsigned"))
+        return 1;
+    if (text_is(text, "struct") || text_is(text, "union"))
+        return 1;
+    if (text_is(text, "enum") || text_is(text, "class"))
+        return 1;
+    return 0;
+}
+
+int is_decl_word(const char *text) {
+    if (is_type_name(text))
+        return 1;
+    if (text_is(text, "const") || text_is(text, "volatile"))
+        return 1;
+    if (text_is(text, "static") || text_is(text, "extern"))
+        return 1;
+    if (text_is(text, "inline") || text_is(text, "register"))
+        return 1;
+    if (text_is(text, "auto") || text_is(text, "typedef"))
+        return 1;
+    if (text_is(text, "virtual") || text_is(text, "typename"))
+        return 1;
+    return 0;
+}
+
+int is_access_word(const char *text) {
+    if (text_is(text, "public"))
+        return 1;
+    if (text_is(text, "private") || text_is(text, "protected"))
+        return 1;
+    return 0;
+}
+
+int is_control_word(const char *text) {
+    if (text_is(text, "if") || text_is(text, "while"))
+        return 1;
+    if (text_is(text, "for") || text_is(text, "switch"))
+        return 1;
+    if (text_is(text, "catch"))
+        return 1;
+    return 0;
+}
+
+int opener_of(const char *text) {
+    if (text_is(text, "if"))
+        return OP_IF;
+    if (text_is(text, "while"))
+        return OP_WHILE;
+    if (text_is(text, "for"))
+        return OP_FOR;
+    if (text_is(text, "switch"))
+        return OP_SWITCH;
+    if (text_is(text, "catch"))
+        return OP_OTHER;
+    return OP_NONE;
+}
+
+class TokenList {
+public:
+    TokenList();
+    void add(
+            int kind,
+            const char *text,
+            long n,
+            int line,
+            int column,
+            int blanks,
+            int solo);
+    long size(void);
+    int kind_at(long index);
+    const char *text_at(long index);
+    int blanks_at(long index);
+    int solo_at(long index);
+    void release(void);
+private:
+    struct Tok *items;
+    long count;
+    long room;
+    void grow(void);
+};
+
+TokenList::TokenList() {
+    items = nullptr;
+    count = 0;
+    room = 0;
+}
+
+void TokenList::grow(void) {
+    long next;
+    struct Tok *fresh;
+    long i;
+
+    next = room * 2;
+    if (next < 16)
+        next = 16;
+    fresh = new struct Tok[next];
+    i = 0;
+    while (i < count) {
+        fresh[i] = items[i];
+        i = i + 1;
+    }
+    items = fresh;
+    room = next;
+}
+
+void TokenList::add(
+        int kind,
+        const char *text,
+        long n,
+        int line,
+        int column,
+        int blanks,
+        int solo) {
+    char *copy;
+    long i;
+
+    if (count >= room)
+        grow();
+    copy = (char *)malloc((unsigned long)n + 1);
+    if (copy == nullptr)
+        throw *new Exception("memory");
+    i = 0;
+    while (i < n) {
+        copy[i] = text[i];
+        i = i + 1;
+    }
+    copy[n] = 0;
+    items[count].kind = kind;
+    items[count].text = copy;
+    items[count].line = line;
+    items[count].column = column;
+    items[count].blanks = blanks;
+    items[count].solo = solo;
+    count = count + 1;
+}
+
+long TokenList::size(void) {
+    return count;
+}
+
+int TokenList::kind_at(long index) {
+    return items[index].kind;
+}
+
+const char *TokenList::text_at(long index) {
+    return items[index].text;
+}
+
+int TokenList::blanks_at(long index) {
+    return items[index].blanks;
+}
+
+int TokenList::solo_at(long index) {
+    return items[index].solo;
+}
+
+void TokenList::release(void) {
+    long i;
+
+    i = 0;
+    while (i < count) {
+        free((void *)items[i].text);
+        items[i].text = nullptr;
+        i = i + 1;
+    }
+    count = 0;
+}
+
+class Lexer {
+public:
+    Lexer();
+    int load(File *in);
+    int tokenize(TokenList *out);
+    int failed(void);
+    int fail_line(void);
+    int fail_column(void);
+    const char *fail_message(void);
+    const char *source(void);
+    long source_length(void);
+private:
+    char *buf;
+    long length;
+    int bad;
+    int badLine;
+    int badColumn;
+    const char *badMessage;
+    void mark(int line, int column, const char *message);
+    void splice(void);
+};
+
+Lexer::Lexer() {
+    buf = nullptr;
+    length = 0;
+    bad = 0;
+    badLine = 1;
+    badColumn = 1;
+    badMessage = nullptr;
+}
+
+void Lexer::mark(int line, int column, const char *message) {
+    if (bad)
+        return;
+    bad = 1;
+    badLine = line;
+    badColumn = column;
+    badMessage = message;
+}
+
+int Lexer::failed(void) {
+    return bad;
+}
+
+int Lexer::fail_line(void) {
+    return badLine;
+}
+
+int Lexer::fail_column(void) {
+    return badColumn;
+}
+
+const char *Lexer::fail_message(void) {
+    return badMessage;
+}
+
+const char *Lexer::source(void) {
+    return buf;
+}
+
+long Lexer::source_length(void) {
+    return length;
+}
+
+int Lexer::load(File *in) {
+    long room;
+    long n;
+    unsigned long got;
+
+    room = 4096;
+    buf = (char *)malloc((unsigned long)room);
+    if (buf == nullptr)
+        throw *new Exception("memory");
+    n = 0;
+    while (1) {
+        if (n + 2048 + 1 >= room) {
+            room = room * 2;
+            buf = (char *)realloc((void *)buf, (unsigned long)room);
+            if (buf == nullptr)
+                throw *new Exception("memory");
+        }
+        got = fread((void *)(buf + n), 1ul, 2048ul, in);
+        n = n + (long)got;
+        if (got == 0)
+            break;
+    }
+    buf[n] = 0;
+    length = n;
+    return 1;
+}
+
+void Lexer::splice(void) {
+    long from;
+    long to;
+
+    from = 0;
+    to = 0;
+    while (from < length) {
+        if (
+                buf[from] == '\\' && (
+                        buf[from + 1] == '\n' || (
+                                buf[from + 1] == '\r' && buf[from + 2] == '\n'))) {
+            from = from + 1;
+            if (buf[from] == '\r')
+                from = from + 1;
+            from = from + 1;
+            continue;
+        }
+        buf[to] = buf[from];
+        to = to + 1;
+        from = from + 1;
+    }
+    buf[to] = 0;
+    length = to;
+}
+
+int Lexer::tokenize(TokenList *out) {
+    long i;
+    int line;
+    int column;
+    int blanks;
+    int saw_break;
+    int line_code;
+    int started;
+
+    splice();
+    i = 0;
+    line = 1;
+    column = 1;
+    blanks = 0;
+    saw_break = 0;
+    line_code = 0;
+    started = 0;
+    while (i < length && bad == 0) {
+        if (buf[i] == '\r') {
+            i = i + 1;
+            continue;
+        }
+        if (is_space(buf[i])) {
+            column = column + 1;
+            i = i + 1;
+            continue;
+        }
+        if (buf[i] == '\n') {
+            line = line + 1;
+            column = 1;
+            i = i + 1;
+            if (line_code)
+                saw_break = 1;
+            else if (started && saw_break)
+                blanks = 1;
+            else
+                saw_break = 1;
+            line_code = 0;
+            continue;
+        }
+        if (line_code == 0 && buf[i] == '#') {
+            long start;
+            int start_col;
+
+            start = i;
+            start_col = column;
+            while (i < length && buf[i] != '\n') {
+                i = i + 1;
+                column = column + 1;
+            }
+            while (i > start && is_space(buf[i - 1]))
+                i = i - 1;
+            out->add(
+                    TOK_HASH,
+                    buf + start,
+                    i - start,
+                    line,
+                    start_col,
+                    blanks,
+                    0);
+            blanks = 0;
+            saw_break = 0;
+            started = 1;
+            line_code = 1;
+            continue;
+        }
+        if (buf[i] == '/' && i + 1 < length && buf[i + 1] == '/') {
+            long start;
+            int start_col;
+            int solo;
+
+            start = i;
+            start_col = column;
+            solo = line_code == 0;
+            while (i < length && buf[i] != '\n') {
+                i = i + 1;
+                column = column + 1;
+            }
+            while (i > start && is_space(buf[i - 1]))
+                i = i - 1;
+            out->add(
+                    TOK_NOTE,
+                    buf + start,
+                    i - start,
+                    line,
+                    start_col,
+                    blanks,
+                    solo);
+            blanks = 0;
+            saw_break = 0;
+            started = 1;
+            line_code = 1;
+            continue;
+        }
+        if (buf[i] == '/' && i + 1 < length && buf[i + 1] == '*') {
+            long start;
+            int start_line;
+            int start_col;
+            int solo;
+
+            start = i;
+            start_line = line;
+            start_col = column;
+            solo = line_code == 0;
+            i = i + 2;
+            column = column + 2;
+            while (i + 1 < length && (buf[i] != '*' || buf[i + 1] != '/')) {
+                if (buf[i] == '\n') {
+                    line = line + 1;
+                    column = 1;
+                } else
+                    column = column + 1;
+                i = i + 1;
+            }
+            if (i + 1 >= length) {
+                mark(start_line, start_col, "unterminated comment");
+                break;
+            }
+            i = i + 2;
+            column = column + 2;
+            out->add(
+                    TOK_NOTE,
+                    buf + start,
+                    i - start,
+                    start_line,
+                    start_col,
+                    blanks,
+                    solo);
+            blanks = 0;
+            saw_break = 0;
+            started = 1;
+            line_code = 1;
+            continue;
+        }
+        if (buf[i] == '"' || buf[i] == '\'') {
+            char quote;
+            long start;
+            int start_line;
+            int start_col;
+            int kind;
+
+            quote = buf[i];
+            start = i;
+            start_line = line;
+            start_col = column;
+            kind = TOK_STR;
+            if (quote == '\'')
+                kind = TOK_CHAR;
+            i = i + 1;
+            column = column + 1;
+            while (i < length && buf[i] != quote) {
+                if (buf[i] == '\n') {
+                    if (kind == TOK_STR)
+                        mark(start_line, start_col, "unterminated string");
+                    else
+                        mark(
+                                start_line,
+                                start_col,
+                                "unterminated character constant");
+                    break;
+                }
+                if (buf[i] == '\\' && i + 1 < length) {
+                    i = i + 2;
+                    column = column + 2;
+                    continue;
+                }
+                i = i + 1;
+                column = column + 1;
+            }
+            if (bad)
+                break;
+            if (i >= length) {
+                if (kind == TOK_STR)
+                    mark(start_line, start_col, "unterminated string");
+                else
+                    mark(
+                            start_line,
+                            start_col,
+                            "unterminated character constant");
+                break;
+            }
+            i = i + 1;
+            column = column + 1;
+            out->add(
+                    kind,
+                    buf + start,
+                    i - start,
+                    start_line,
+                    start_col,
+                    blanks,
+                    0);
+            blanks = 0;
+            saw_break = 0;
+            started = 1;
+            line_code = 1;
+            continue;
+        }
+        if (is_alpha(buf[i])) {
+            long start;
+            int start_col;
+
+            start = i;
+            start_col = column;
+            while (i < length && (is_alpha(buf[i]) || is_digit(buf[i]))) {
+                i = i + 1;
+                column = column + 1;
+            }
+            out->add(
+                    TOK_WORD,
+                    buf + start,
+                    i - start,
+                    line,
+                    start_col,
+                    blanks,
+                    0);
+            blanks = 0;
+            saw_break = 0;
+            started = 1;
+            line_code = 1;
+            continue;
+        }
+        if (
+                is_digit(buf[i]) || (
+                        buf[i] == '.' && i + 1 < length && is_digit(buf[i + 1]))) {
+            long start;
+            int start_col;
+
+            start = i;
+            start_col = column;
+            if (
+                    buf[i] == '0' && i + 1 < length && (
+                            buf[i + 1] == 'x' || buf[i + 1] == 'X')) {
+                i = i + 2;
+                column = column + 2;
+                while (
+                        i < length && (
+                                is_digit(buf[i]) || (
+                                        buf[i] >= 'a' && buf[i] <= 'f') || (
+                                        buf[i] >= 'A' && buf[i] <= 'F'))) {
+                    i = i + 1;
+                    column = column + 1;
+                }
+            } else {
+                while (i < length && is_digit(buf[i])) {
+                    i = i + 1;
+                    column = column + 1;
+                }
+                if (i < length && buf[i] == '.') {
+                    i = i + 1;
+                    column = column + 1;
+                    while (i < length && is_digit(buf[i])) {
+                        i = i + 1;
+                        column = column + 1;
+                    }
+                }
+                if (i < length && (buf[i] == 'e' || buf[i] == 'E')) {
+                    i = i + 1;
+                    column = column + 1;
+                    if (i < length && (buf[i] == '+' || buf[i] == '-')) {
+                        i = i + 1;
+                        column = column + 1;
+                    }
+                    while (i < length && is_digit(buf[i])) {
+                        i = i + 1;
+                        column = column + 1;
+                    }
+                }
+            }
+            while (
+                    i < length && (
+                            buf[i] == 'u' || buf[i] == 'U' || buf[i] == 'l' || buf[i] == 'L' || buf[i] == 'f' || buf[i] == 'F')) {
+                i = i + 1;
+                column = column + 1;
+            }
+            out->add(
+                    TOK_NUM,
+                    buf + start,
+                    i - start,
+                    line,
+                    start_col,
+                    blanks,
+                    0);
+            blanks = 0;
+            saw_break = 0;
+            started = 1;
+            line_code = 1;
+            continue;
+        }
+        {
+            long n;
+            int start_col;
+
+            n = 1;
+            start_col = column;
+            if (
+                    i + 2 < length && buf[i] == '.' && buf[i + 1] == '.' && buf[i + 2] == '.')
+                n = 3;
+            else if (
+                    i + 2 < length && buf[i] == '<' && buf[i + 1] == '<' && buf[i + 2] == '=')
+                n = 3;
+            else if (
+                    i + 2 < length && buf[i] == '>' && buf[i + 1] == '>' && buf[i + 2] == '=')
+                n = 3;
+            else if (i + 1 < length) {
+                char a;
+                char b;
+
+                a = buf[i];
+                b = buf[i + 1];
+                if (
+                        (a == '<' && b == '<') || (a == '>' && b == '>') || (
+                                a == '<' && b == '=') || (a == '>' && b == '=') || (
+                                a == '=' && b == '=') || (a == '!' && b == '=') || (
+                                a == '&' && b == '&') || (a == '|' && b == '|') || (
+                                a == '+' && b == '+') || (a == '-' && b == '-') || (
+                                a == '+' && b == '=') || (a == '-' && b == '=') || (
+                                a == '*' && b == '=') || (a == '/' && b == '=') || (
+                                a == '%' && b == '=') || (a == '&' && b == '=') || (
+                                a == '|' && b == '=') || (a == '^' && b == '=') || (
+                                a == '-' && b == '>') || (a == ':' && b == ':') || (
+                                a == '#' && b == '#'))
+                    n = 2;
+            }
+            out->add(TOK_OP, buf + i, n, line, start_col, blanks, 0);
+            i = i + n;
+            column = column + (int)n;
+            blanks = 0;
+            saw_break = 0;
+            started = 1;
+            line_code = 1;
+        }
+    }
+    return bad == 0;
+}
+
+class Printer {
+public:
+    Printer();
+    String *run(TokenList * list);
+private:
+    TokenList *tokens;
+    String *out;
+    struct Frame *frames;
+    int top;
+    int column;
+    int at_bol;
+    int stmt_expr;
+    int stmt_decl;
+    int in_case;
+    int prev_mode;
+    int prev_op;
+    long next_code(long index);
+    long prev_code(long index);
+    int is_op(long index, const char *text);
+    int is_word(long index, const char *text);
+    long match_close(long index);
+    long match_open(long index);
+    int current_expr(void);
+    int paren_depth(void);
+    int top_is_for(void);
+    int innermost_brace(void);
+    int indent_of(int mode);
+    void push_frame(int kind);
+    void pop_frame(void);
+    void newline(void);
+    void write_spaces(int n);
+    void write_text(const char *text);
+    void ensure(int mode);
+    int op_mode(long index);
+    int gap_before(long index, int mode);
+    int indent_mode(long index);
+    void prepare(long index, int mode);
+    void note_expr(long index);
+    int flat_width(long from, long to);
+    int paren_is_cast(long index);
+    int param_list(long index);
+    void write_comment(const char *text, int solo);
+    void emit_comment(long index);
+    void emit_hash(long index);
+    void emit_open(long index);
+    void emit_close(long index);
+    void emit_brace(long index);
+    void emit_close_brace(long index);
+    void emit_comma(long index);
+    void emit_semi(long index);
+    void emit_normal(long index);
+    void finish_body(long index);
+};
+
+Printer::Printer() {
+    tokens = nullptr;
+    out = nullptr;
+    frames = nullptr;
+    top = 0;
+    column = 0;
+    at_bol = 1;
+    stmt_expr = 0;
+    stmt_decl = 0;
+    in_case = 0;
+    prev_mode = MODE_TIGHT;
+    prev_op = 0;
+}
+
+long Printer::next_code(long index) {
+    long n;
+
+    n = tokens->size();
+    while (index < n) {
+        if (tokens->kind_at(index) != TOK_NOTE)
+            return index;
+        index = index + 1;
+    }
+    return -1;
+}
+
+long Printer::prev_code(long index) {
+    index = index - 1;
+    while (index >= 0) {
+        if (tokens->kind_at(index) != TOK_NOTE)
+            return index;
+        index = index - 1;
+    }
+    return -1;
+}
+
+int Printer::is_op(long index, const char *text) {
+    if (index < 0)
+        return 0;
+    if (tokens->kind_at(index) != TOK_OP)
+        return 0;
+    return text_is(tokens->text_at(index), text);
+}
+
+int Printer::is_word(long index, const char *text) {
+    if (index < 0)
+        return 0;
+    if (tokens->kind_at(index) != TOK_WORD)
+        return 0;
+    return text_is(tokens->text_at(index), text);
+}
+
+long Printer::match_close(long index) {
+    const char *open_text;
+    const char *close_text;
+    int depth;
+    long n;
+    long i;
+
+    open_text = tokens->text_at(index);
+    close_text = ")";
+    if (text_is(open_text, "["))
+        close_text = "]";
+    depth = 0;
+    n = tokens->size();
+    i = index;
+    while (i < n) {
+        if (is_op(i, open_text))
+            depth = depth + 1;
+        else if (is_op(i, close_text)) {
+            depth = depth - 1;
+            if (depth == 0)
+                return i;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+long Printer::match_open(long index) {
+    const char *close_text;
+    const char *open_text;
+    int depth;
+    long i;
+
+    close_text = tokens->text_at(index);
+    open_text = "(";
+    if (text_is(close_text, "]"))
+        open_text = "[";
+    depth = 0;
+    i = index;
+    while (i >= 0) {
+        if (is_op(i, close_text))
+            depth = depth + 1;
+        else if (is_op(i, open_text)) {
+            depth = depth - 1;
+            if (depth == 0)
+                return i;
+        }
+        i = i - 1;
+    }
+    return -1;
+}
+
+int Printer::current_expr(void) {
+    int i;
+
+    i = top - 1;
+    while (i >= 0) {
+        if (frames[i].kind == FR_PAREN || frames[i].kind == FR_BRACKET)
+            return frames[i].expr;
+        i = i - 1;
+    }
+    return stmt_expr;
+}
+
+int Printer::paren_depth(void) {
+    int i;
+    int n;
+
+    n = 0;
+    i = 0;
+    while (i < top) {
+        if (frames[i].kind == FR_PAREN || frames[i].kind == FR_BRACKET)
+            n = n + 1;
+        i = i + 1;
+    }
+    return n;
+}
+
+int Printer::top_is_for(void) {
+    if (top < 1)
+        return 0;
+    if (frames[top - 1].kind != FR_PAREN)
+        return 0;
+    return frames[top - 1].is_for;
+}
+
+int Printer::innermost_brace(void) {
+    int i;
+
+    i = top - 1;
+    while (i >= 0) {
+        if (frames[i].kind == FR_BRACE)
+            return frames[i].brace_kind;
+        i = i - 1;
+    }
+    return 0;
+}
+
+int Printer::indent_of(int mode) {
+    int i;
+    int n;
+
+    if (mode == INDENT_ZERO)
+        return 0;
+    n = 0;
+    i = 0;
+    while (i < top) {
+        if (frames[i].kind == FR_BRACE || frames[i].kind == FR_STMT)
+            n = n + 4;
+        else if (frames[i].broken && mode == INDENT_NORMAL)
+            n = n + 8;
+        i = i + 1;
+    }
+    if (mode == INDENT_OUT && n >= 4)
+        n = n - 4;
+    return n;
+}
+
+void Printer::push_frame(int kind) {
+    if (top >= FRAME_MAX)
+        throw *new Exception("format");
+    frames[top].kind = kind;
+    frames[top].broken = 0;
+    frames[top].expr = 0;
+    frames[top].param = 0;
+    frames[top].is_for = 0;
+    frames[top].opener = OP_NONE;
+    frames[top].brace_kind = BK_BLOCK;
+    frames[top].ternary = 0;
+    top = top + 1;
+}
+
+void Printer::pop_frame(void) {
+    if (top > 0)
+        top = top - 1;
+}
+
+void Printer::newline(void) {
+    out->add('\n');
+    column = 0;
+    at_bol = 1;
+}
+
+void Printer::write_spaces(int n) {
+    int i;
+
+    i = 0;
+    while (i < n) {
+        out->add(' ');
+        i = i + 1;
+    }
+    column = column + n;
+    if (n > 0)
+        at_bol = 0;
+}
+
+void Printer::write_text(const char *text) {
+    long i;
+
+    i = 0;
+    while (text[i] != 0) {
+        out->add(text[i]);
+        if (text[i] == '\n') {
+            column = 0;
+            at_bol = 1;
+        } else {
+            column = column + 1;
+            at_bol = 0;
+        }
+        i = i + 1;
+    }
+}
+
+void Printer::ensure(int mode) {
+    if (at_bol == 0)
+        return;
+    write_spaces(indent_of(mode));
+    at_bol = 0;
+}
+
+int Printer::op_mode(long index) {
+    const char *text;
+    long prev;
+    int expr;
+
+    text = tokens->text_at(index);
+    if (text_is(text, "!") || text_is(text, "~"))
+        return MODE_TIGHT;
+    if (text_is(text, "++") || text_is(text, "--"))
+        return MODE_TIGHT;
+    if (text_is(text, "::") || text_is(text, "->"))
+        return MODE_TIGHT;
+    if (text_is(text, ".") || text_is(text, "~"))
+        return MODE_TIGHT;
+    if (text_is(text, ":")) {
+        prev = prev_code(index);
+        if (in_case)
+            return MODE_LABEL;
+        if (
+                prev >= 0 && tokens->kind_at(prev) == TOK_WORD && is_access_word(
+                        tokens->text_at(prev)))
+            return MODE_LABEL;
+        if (
+                prev >= 0 && tokens->kind_at(prev) == TOK_WORD && text_is(
+                        tokens->text_at(prev),
+                        "default"))
+            return MODE_LABEL;
+        if (top > 0 && frames[top - 1].ternary)
+            return MODE_BINARY;
+        if (
+                stmt_expr == 0 && paren_depth() == 0 && prev >= 0 && tokens->kind_at(
+                        prev) == TOK_WORD) {
+            long before;
+
+            before = prev_code(prev);
+            if (
+                    before < 0 || is_op(before, ";") || is_op(before, "{") || is_op(
+                            before,
+                            "}"))
+                return MODE_LABEL;
+        }
+        return MODE_BINARY;
+    }
+    if (
+            text_is(text, "+") || text_is(text, "-") || text_is(text, "*") || text_is(
+                    text,
+                    "&")) {
+        prev = prev_code(index);
+        expr = current_expr();
+        if (prev < 0)
+            return MODE_TIGHT;
+        if (tokens->kind_at(prev) == TOK_WORD) {
+            const char *word;
+
+            word = tokens->text_at(prev);
+            if (
+                    text_is(word, "return") || text_is(word, "throw") || text_is(
+                            word,
+                            "case") || text_is(word, "sizeof"))
+                return MODE_TIGHT;
+        }
+        if (
+                tokens->kind_at(prev) == TOK_WORD || tokens->kind_at(prev) == TOK_NUM || tokens->kind_at(
+                        prev) == TOK_STR || tokens->kind_at(prev) == TOK_CHAR || is_op(
+                        prev,
+                        ")") || is_op(prev, "]")) {
+            if (text_is(text, "+") || text_is(text, "-"))
+                return MODE_BINARY;
+            if (expr)
+                return MODE_BINARY;
+            return MODE_PTR;
+        }
+        return MODE_TIGHT;
+    }
+    if (
+            text_is(text, "?") || text_is(text, "=") || text_is(text, "==") || text_is(
+                    text,
+                    "!=") || text_is(text, "<") || text_is(text, ">") || text_is(
+                    text,
+                    "<=") || text_is(text, ">=") || text_is(text, "<<") || text_is(
+                    text,
+                    ">>") || text_is(text, "&&") || text_is(text, "||") || text_is(
+                    text,
+                    "&") || text_is(text, "|") || text_is(text, "^") || text_is(
+                    text,
+                    "%") || text_is(text, "/") || text_is(text, "+=") || text_is(
+                    text,
+                    "-=") || text_is(text, "*=") || text_is(text, "/=") || text_is(
+                    text,
+                    "%=") || text_is(text, "&=") || text_is(text, "|=") || text_is(
+                    text,
+                    "^=") || text_is(text, "<<=") || text_is(text, ">>="))
+        return MODE_BINARY;
+    return MODE_TIGHT;
+}
+
+int Printer::gap_before(long index, int mode) {
+    long prev;
+    int cur_mode;
+
+    if (mode == MODE_LABEL)
+        return 0;
+    prev = prev_code(index);
+    if (prev < 0)
+        return 0;
+    if (
+            is_op(index, ")") || is_op(index, "]") || is_op(index, ",") || is_op(
+                    index,
+                    ";") || is_op(index, ".") || is_op(index, "->") || is_op(
+                    index,
+                    "::"))
+        return 0;
+    if (
+            is_op(prev, "(") || is_op(prev, "[") || is_op(prev, ".") || is_op(
+                    prev,
+                    "->") || is_op(prev, "::") || is_op(prev, "~") || is_op(
+                    prev,
+                    "!"))
+        return 0;
+    if (is_op(prev, ",") || is_op(prev, ";"))
+        return 1;
+    if (prev_op && prev_mode == MODE_TIGHT)
+        return 0;
+    if (prev_op && prev_mode == MODE_PTR)
+        return 0;
+    if (prev_op && prev_mode == MODE_LABEL)
+        return 0;
+    if (is_op(index, "["))
+        return 0;
+    if (is_op(index, "(")) {
+        if (
+                tokens->kind_at(prev) == TOK_WORD && is_control_word(
+                        tokens->text_at(prev)))
+            return 1;
+        if (tokens->kind_at(prev) == TOK_WORD)
+            return 0;
+        if (is_op(prev, ")"))
+            return 0;
+    }
+    if (is_op(prev, ")") && paren_is_cast(match_open(prev))) {
+        if (
+                tokens->kind_at(index) != TOK_WORD || is_decl_word(
+                        tokens->text_at(index)) == 0)
+            return 0;
+    }
+    if (tokens->kind_at(index) == TOK_OP) {
+        cur_mode = op_mode(index);
+        if (cur_mode == MODE_TIGHT && is_op(index, "{") == 0) {
+            if (is_op(prev, ",") || is_op(prev, ";"))
+                return 1;
+            if (prev_op && prev_mode == MODE_BINARY)
+                return 1;
+            if (
+                    tokens->kind_at(prev) == TOK_WORD && is_op(index, "++") == 0 && is_op(
+                            index,
+                            "--") == 0)
+                return 1;
+            if (
+                    (is_op(index, "++") || is_op(index, "--")) && tokens->kind_at(
+                            prev) == TOK_WORD) {
+                const char *word;
+
+                word = tokens->text_at(prev);
+                if (
+                        text_is(word, "return") || text_is(word, "throw") || text_is(
+                                word,
+                                "sizeof"))
+                    return 1;
+            }
+            return 0;
+        }
+        if (cur_mode == MODE_BINARY || cur_mode == MODE_PTR)
+            return 1;
+    }
+    if (prev_op && prev_mode == MODE_BINARY)
+        return 1;
+    if (is_op(index, "{"))
+        return 1;
+    if (is_op(prev, ",") || is_op(prev, ";"))
+        return 1;
+    if (
+            tokens->kind_at(prev) == TOK_WORD || tokens->kind_at(prev) == TOK_NUM || is_op(
+                    prev,
+                    ")") || is_op(prev, "}"))
+        return 1;
+    return 0;
+}
+
+int Printer::indent_mode(long index) {
+    long nxt;
+
+    if (tokens->kind_at(index) != TOK_WORD)
+        return INDENT_NORMAL;
+    nxt = next_code(index + 1);
+    if (
+            text_is(tokens->text_at(index), "case") || text_is(
+                    tokens->text_at(index),
+                    "default"))
+        return INDENT_OUT;
+    if (is_access_word(tokens->text_at(index)) && nxt >= 0 && is_op(nxt, ":"))
+        return INDENT_OUT;
+    if (
+            nxt >= 0 && is_op(nxt, ":") && op_mode(nxt) == MODE_LABEL && text_is(
+                    tokens->text_at(index),
+                    "case") == 0 && text_is(tokens->text_at(index), "default") == 0 && is_access_word(
+                    tokens->text_at(index)) == 0)
+        return INDENT_ZERO;
+    return INDENT_NORMAL;
+}
+
+void Printer::prepare(long index, int mode) {
+    if (tokens->blanks_at(index) > 0 && out->size() > 0) {
+        if (at_bol == 0)
+            newline();
+        newline();
+    }
+    if (at_bol)
+        ensure(mode);
+    else if (gap_before(index, op_mode(index))) {
+        out->add(' ');
+        column = column + 1;
+    }
+}
+
+void Printer::note_expr(long index) {
+    const char *text;
+
+    if (tokens->kind_at(index) == TOK_WORD) {
+        text = tokens->text_at(index);
+        if (text_is(text, "case"))
+            in_case = 1;
+        if (text_is(text, "return") || text_is(text, "throw")) {
+            if (paren_depth() > 0)
+                frames[top - 1].expr = 1;
+            else
+                stmt_expr = 1;
+        }
+        if (current_expr() == 0 && paren_depth() == 0 && is_type_name(text))
+            stmt_decl = 1;
+        if (text_is(text, "else")) {
+            long nxt;
+
+            nxt = next_code(index + 1);
+            if (
+                    nxt >= 0 && is_word(nxt, "if") == 0 && is_op(nxt, "{") == 0 && is_op(
+                            nxt,
+                            ";") == 0) {
+                newline();
+                push_frame(FR_STMT);
+                frames[top - 1].opener = OP_OTHER;
+            }
+        }
+        if (text_is(text, "do")) {
+            long nxt;
+
+            nxt = next_code(index + 1);
+            if (nxt >= 0 && is_op(nxt, "{") == 0) {
+                newline();
+                push_frame(FR_STMT);
+                frames[top - 1].opener = OP_DO;
+            }
+        }
+        return;
+    }
+    if (tokens->kind_at(index) != TOK_OP)
+        return;
+    text = tokens->text_at(index);
+    if (text_is(text, "?")) {
+        if (paren_depth() > 0)
+            frames[top - 1].ternary = 1;
+        else
+            stmt_expr = 1;
+    }
+    if (
+            text_is(text, "=") || text_is(text, "+=") || text_is(text, "-=") || text_is(
+                    text,
+                    "*=") || text_is(text, "/=") || text_is(text, "%=") || text_is(
+                    text,
+                    "&=") || text_is(text, "|=") || text_is(text, "^=") || text_is(
+                    text,
+                    "<<=") || text_is(text, ">>=")) {
+        if (paren_depth() > 0)
+            frames[top - 1].expr = 1;
+        else
+            stmt_expr = 1;
+    }
+}
+
+int Printer::flat_width(long from, long to) {
+    long i;
+    int width;
+    int expr;
+    int local_prev_op;
+    int local_prev_mode;
+    int saved_expr;
+    int saved_prev_op;
+    int saved_prev_mode;
+
+    width = 0;
+    expr = current_expr();
+    local_prev_op = prev_op;
+    local_prev_mode = prev_mode;
+    saved_expr = stmt_expr;
+    saved_prev_op = prev_op;
+    saved_prev_mode = prev_mode;
+    i = from;
+    while (i <= to) {
+        if (tokens->kind_at(i) == TOK_NOTE && tokens->solo_at(i))
+            return COLUMN_LIMIT + 8;
+        if (tokens->blanks_at(i) > 0 && i != from)
+            return COLUMN_LIMIT + 8;
+        if (i > from && tokens->kind_at(i) != TOK_NOTE) {
+            int saved_stmt;
+
+            saved_stmt = stmt_expr;
+            stmt_expr = expr;
+            prev_op = local_prev_op;
+            prev_mode = local_prev_mode;
+            if (gap_before(i, op_mode(i)))
+                width = width + 1;
+            stmt_expr = saved_stmt;
+        }
+        if (tokens->kind_at(i) != TOK_NOTE) {
+            width = width + (int)text_length(tokens->text_at(i));
+            if (tokens->kind_at(i) == TOK_OP) {
+                local_prev_op = 1;
+                prev_op = 1;
+                prev_mode = op_mode(i);
+                local_prev_mode = prev_mode;
+                if (is_op(i, "=") || is_op(i, "?"))
+                    expr = 1;
+            } else {
+                local_prev_op = 0;
+                prev_op = 0;
+            }
+        }
+        i = i + 1;
+    }
+    stmt_expr = saved_expr;
+    prev_op = saved_prev_op;
+    prev_mode = saved_prev_mode;
+    return width;
+}
+
+int Printer::paren_is_cast(long index) {
+    long close;
+    long i;
+    int words;
+    int stars;
+    int other;
+
+    if (index < 0 || is_op(index, "(") == 0)
+        return 0;
+    close = match_close(index);
+    if (close < 0)
+        return 0;
+    words = 0;
+    stars = 0;
+    other = 0;
+    i = index + 1;
+    while (i < close) {
+        if (tokens->kind_at(i) == TOK_NOTE) {
+            i = i + 1;
+            continue;
+        }
+        if (tokens->kind_at(i) == TOK_WORD) {
+            words = words + 1;
+            if (is_decl_word(tokens->text_at(i)) == 0)
+                other = other + 1;
+            i = i + 1;
+            continue;
+        }
+        if (is_op(i, "*") || is_op(i, "&")) {
+            stars = stars + 1;
+            i = i + 1;
+            continue;
+        }
+        return 0;
+    }
+    if (words < 1)
+        return 0;
+    if (other > 1)
+        return 0;
+    if (other == 1 && stars == 0)
+        return 0;
+    return 1;
+}
+
+int Printer::param_list(long index) {
+    long name;
+    long prev;
+
+    name = prev_code(index);
+    if (name < 0 || tokens->kind_at(name) != TOK_WORD)
+        return 0;
+    prev = prev_code(name);
+    while (prev >= 0) {
+        if (tokens->kind_at(prev) == TOK_WORD) {
+            if (is_decl_word(tokens->text_at(prev)))
+                return 1;
+            prev = prev_code(prev);
+            continue;
+        }
+        if (
+                is_op(prev, "*") || is_op(prev, "&") || is_op(prev, "::") || is_op(
+                        prev,
+                        "~")) {
+            prev = prev_code(prev);
+            continue;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+void Printer::write_comment(const char *text, int solo) {
+    long i;
+    int line_start;
+
+    if (text[0] == '/' && text[1] == '/') {
+        if (solo)
+            ensure(INDENT_BLOCK);
+        write_text(text);
+        return;
+    }
+    i = 0;
+    line_start = 1;
+    while (text[i] != 0) {
+        if (line_start) {
+            if (solo || i > 0)
+                ensure(INDENT_BLOCK);
+            while (text[i] == ' ' || text[i] == '\t')
+                i = i + 1;
+            if (text[i] == '*' && (i == 0 || text[i - 1] != '/'))
+                out->add(' ');
+            line_start = 0;
+            if (text[i] == 0)
+                break;
+        }
+        if (text[i] == '\n') {
+            newline();
+            line_start = 1;
+            i = i + 1;
+            continue;
+        }
+        out->add(text[i]);
+        column = column + 1;
+        at_bol = 0;
+        i = i + 1;
+    }
+}
+
+void Printer::emit_comment(long index) {
+    if (tokens->blanks_at(index) > 0 && out->size() > 0) {
+        if (at_bol == 0)
+            newline();
+        newline();
+    }
+    if (tokens->solo_at(index)) {
+        if (at_bol == 0)
+            newline();
+        write_comment(tokens->text_at(index), 1);
+        if (at_bol == 0)
+            newline();
+        prev_op = 0;
+        return;
+    }
+    if (at_bol)
+        ensure(INDENT_BLOCK);
+    else {
+        out->add(' ');
+        column = column + 1;
+    }
+    write_comment(tokens->text_at(index), 0);
+    prev_op = 0;
+}
+
+void Printer::emit_hash(long index) {
+    if (tokens->blanks_at(index) > 0 && out->size() > 0) {
+        if (at_bol == 0)
+            newline();
+        newline();
+    }
+    if (at_bol == 0)
+        newline();
+    write_text(tokens->text_at(index));
+    newline();
+    prev_op = 0;
+}
+
+void Printer::emit_open(long index) {
+    long close;
+    int broken;
+    int mode;
+    long prev;
+    const char *word;
+
+    prepare(index, INDENT_NORMAL);
+    broken = 0;
+    close = match_close(index);
+    if (close > index) {
+        int width;
+        int allow;
+
+        allow = 1;
+        if (text_is(tokens->text_at(index), "["))
+            allow = 0;
+        width = flat_width(index, close);
+        if (allow && column + width > COLUMN_LIMIT)
+            broken = 1;
+    }
+    write_text(tokens->text_at(index));
+    push_frame(text_is(tokens->text_at(index), "[") ? FR_BRACKET : FR_PAREN);
+    frames[top - 1].broken = broken;
+    prev = prev_code(index);
+    word = nullptr;
+    if (prev >= 0 && tokens->kind_at(prev) == TOK_WORD)
+        word = tokens->text_at(prev);
+    if (word != nullptr && is_control_word(word))
+        frames[top - 1].opener = opener_of(word);
+    if (
+            frames[top - 1].opener == OP_IF || frames[top - 1].opener == OP_WHILE || frames[top - 1].opener == OP_SWITCH)
+        frames[top - 1].expr = 1;
+    else if (frames[top - 1].opener == OP_FOR) {
+        frames[top - 1].is_for = 1;
+        frames[top - 1].param = 1;
+        frames[top - 1].expr = 0;
+    } else if (word != nullptr && text_is(word, "catch")) {
+        frames[top - 1].param = 1;
+        frames[top - 1].expr = 0;
+    } else if (param_list(index) && current_expr() == 0) {
+        frames[top - 1].param = 1;
+        frames[top - 1].expr = 0;
+    } else if (paren_is_cast(index))
+        frames[top - 1].expr = 0;
+    else
+        frames[top - 1].expr = 1;
+    if (broken)
+        newline();
+    prev_op = 1;
+    prev_mode = MODE_TIGHT;
+    mode = 0;
+    (void)mode;
+}
+
+void Printer::emit_close(long index) {
+    int opener;
+    int was_paren;
+    long nxt;
+
+    opener = OP_NONE;
+    was_paren = 0;
+    if (
+            top > 0 && (
+                    frames[top - 1].kind == FR_PAREN || frames[top - 1].kind == FR_BRACKET)) {
+        opener = frames[top - 1].opener;
+        was_paren = frames[top - 1].kind == FR_PAREN;
+        pop_frame();
+    }
+    if (at_bol)
+        ensure(INDENT_NORMAL);
+    write_text(tokens->text_at(index));
+    prev_op = 0;
+    prev_mode = MODE_TIGHT;
+    nxt = next_code(index + 1);
+    if (
+            was_paren && opener != OP_NONE && nxt >= 0 && is_op(nxt, "{") == 0 && is_op(
+                    nxt,
+                    ";") == 0 && tokens->kind_at(nxt) != TOK_NOTE) {
+        newline();
+        push_frame(FR_STMT);
+        frames[top - 1].opener = opener;
+    }
+}
+
+void Printer::emit_brace(long index) {
+    long prev;
+    int kind;
+    long scan;
+
+    prev = prev_code(index);
+    kind = BK_BLOCK;
+    scan = prev;
+    while (scan >= 0) {
+        if (is_op(scan, "=")) {
+            kind = BK_INIT;
+            break;
+        }
+        if (
+                tokens->kind_at(scan) == TOK_WORD && text_is(
+                        tokens->text_at(scan),
+                        "enum")) {
+            kind = BK_ENUM;
+            break;
+        }
+        if (
+                tokens->kind_at(scan) == TOK_WORD && (
+                        text_is(tokens->text_at(scan), "class") || text_is(
+                                tokens->text_at(scan),
+                                "struct") || text_is(
+                                tokens->text_at(scan),
+                                "union"))) {
+            kind = BK_CLASS;
+            break;
+        }
+        if (
+                tokens->kind_at(scan) == TOK_WORD && text_is(
+                        tokens->text_at(scan),
+                        "do")) {
+            kind = BK_DO;
+            break;
+        }
+        if (is_op(scan, ";") || is_op(scan, "}"))
+            break;
+        if (
+                tokens->kind_at(scan) == TOK_WORD && (
+                        text_is(tokens->text_at(scan), "else") || text_is(
+                                tokens->text_at(scan),
+                                "try") || text_is(
+                                tokens->text_at(scan),
+                                "namespace")))
+            break;
+        scan = prev_code(scan);
+    }
+    if (prev >= 0 && is_op(prev, "="))
+        kind = BK_INIT;
+    if (at_bol == 0 && prev >= 0 && (is_op(prev, ";") || is_op(prev, "{"))) {
+        newline();
+        ensure(INDENT_NORMAL);
+    } else if (at_bol)
+        ensure(INDENT_NORMAL);
+    else {
+        out->add(' ');
+        column = column + 1;
+    }
+    write_text("{");
+    newline();
+    push_frame(FR_BRACE);
+    frames[top - 1].brace_kind = kind;
+    stmt_expr = 0;
+    stmt_decl = 0;
+    prev_op = 0;
+}
+
+void Printer::emit_close_brace(long index) {
+    int kind;
+    long nxt;
+
+    kind = BK_BLOCK;
+    if (top > 0 && frames[top - 1].kind == FR_BRACE) {
+        kind = frames[top - 1].brace_kind;
+        pop_frame();
+    }
+    if (tokens->blanks_at(index) > 0 && out->size() > 0) {
+        if (at_bol == 0)
+            newline();
+        newline();
+    }
+    if (at_bol == 0)
+        newline();
+    ensure(INDENT_NORMAL);
+    write_text("}");
+    nxt = next_code(index + 1);
+    if (
+            nxt >= 0 && (
+                    is_op(nxt, ";") || is_op(nxt, ",") || is_op(nxt, ")") || is_op(
+                            nxt,
+                            "]"))) {
+        prev_op = 1;
+        prev_mode = MODE_TIGHT;
+        return;
+    }
+    if (
+            nxt >= 0 && tokens->kind_at(nxt) == TOK_WORD && (
+                    text_is(tokens->text_at(nxt), "else") || text_is(
+                            tokens->text_at(nxt),
+                            "catch"))) {
+        prev_op = 0;
+        return;
+    }
+    if (nxt >= 0 && is_word(nxt, "while") && kind == BK_DO) {
+        prev_op = 0;
+        return;
+    }
+    newline();
+    prev_op = 0;
+    stmt_expr = 0;
+}
+
+void Printer::emit_comma(long index) {
+    int split;
+    int brace;
+
+    if (at_bol)
+        ensure(INDENT_NORMAL);
+    write_text(",");
+    split = 0;
+    if (
+            top > 0 && (
+                    frames[top - 1].kind == FR_PAREN || frames[top - 1].kind == FR_BRACKET) && frames[top - 1].broken)
+        split = 1;
+    brace = innermost_brace();
+    if (paren_depth() == 0 && (brace == BK_ENUM || brace == BK_INIT))
+        split = 1;
+    if (top > 0 && frames[top - 1].param)
+        frames[top - 1].expr = 0;
+    else if (paren_depth() == 0 && stmt_decl)
+        stmt_expr = 0;
+    if (split)
+        newline();
+    prev_op = 0;
+    prev_mode = MODE_TIGHT;
+}
+
+void Printer::finish_body(long index) {
+    long nxt;
+
+    nxt = next_code(index + 1);
+    if (nxt >= 0 && is_word(nxt, "else")) {
+        while (
+                top > 0 && frames[top - 1].kind == FR_STMT && frames[top - 1].opener != OP_IF)
+            pop_frame();
+        if (
+                top > 0 && frames[top - 1].kind == FR_STMT && frames[top - 1].opener == OP_IF)
+            pop_frame();
+        return;
+    }
+    while (top > 0 && frames[top - 1].kind == FR_STMT)
+        pop_frame();
+}
+
+void Printer::emit_semi(long index) {
+    if (at_bol)
+        ensure(INDENT_NORMAL);
+    write_text(";");
+    if (top_is_for()) {
+        frames[top - 1].param = 0;
+        frames[top - 1].expr = 1;
+        prev_op = 0;
+        prev_mode = MODE_TIGHT;
+        return;
+    }
+    if (paren_depth() == 0) {
+        long nxt;
+
+        nxt = index + 1;
+        if (
+                nxt < tokens->size() && tokens->kind_at(nxt) == TOK_NOTE && tokens->solo_at(
+                        nxt) == 0) {
+            out->add(' ');
+            column = column + 1;
+            write_comment(tokens->text_at(nxt), 0);
+        }
+        newline();
+        stmt_expr = 0;
+        stmt_decl = 0;
+        in_case = 0;
+        finish_body(index);
+    }
+    prev_op = 1;
+    prev_mode = MODE_TIGHT;
+}
+
+void Printer::emit_normal(long index) {
+    int mode;
+    int current;
+
+    mode = indent_mode(index);
+    if (tokens->blanks_at(index) > 0 && out->size() > 0) {
+        if (at_bol == 0)
+            newline();
+        newline();
+    }
+    if (at_bol)
+        ensure(mode);
+    else if (gap_before(index, op_mode(index))) {
+        out->add(' ');
+        column = column + 1;
+    }
+    write_text(tokens->text_at(index));
+    note_expr(index);
+    current = MODE_TIGHT;
+    prev_op = 0;
+    if (tokens->kind_at(index) == TOK_OP) {
+        current = op_mode(index);
+        prev_op = 1;
+        prev_mode = current;
+        if (current == MODE_LABEL) {
+            newline();
+            in_case = 0;
+        }
+    }
+}
+
+String *Printer::run(TokenList * list) {
+    long i;
+    long n;
+
+    tokens = list;
+    out = new String();
+    frames = new struct Frame[FRAME_MAX];
+    top = 0;
+    column = 0;
+    at_bol = 1;
+    stmt_expr = 0;
+    stmt_decl = 0;
+    in_case = 0;
+    prev_op = 0;
+    prev_mode = MODE_TIGHT;
+    i = 0;
+    n = tokens->size();
+    while (i < n) {
+        int kind;
+
+        kind = tokens->kind_at(i);
+        if (kind == TOK_NOTE) {
+            if (
+                    i > 0 && tokens->solo_at(i) == 0 && is_op(i - 1, ";") && paren_depth(
+                    ) == 0) {
+                i = i + 1;
+                continue;
+            }
+            emit_comment(i);
+            i = i + 1;
+            continue;
+        }
+        if (kind == TOK_HASH) {
+            emit_hash(i);
+            i = i + 1;
+            continue;
+        }
+        if (is_op(i, "{")) {
+            emit_brace(i);
+            i = i + 1;
+            continue;
+        }
+        if (is_op(i, "}")) {
+            emit_close_brace(i);
+            i = i + 1;
+            continue;
+        }
+        if (is_op(i, "(") || is_op(i, "[")) {
+            emit_open(i);
+            i = i + 1;
+            continue;
+        }
+        if (is_op(i, ")") || is_op(i, "]")) {
+            emit_close(i);
+            i = i + 1;
+            continue;
+        }
+        if (is_op(i, ",")) {
+            emit_comma(i);
+            i = i + 1;
+            continue;
+        }
+        if (is_op(i, ";")) {
+            emit_semi(i);
+            i = i + 1;
+            continue;
+        }
+        emit_normal(i);
+        i = i + 1;
+    }
+    if (out->size() > 0 && out->at(-1) != '\n')
+        newline();
+    return out;
+}
+
+void write_error(const char *path, int line, int column, const char *message) {
+    fprintf(stderr, "%s:%d:%d: %s\n", path, line, column, message);
+}
+
+int same_bytes(const char *left, long n, const char *right) {
+    long i;
+
+    if (text_length(right) != n)
+        return 0;
+    i = 0;
+    while (i < n) {
+        if (left[i] != right[i])
+            return 0;
+        i = i + 1;
+    }
+    return 1;
+}
+
+int write_inplace(const char *path, const char *text) {
+    char *tmp;
+    long n;
+    long i;
+    File *out;
+    unsigned long len;
+    unsigned long wrote;
+
+    n = text_length(path);
+    tmp = (char *)malloc((unsigned long)n + 20);
+    if (tmp == nullptr)
+        throw *new Exception("memory");
+    i = 0;
+    while (i < n) {
+        tmp[i] = path[i];
+        i = i + 1;
+    }
+    tmp[n] = '.';
+    tmp[n + 1] = 's';
+    tmp[n + 2] = 'c';
+    tmp[n + 3] = 'p';
+    tmp[n + 4] = 'p';
+    tmp[n + 5] = '-';
+    tmp[n + 6] = 'f';
+    tmp[n + 7] = 'o';
+    tmp[n + 8] = 'r';
+    tmp[n + 9] = 'm';
+    tmp[n + 10] = 'a';
+    tmp[n + 11] = 't';
+    tmp[n + 12] = '-';
+    tmp[n + 13] = 't';
+    tmp[n + 14] = 'm';
+    tmp[n + 15] = 'p';
+    tmp[n + 16] = 0;
+    out = fopen(tmp, "wb");
+    if (out == nullptr) {
+        free((void *)tmp);
+        write_error(path, 1, 1, "cannot write file");
+        return 1;
+    }
+    len = (unsigned long)text_length(text);
+    wrote = 0;
+    if (len > 0)
+        wrote = fwrite((const void *)text, 1ul, len, out);
+    if (fclose(out) != 0 || wrote != len) {
+        remove(tmp);
+        free((void *)tmp);
+        write_error(path, 1, 1, "cannot write file");
+        return 1;
+    }
+    if (rename(tmp, path) != 0) {
+        remove(tmp);
+        free((void *)tmp);
+        write_error(path, 1, 1, "cannot write file");
+        return 1;
+    }
+    free((void *)tmp);
+    return 0;
+}
+
+int format_one(const char *path, int inplace) {
+    File *in;
+    Lexer *lexer;
+    TokenList *tokens;
+    Printer *printer;
+    String *formatted;
+    int stdin_path;
+
+    stdin_path = text_is(path, "-");
+    if (inplace && stdin_path) {
+        write_error(path, 1, 1, "cannot rewrite standard input in place");
+        return 1;
+    }
+    if (stdin_path)
+        in = stdin;
+    else {
+        in = fopen(path, "rb");
+        if (in == nullptr) {
+            write_error(path, 1, 1, "cannot read file");
+            return 1;
+        }
+    }
+    lexer = new Lexer();
+    if (lexer->load(in) == 0) {
+        if (stdin_path == 0)
+            fclose(in);
+        write_error(path, 1, 1, "cannot read file");
+        return 1;
+    }
+    if (stdin_path == 0)
+        fclose(in);
+    tokens = new TokenList();
+    if (lexer->tokenize(tokens) == 0) {
+        write_error(
+                path,
+                lexer->fail_line(),
+                lexer->fail_column(),
+                lexer->fail_message());
+        if (inplace == 0)
+            fwrite(
+                    (const void *)lexer->source(),
+                    1ul,
+                    (unsigned long)lexer->source_length(),
+                    stdout);
+        tokens->release();
+        return 1;
+    }
+    printer = new Printer();
+    formatted = printer->run(tokens);
+    if (inplace) {
+        if (
+                same_bytes(
+                        lexer->source(),
+                        lexer->source_length(),
+                        formatted->c_str()) == 0) {
+            if (write_inplace(path, formatted->c_str()) != 0) {
+                tokens->release();
+                return 1;
+            }
+        }
+    } else
+        fputs(formatted->c_str(), stdout);
+    tokens->release();
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    CommandLine *command;
+    Option *help;
+    Option *version;
+    Option *inplace;
+    Option *verbose;
+    Positional *file;
+    int rewrite;
+    int noisy;
+    int count;
+    int index;
+    int status;
+
+    command = new CommandLine("scpp-format", "Format smallcpp source", "0.1");
+    help = new Option();
+    help->short_name = "h";
+    help->long_name = "help";
+    help->name = "help";
+    help->action = CLI_HELP;
+    command->add_option(help);
+    version = new Option();
+    version->short_name = "V";
+    version->long_name = "version";
+    version->name = "version";
+    version->action = CLI_VERSION;
+    command->add_option(version);
+    inplace = new Option();
+    inplace->short_name = "i";
+    inplace->long_name = "in-place";
+    inplace->name = "in-place";
+    command->add_option(inplace);
+    verbose = new Option();
+    verbose->short_name = "v";
+    verbose->long_name = "verbose";
+    verbose->name = "verbose";
+    command->add_option(verbose);
+    file = new Positional();
+    file->name = "file";
+    file->required = true;
+    file->is_list = true;
+    command->add_positional(file);
+    try {
+        command->parse(argc, argv);
+    } catch (Exception error) {
+        fputs(command->help_text(), stderr);
+        return 2;
+    }
+    if (command->current_action() == CLI_HELP) {
+        fputs(command->help_text(), stdout);
+        return 0;
+    }
+    if (command->current_action() == CLI_VERSION) {
+        fputs(command->version_text(), stdout);
+        fputs("\n", stdout);
+        return 0;
+    }
+    rewrite = command->switch_value("in-place");
+    noisy = command->switch_value("verbose");
+    count = command->positional_count();
+    index = 0;
+    status = 0;
+    while (index < count) {
+        const char *path;
+        int result;
+
+        path = command->positional_at(index);
+        if (rewrite && noisy)
+            fprintf(stderr, "%s\n", path);
+        result = format_one(path, rewrite);
+        if (result != 0)
+            status = result;
+        index = index + 1;
+    }
+    return status;
+}

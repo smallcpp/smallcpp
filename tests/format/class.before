@@ -1,0 +1,1 @@
+class Both : public Left, public Right { public: Both(); }; Both::Both(int ax, int ay) : x(ax), y(ay) { } class Derived : public AlphaName, public BetaName, public GammaName, public DeltaName { int value; };
