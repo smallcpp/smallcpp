@@ -1,10 +1,13 @@
 #ifndef SMALLCPP_UNISTD
 #define SMALLCPP_UNISTD
 
-/* File, directory, and descriptor calls. Include this header
- * as <unistd>. A return of 0 is success and -1 is failure,
- * except read, write, lseek, and copy_file_range, which
- * return a count or -1. isatty returns 1 for a terminal. */
+/* File, directory, descriptor, and process calls. Include
+ * this header as <unistd>. A return of 0 is success and -1
+ * is failure, except read, write, lseek, and copy_file_range,
+ * which return a count or -1. isatty returns 1 for a terminal.
+ * fork returns 0 in the child, the child pid in the parent,
+ * or -1. An exec call returns only on failure, and then it
+ * returns -1. errno is set when one of these calls fails. */
 
 #ifndef SMALLCPP_SSIZE_T
 #define SMALLCPP_SSIZE_T
@@ -30,6 +33,22 @@ extern long copy_file_range(int in_fd, long *off_in,
     unsigned int flags);
 extern int pipe(int *fds);
 extern int isatty(int fd);
+
+#ifndef SMALLCPP_PID_T
+#define SMALLCPP_PID_T
+typedef int pid_t;
+#endif
+
+extern pid_t fork(void);
+extern int execve(const char *path, char *const argv[],
+    char *const envp[]);
+extern int execv(const char *path, char *const argv[]);
+extern int execle(const char *path, const char *arg, ...);
+extern int execl(const char *path, const char *arg, ...);
+extern int execvp(const char *file, char *const argv[]);
+extern int execlp(const char *file, const char *arg, ...);
+extern int execvpe(const char *file, char *const argv[],
+    char *const envp[]);
 
 #define F_OK 0
 #define X_OK 1

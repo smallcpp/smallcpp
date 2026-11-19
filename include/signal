@@ -1,30 +1,91 @@
 #ifndef SMALLCPP_SIGNAL
 #define SMALLCPP_SIGNAL
 
-/* Signals. Include this header as <signal>. kill sends a
- * signal. sigaction installs a handler. SIG_IGN ignores
- * the signal. A parent that writes a pipe sets SIGPIPE
- * to SIG_IGN when a dead child should not kill it. */
+/* Signals. Include this header as <signal>. kill and raise
+ * send a signal. signal and sigaction install a handler.
+ * SIG_DFL is the default action. SIG_IGN ignores the signal.
+ * SIG_ERR is the error return from signal. sigemptyset and
+ * sigaddset build a sigset_t. sigprocmask reads or changes
+ * the blocked set. SIG_BLOCK, SIG_UNBLOCK, and SIG_SETMASK
+ * are the how values. A failure returns -1 and sets errno,
+ * except signal, which returns SIG_ERR. */
 
 #ifndef SMALLCPP_PID_T
 #define SMALLCPP_PID_T
 typedef int pid_t;
 #endif
 
+#ifndef SMALLCPP_SIGSET_T
+#define SMALLCPP_SIGSET_T
+struct sigset {
+    unsigned long __val[16];
+};
+typedef struct sigset sigset_t;
+#endif
+
 struct sigaction {
     void (*sa_handler)(int);
-    unsigned long sa_mask[16];
+    sigset_t sa_mask;
     int sa_flags;
     char pad[12];
 };
 
 extern int kill(pid_t pid, int sig);
+extern int raise(int sig);
+extern void (*signal(int sig, void (*handler)(int)))(int);
 extern int sigaction(int sig, const struct sigaction *act,
     struct sigaction *old);
+extern int sigemptyset(sigset_t *set);
+extern int sigaddset(sigset_t *set, int sig);
+extern int sigprocmask(int how, const sigset_t *set,
+    sigset_t *old);
 
+#define SIGHUP 1
+#define SIGINT 2
+#define SIGQUIT 3
+#define SIGILL 4
+#define SIGTRAP 5
+#define SIGABRT 6
+#define SIGBUS 7
+#define SIGFPE 8
 #define SIGKILL 9
+#define SIGUSR1 10
+#define SIGSEGV 11
+#define SIGUSR2 12
 #define SIGPIPE 13
+#define SIGALRM 14
 #define SIGTERM 15
+#define SIGSTKFLT 16
+#define SIGCHLD 17
+#define SIGCONT 18
+#define SIGSTOP 19
+#define SIGTSTP 20
+#define SIGTTIN 21
+#define SIGTTOU 22
+#define SIGURG 23
+#define SIGXCPU 24
+#define SIGXFSZ 25
+#define SIGVTALRM 26
+#define SIGPROF 27
+#define SIGWINCH 28
+#define SIGPOLL 29
+#define SIGPWR 30
+#define SIGSYS 31
+
+#define SIG_ERR ((void (*)(int))-1)
+#define SIG_DFL ((void (*)(int))0)
 #define SIG_IGN ((void (*)(int))1)
+
+#define SIG_BLOCK 0
+#define SIG_UNBLOCK 1
+#define SIG_SETMASK 2
+
+#define SA_NOCLDSTOP 1
+#define SA_NOCLDWAIT 2
+#define SA_SIGINFO 4
+#define SA_ONSTACK 0x08000000
+#define SA_RESTART 0x10000000
+#define SA_NODEFER 0x40000000
+#define SA_RESETHAND 0x80000000
 
 #endif

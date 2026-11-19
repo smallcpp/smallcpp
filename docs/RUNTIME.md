@@ -66,6 +66,10 @@ Include it as `<unistd>`. A return of 0 is success and -1 is failure, except `re
 
 `pipe` writes two descriptors. The first reads and the second writes. `isatty` returns 1 when the descriptor is a terminal. [`docs/examples/rt-pipe.scpp`](examples/rt-pipe.scpp) prints `rt-pipe 1`. [`docs/examples/rt-isatty.scpp`](examples/rt-isatty.scpp) prints `rt-isatty 1`.
 
+`fork` copies the calling process. It returns 0 to the child and the child's pid to the parent. A failure returns -1 and sets `errno`. [`docs/examples/rt-fork.scpp`](examples/rt-fork.scpp) prints `rt-fork 1`.
+
+`execv` replaces the process with the program at a path. `execve` does the same and passes an environment. `execl` and `execle` take the arguments in the call. `execle` passes the environment after the null argument. `execvp`, `execlp`, and `execvpe` search `PATH` when the name has no slash. `execvpe` also passes an environment. An exec call returns only when it fails, and then it returns -1 and sets `errno`. [`docs/examples/rt-execv.scpp`](examples/rt-execv.scpp) prints `rt-execv 1`. [`docs/examples/rt-execve.scpp`](examples/rt-execve.scpp) prints `rt-execve 1`. [`docs/examples/rt-execl.scpp`](examples/rt-execl.scpp) prints `rt-execl 1`. [`docs/examples/rt-execle.scpp`](examples/rt-execle.scpp) prints `rt-execle 1`. [`docs/examples/rt-execvp.scpp`](examples/rt-execvp.scpp) prints `rt-execvp 1`. [`docs/examples/rt-execlp.scpp`](examples/rt-execlp.scpp) prints `rt-execlp 1`. [`docs/examples/rt-execvpe.scpp`](examples/rt-execvpe.scpp) prints `rt-execvpe 1`.
+
 ## dirent
 
 Include it as `<dirent>`. `opendir` opens a directory. `readdir` returns the next `struct dirent`, whose `d_name` is the entry name, or null at the end. `closedir` closes the directory. [`docs/examples/rt-opendir.scpp`](examples/rt-opendir.scpp) prints `rt-opendir 1`. [`docs/examples/rt-readdir.scpp`](examples/rt-readdir.scpp) prints `rt-readdir 1`. [`docs/examples/rt-closedir.scpp`](examples/rt-closedir.scpp) prints `rt-closedir 1`.
@@ -196,13 +200,17 @@ Include it as `<socket>`. The calls are IPv4 TCP. `AF_INET`, `SOCK_STREAM`, and 
 
 `htons` and `htonl` convert a short and an int to network byte order. `inet_pton` parses an address into a `sin_addr` and returns 1 on success. [`docs/examples/rt-htons.scpp`](examples/rt-htons.scpp) prints `rt-htons 1`. [`docs/examples/rt-htonl.scpp`](examples/rt-htonl.scpp) prints `rt-htonl 1`. [`docs/examples/rt-inet-pton.scpp`](examples/rt-inet-pton.scpp) prints `rt-inet-pton 1`.
 
+## select
+
+Include it as `<select>`. `select` waits until a descriptor in an `fd_set` is ready, or until the timeout. A null timeout waits. The count argument is the highest descriptor plus one. The return is how many descriptors are ready, or -1, and a failure sets `errno`. `FD_ZERO` clears a set. `FD_SET` and `FD_CLR` change one descriptor. `FD_ISSET` tests one. `FD_SETSIZE` is 1024. `pselect` takes a `struct timespec` and a signal mask. The mask may be null. [`docs/examples/rt-select.scpp`](examples/rt-select.scpp) prints `rt-select 1`. [`docs/examples/rt-pselect.scpp`](examples/rt-pselect.scpp) prints `rt-pselect 1`.
+
 ## time
 
 Include it as `<time>`. `time` returns Unix time and writes it through `out` when `out` is not null. `clock_gettime` fills a `struct timespec`. `CLOCK_REALTIME` is Unix time and `CLOCK_MONOTONIC` is an interval clock. `nanosleep` waits for the requested time. A signal that wakes it early returns -1 and sets `errno` to `EINTR`. [`docs/examples/rt-time.scpp`](examples/rt-time.scpp) prints `rt-time 1`. [`docs/examples/rt-clock.scpp`](examples/rt-clock.scpp) prints `rt-clock 1`. [`docs/examples/rt-nanosleep.scpp`](examples/rt-nanosleep.scpp) prints `rt-nanosleep 1`.
 
 ## spawn
 
-Include it as `<spawn>`. `posix_spawnp` starts a program. A name with no slash is searched in `PATH`. The result is 0 or an error number, and `errno` is left unchanged. `waitpid` reaps the child. `WIFEXITED` and `WEXITSTATUS` read the status. [`docs/examples/rt-posix-spawnp.scpp`](examples/rt-posix-spawnp.scpp) prints `rt-posix-spawnp 1`. [`docs/examples/rt-waitpid.scpp`](examples/rt-waitpid.scpp) prints `rt-waitpid 1`.
+Include it as `<spawn>`. `posix_spawnp` starts a program. A name with no slash is searched in `PATH`. The result is 0 or an error number, and `errno` is left unchanged. `wait` reaps one child. `waitpid` reaps the named child. `WIFEXITED` and `WEXITSTATUS` read the status. [`docs/examples/rt-posix-spawnp.scpp`](examples/rt-posix-spawnp.scpp) prints `rt-posix-spawnp 1`. [`docs/examples/rt-wait.scpp`](examples/rt-wait.scpp) prints `rt-wait 1`. [`docs/examples/rt-waitpid.scpp`](examples/rt-waitpid.scpp) prints `rt-waitpid 1`.
 
 `posix_spawn_file_actions_init` prepares a file-action list. `posix_spawn_file_actions_destroy` releases it. `posix_spawn_file_actions_adddup2` duplicates a descriptor in the child. `posix_spawn_file_actions_addclose` closes one. [`docs/examples/rt-spawn-actions-init.scpp`](examples/rt-spawn-actions-init.scpp) prints `rt-spawn-actions-init 1`. [`docs/examples/rt-spawn-actions-destroy.scpp`](examples/rt-spawn-actions-destroy.scpp) prints `rt-spawn-actions-destroy 1`. [`docs/examples/rt-spawn-adddup2.scpp`](examples/rt-spawn-adddup2.scpp) prints `rt-spawn-adddup2 1`. [`docs/examples/rt-spawn-addclose.scpp`](examples/rt-spawn-addclose.scpp) prints `rt-spawn-addclose 1`.
 
@@ -210,7 +218,9 @@ Include it as `<spawn>`. `posix_spawnp` starts a program. A name with no slash i
 
 ## signal
 
-Include it as `<signal>`. `kill` sends a signal to a process. Signal 0 tests that the process exists. `sigaction` installs a handler. `SIG_IGN` ignores the signal. `SIGPIPE` is the signal a write to a dead pipe would raise. [`docs/examples/rt-kill.scpp`](examples/rt-kill.scpp) prints `rt-kill 1`. [`docs/examples/rt-sigaction.scpp`](examples/rt-sigaction.scpp) prints `rt-sigaction 1`.
+Include it as `<signal>`. `kill` sends a signal to a process. Signal 0 tests that the process exists. `raise` sends a signal to the calling process. `signal` installs a handler and returns the previous one. `SIG_DFL` is the default action, `SIG_IGN` ignores the signal, and `SIG_ERR` is the error return from `signal`. `sigaction` installs a handler. `SIGPIPE` is the signal a write to a dead pipe would raise. `SA_RESTART` restarts a call that a signal interrupted. [`docs/examples/rt-kill.scpp`](examples/rt-kill.scpp) prints `rt-kill 1`. [`docs/examples/rt-raise.scpp`](examples/rt-raise.scpp) prints `rt-raise 1`. [`docs/examples/rt-signal.scpp`](examples/rt-signal.scpp) prints `rt-signal 1`. [`docs/examples/rt-sigaction.scpp`](examples/rt-sigaction.scpp) prints `rt-sigaction 1`.
+
+`sigemptyset` clears a `sigset_t`. `sigaddset` adds one signal. `sigprocmask` reads or changes the blocked set. `SIG_BLOCK`, `SIG_UNBLOCK`, and `SIG_SETMASK` are the how values. A null set leaves the mask unchanged. [`docs/examples/rt-sigemptyset.scpp`](examples/rt-sigemptyset.scpp) prints `rt-sigemptyset 1`. [`docs/examples/rt-sigaddset.scpp`](examples/rt-sigaddset.scpp) prints `rt-sigaddset 1`. [`docs/examples/rt-sigprocmask.scpp`](examples/rt-sigprocmask.scpp) prints `rt-sigprocmask 1`.
 
 ## ioctl
 

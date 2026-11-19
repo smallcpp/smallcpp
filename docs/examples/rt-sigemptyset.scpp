@@ -1,0 +1,12 @@
+#include <signal>
+
+int main(void) {
+    sigset_t set;
+    int ok;
+
+    ok = 0;
+    if (sigemptyset(&set) == 0)
+        ok = 1;
+    print("rt-sigemptyset {}\n", ok);
+    return 0;
+}

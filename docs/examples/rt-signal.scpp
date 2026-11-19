@@ -1,0 +1,14 @@
+#include <signal>
+
+int main(void) {
+    void (*old)(int);
+    int ok;
+
+    ok = 0;
+    signal(SIGPIPE, SIG_IGN);
+    old = signal(SIGPIPE, SIG_IGN);
+    if (old == SIG_IGN)
+        ok = 1;
+    print("rt-signal {}\n", ok);
+    return 0;
+}

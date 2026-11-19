@@ -1,0 +1,13 @@
+#include <signal>
+
+int main(void) {
+    sigset_t old;
+    int ok;
+
+    ok = 0;
+    if (sigprocmask(SIG_BLOCK, nullptr, &old) == 0
+            && sigprocmask(SIG_SETMASK, &old, nullptr) == 0)
+        ok = 1;
+    print("rt-sigprocmask {}\n", ok);
+    return 0;
+}

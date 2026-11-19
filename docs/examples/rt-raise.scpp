@@ -1,0 +1,11 @@
+#include <signal>
+
+int main(void) {
+    int ok;
+
+    ok = 0;
+    if (signal(SIGPIPE, SIG_IGN) != SIG_ERR && raise(SIGPIPE) == 0)
+        ok = 1;
+    print("rt-raise {}\n", ok);
+    return 0;
+}

@@ -34,10 +34,13 @@ struct addrinfo {
     struct addrinfo *ai_next;
 };
 
+#ifndef SMALLCPP_TIMEVAL
+#define SMALLCPP_TIMEVAL
 struct timeval {
     long tv_sec;
     long tv_usec;
 };
+#endif
 
 #define AF_INET 2
 #define SOCK_STREAM 1

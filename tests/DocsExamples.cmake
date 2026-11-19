@@ -1778,6 +1778,76 @@ add_test(
         -DEXPECT_NL=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 add_test(
+    NAME doc_rt-execl
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-execl.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-execl
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-execl 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-execle
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-execle.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-execle
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-execle 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-execlp
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-execlp.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-execlp
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-execlp 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-execv
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-execv.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-execv
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-execv 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-execve
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-execve.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-execve
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-execve 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-execvp
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-execvp.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-execvp
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-execvp 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-execvpe
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-execvpe.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-execvpe
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-execvpe 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
     NAME doc_rt-exp
     COMMAND ${CMAKE_COMMAND}
         -DCOMPILER=$<TARGET_FILE:scpp>
@@ -1945,6 +2015,16 @@ add_test(
         -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-fopen
         -DEXPECT=0
         "-DEXPECT_OUT=rt-fopen 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-fork
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-fork.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-fork
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-fork 1"
         -DEXPECT_NL=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 add_test(
@@ -2451,6 +2531,16 @@ add_test(
         -DEXPECT_NL=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 add_test(
+    NAME doc_rt-pselect
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-pselect.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-pselect
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-pselect 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
     NAME doc_rt-pthread-create
     COMMAND ${CMAKE_COMMAND}
         -DCOMPILER=$<TARGET_FILE:scpp>
@@ -2493,6 +2583,16 @@ add_test(
         "-DEXPECT_OUT=rt-pthread-self 1"
         -DEXPECT_NL=1
         "-DLIBS=pthread"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-raise
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-raise.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-raise
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-raise 1"
+        -DEXPECT_NL=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 add_test(
     NAME doc_rt-read
@@ -2608,6 +2708,16 @@ add_test(
         "-DLIBS=m"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 add_test(
+    NAME doc_rt-select
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-select.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-select
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-select 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
     NAME doc_rt-sem-destroy
     COMMAND ${CMAKE_COMMAND}
         -DCOMPILER=$<TARGET_FILE:scpp>
@@ -2690,6 +2800,46 @@ add_test(
         -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-sigaction
         -DEXPECT=0
         "-DEXPECT_OUT=rt-sigaction 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-sigaddset
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-sigaddset.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-sigaddset
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-sigaddset 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-sigemptyset
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-sigemptyset.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-sigemptyset
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-sigemptyset 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-signal
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-signal.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-signal
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-signal 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-sigprocmask
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-sigprocmask.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-sigprocmask
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-sigprocmask 1"
         -DEXPECT_NL=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 add_test(
@@ -3032,6 +3182,16 @@ add_test(
         -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-unsetenv
         -DEXPECT=0
         "-DEXPECT_OUT=rt-unsetenv 1"
+        -DEXPECT_NL=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
+add_test(
+    NAME doc_rt-wait
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DSOURCE=${CMAKE_SOURCE_DIR}/docs/examples/rt-wait.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/doc-rt-wait
+        -DEXPECT=0
+        "-DEXPECT_OUT=rt-wait 1"
         -DEXPECT_NL=1
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectRun.cmake)
 add_test(
