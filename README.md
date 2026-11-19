@@ -25,9 +25,17 @@ exit
 
 `scripts/setup [--clean] [debug|release|profile]` works from any directory when you invoke this checkout's `scripts/setup`. A symlink kept outside `scripts/` resolves the wrong root. `debug`, `release`, and `profile` set `CMAKE_BUILD_TYPE` to `Debug`, `Release`, and `RelWithDebInfo`. With no type, a fresh directory keeps CMake's default and a later run keeps the cached type. `--clean` runs `scripts/clean` before configuration. It may precede or follow the type. Setup refuses to start when a project shell is already active. Exit that shell first. An unknown argument exits 2.
 
-The shell reads `.project_env`, puts `bin/` and `scripts/` on `PATH`, and changes to `build/`. `build` and `rebuild` are functions in that shell. `build` compiles the default targets. `build test` builds those targets and `command_line_test`, `prefix_test`, `parse_test`, and `verify_module`, then runs the suite. `rebuild` is a clean-first build. A name after `build` or `rebuild` is a target. `exit` leaves the shell. The `./bin/scpp` lines above run from the checkout root. `parse_test` exists after `build test`.
+The shell reads `.project_env`, puts `bin/` and `scripts/` on `PATH`, and changes to `build/`. `build` and `rebuild` are functions in that shell. `build` compiles the default targets. `build test` builds those targets and `command_line_test`, `prefix_test`, `parse_test`, `verify_module`, and `lsp_test`, then runs the suite. `rebuild` is a clean-first build. A name after `build` or `rebuild` is a target. `exit` leaves the shell. The `./bin/scpp` lines above run from the checkout root. `parse_test` exists after `build test`.
 
-Binaries are written to `bin/` and libraries to `lib/`. A normal `build` writes `scpp`, `scpp_cc`, `preproc`, and the libraries.
+Binaries are written to `bin/` and libraries to `lib/`. A normal `build` writes `scpp`, `scpp_cc`, `preproc`, `scpp-lsp`, and the libraries.
+
+## Language server
+
+`scpp-lsp` speaks the Language Server Protocol on standard input and standard output. A normal build writes `bin/scpp-lsp`. An editor starts that binary and keeps the process. The server takes no arguments. [docs/LSP.md](docs/LSP.md) lists the methods and how diagnostics are produced.
+
+```sh
+./bin/scpp-lsp
+```
 
 ## Install
 
@@ -61,6 +69,7 @@ libc=/lib/x86_64-linux-gnu/libc.so
 ## Layout
 
 - `src/scpp` — the `scpp` driver. It coordinates `preproc`, `scpp_cc`, and the Clang link
+- `src/lsp` — the `scpp-lsp` language server
 - `include` — language headers. `<exceptions>` defines the base `Exception` class. `<string>`, `<array>`, `<vector>`, `<list>`, `<tree>`, and `<hash>` are the collections
 - `src/runtime` — precise collector, `print` and `format`, and `Exception`. `smallcpp_alloc` traces stack maps at safepoints. `delete` does not free. An exception nothing catches aborts and prints a stack
 - `src/compiler` — Bison grammar and Flex scanner

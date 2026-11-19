@@ -1,0 +1,435 @@
+#include <lsp>
+#include <stdio>
+#include <stdlib>
+#include <unistd>
+#include <fcntl>
+#include <spawn>
+
+extern int dup2(int old_fd, int new_fd);
+extern void _exit(int code);
+
+static void copy_text(char *buf, const char *text) {
+    long i;
+
+    i = 0;
+    while (text[i] != 0) {
+        buf[i] = text[i];
+        i = i + 1;
+    }
+    buf[i] = 0;
+}
+
+static int join_path(
+        char *buf,
+        long cap,
+        const char *dir,
+        const char *name) {
+    long i;
+    long n;
+
+    i = 0;
+    while (dir[i] != 0) {
+        if (i + 1 >= cap)
+            return 0;
+        buf[i] = dir[i];
+        i = i + 1;
+    }
+    if (i + 1 >= cap)
+        return 0;
+    buf[i] = '/';
+    i = i + 1;
+    n = 0;
+    while (name[n] != 0) {
+        if (i + 1 >= cap)
+            return 0;
+        buf[i] = name[n];
+        i = i + 1;
+        n = n + 1;
+    }
+    buf[i] = 0;
+    return 1;
+}
+
+static int write_text(const char *path, const char *text) {
+    File *out;
+    unsigned long size;
+    unsigned long wrote;
+
+    if (text == nullptr)
+        text = "";
+    size = 0;
+    while (text[size] != 0)
+        size = size + 1;
+    out = fopen(path, "wb");
+    if (out == nullptr)
+        return 0;
+    if (size > 0) {
+        wrote = fwrite((void *)text, 1, size, out);
+        if (wrote != size) {
+            fclose(out);
+            return 0;
+        }
+    }
+    if (fclose(out) != 0)
+        return 0;
+    return 1;
+}
+
+static String *read_fd(int fd) {
+    String *text;
+    char buf[512];
+    long total;
+
+    text = new String();
+    total = 0;
+    while (total < 262144) {
+        long n;
+        long room;
+
+        room = 511;
+        if (262144 - total < room)
+            room = 262144 - total;
+        n = read(fd, (void *)buf, (unsigned long)room);
+        if (n <= 0)
+            break;
+        buf[n] = 0;
+        text->add(buf);
+        total = total + n;
+    }
+    if (total >= 262144) {
+        char junk[256];
+
+        while (read(fd, (void *)junk, 256) > 0) {
+        }
+    }
+    return text;
+}
+
+static String *capture(
+        const char *compiler,
+        const char *dir,
+        int *status_out) {
+    int fds[2];
+    int devnull;
+    int status;
+    pid_t pid;
+    char arg0[4096];
+    char arg1[16];
+    char arg2[8];
+    char arg3[16];
+    char arg4[16];
+    char *args[6];
+    String *err;
+
+    *status_out = 1;
+    if (pipe(fds) != 0)
+        return nullptr;
+    copy_text(arg0, compiler);
+    copy_text(arg1, "--emit-llvm");
+    copy_text(arg2, "-o");
+    copy_text(arg3, "unit.bc");
+    copy_text(arg4, "unit.scpp");
+    args[0] = arg0;
+    args[1] = arg1;
+    args[2] = arg2;
+    args[3] = arg3;
+    args[4] = arg4;
+    args[5] = nullptr;
+    fflush(stdout);
+    fflush(stderr);
+    pid = fork();
+    if (pid < 0) {
+        close(fds[0]);
+        close(fds[1]);
+        return nullptr;
+    }
+    if (pid == 0) {
+        devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, 1);
+            close(devnull);
+        }
+        close(fds[0]);
+        dup2(fds[1], 2);
+        close(fds[1]);
+        if (chdir(dir) != 0)
+            _exit(127);
+        execv(compiler, args);
+        _exit(127);
+    }
+    close(fds[1]);
+    err = read_fd(fds[0]);
+    close(fds[0]);
+    status = 0;
+    if (waitpid(pid, &status, 0) < 0)
+        *status_out = 1;
+    else if (WIFEXITED(status))
+        *status_out = WEXITSTATUS(status);
+    else
+        *status_out = 1;
+    return err;
+}
+
+static int digit(char ch) {
+    return ch >= '0' && ch <= '9';
+}
+
+static int match_diag(
+        const char *line,
+        long *out_line,
+        long *out_col,
+        const char **message) {
+    long i;
+
+    i = 0;
+    while (line[i] != 0) {
+        if (line[i] == ':') {
+            long j;
+            long line_v;
+            long col_v;
+            int line_digits;
+            int col_digits;
+
+            j = i + 1;
+            line_v = 0;
+            line_digits = 0;
+            while (digit(line[j])) {
+                line_v = line_v * 10 + (line[j] - '0');
+                j = j + 1;
+                line_digits = line_digits + 1;
+            }
+            if (line_digits > 0 && line[j] == ':') {
+                j = j + 1;
+                col_v = 0;
+                col_digits = 0;
+                while (digit(line[j])) {
+                    col_v = col_v * 10 + (line[j] - '0');
+                    j = j + 1;
+                    col_digits = col_digits + 1;
+                }
+                if (col_digits > 0
+                        && line[j] == ':'
+                        && line[j + 1] == ' ') {
+                    *out_line = line_v;
+                    *out_col = col_v;
+                    *message = line + j + 2;
+                    return 1;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    return 0;
+}
+
+static int span_char(char ch) {
+    if (ch >= 'a' && ch <= 'z')
+        return 1;
+    if (ch >= 'A' && ch <= 'Z')
+        return 1;
+    if (ch >= '0' && ch <= '9')
+        return 1;
+    if (ch == '_')
+        return 1;
+    return 0;
+}
+
+static long end_column(
+        const char *text,
+        long line,
+        long column) {
+    long current;
+    long i;
+    long at;
+    long end;
+
+    if (text == nullptr)
+        return column + 1;
+    current = 1;
+    i = 0;
+    while (text[i] != 0 && current < line) {
+        if (text[i] == '\n')
+            current = current + 1;
+        i = i + 1;
+    }
+    if (current != line)
+        return column + 1;
+    at = 0;
+    while (at < column - 1
+            && text[i] != 0
+            && text[i] != '\n') {
+        i = i + 1;
+        at = at + 1;
+    }
+    if (text[i] == 0 || text[i] == '\n' || !span_char(text[i]))
+        return column + 1;
+    end = column;
+    while (text[i] != 0 && text[i] != '\n' && span_char(text[i])) {
+        i = i + 1;
+        end = end + 1;
+    }
+    return end;
+}
+
+static Diag *make_diag(
+        const char *text,
+        long line,
+        long column,
+        const char *message) {
+    Diag *diag;
+
+    diag = new Diag();
+    if (line < 1)
+        line = 1;
+    if (column < 1)
+        column = 1;
+    diag->line = line;
+    diag->column = column;
+    diag->end_column = end_column(text, line, column);
+    diag->message = new String();
+    if (message == nullptr)
+        message = "";
+    diag->message->add(message);
+    diag->next = nullptr;
+    return diag;
+}
+
+int write_buffer(const char *path, const char *text) {
+    return write_text(path, text);
+}
+
+static void unlink_named(const char *dir, const char *name) {
+    char path[128];
+
+    if (join_path(path, 128, dir, name))
+        unlink(path);
+}
+
+Diag *compile_file(
+        const char *compiler,
+        const char *dir,
+        const char *text) {
+    int status;
+    String *err;
+    Diag *head;
+    Diag *tail;
+    const char *cursor;
+    char line[1024];
+
+    if (compiler == nullptr || compiler[0] == 0)
+        return make_diag(text, 1, 1, "scpp was not found");
+    if (dir == nullptr)
+        return make_diag(text, 1, 1, "cannot check the buffer");
+    status = 1;
+    err = capture(compiler, dir, &status);
+    unlink_named(dir, "unit.bc");
+    unlink_named(dir, "unit.bc.i");
+    unlink_named(dir, "unit.i");
+    unlink_named(dir, "unit.o");
+    if (err == nullptr) {
+        if (status == 127)
+            return make_diag(text, 1, 1, "cannot run scpp");
+        return nullptr;
+    }
+    head = nullptr;
+    tail = nullptr;
+    cursor = err->c_str();
+    while (cursor[0] != 0) {
+        long n;
+        long diag_line;
+        long diag_col;
+        const char *message;
+        Diag *diag;
+
+        n = 0;
+        while (cursor[n] != 0 && cursor[n] != '\n' && n < 1023) {
+            line[n] = cursor[n];
+            n = n + 1;
+        }
+        line[n] = 0;
+        if (cursor[n] == '\n')
+            cursor = cursor + n + 1;
+        else
+            cursor = cursor + n;
+        if (match_diag(line, &diag_line, &diag_col, &message)) {
+            diag = make_diag(text, diag_line, diag_col, message);
+            if (head == nullptr)
+                head = diag;
+            else
+                tail->next = diag;
+            tail = diag;
+        }
+    }
+    if (head == nullptr && status == 127)
+        return make_diag(text, 1, 1, "cannot run scpp");
+    return head;
+}
+
+Diag *check_buffer(
+        const char *compiler,
+        const char *text,
+        Document *doc) {
+    char pattern[64];
+    char path[96];
+    Diag *diags;
+
+    copy_text(pattern, "/tmp/scpp-lsp-XXXXXX");
+    if (mkdtemp(pattern) == nullptr) {
+        return make_diag(
+                text,
+                1,
+                1,
+                "cannot create a temporary directory");
+    }
+    if (!join_path(path, 96, pattern, "unit.scpp")
+            || !write_text(path, text)) {
+        rmdir(pattern);
+        return make_diag(text, 1, 1, "cannot write the buffer");
+    }
+    load_symbols(doc, path);
+    diags = compile_file(compiler, pattern, text);
+    unlink(path);
+    rmdir(pattern);
+    return diags;
+}
+
+void load_symbols(Document *doc, const char *path) {
+    int n;
+    int i;
+    Symbol *head;
+    Symbol *tail;
+
+    if (doc == nullptr)
+        return;
+    doc->symbols = nullptr;
+    if (path == nullptr || scpp_index_file(path) < 0)
+        return;
+    n = scpp_symbol_count();
+    head = nullptr;
+    tail = nullptr;
+    i = 0;
+    while (i < n) {
+        Symbol *sym;
+        const char *name;
+
+        sym = new Symbol();
+        name = scpp_symbol_name(i);
+        sym->name = new String();
+        if (name == nullptr)
+            name = "";
+        sym->name->add(name);
+        sym->line = scpp_symbol_line(i);
+        sym->column = scpp_symbol_column(i);
+        sym->length = scpp_symbol_length(i);
+        sym->kind = scpp_symbol_kind(i);
+        sym->defining = scpp_symbol_defining(i);
+        sym->next = nullptr;
+        if (head == nullptr)
+            head = sym;
+        else
+            tail->next = sym;
+        tail = sym;
+        i = i + 1;
+    }
+    doc->symbols = head;
+}

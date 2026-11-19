@@ -9,10 +9,14 @@ FLEX_TARGET(SmallcppScanner smallcpp.l
 ADD_FLEX_BISON_DEPENDENCY(SmallcppScanner SmallcppParser)
 
 add_library(smallcpp_parse STATIC
+    symbols.c
     ast.c
     diagnostic.c
     ${BISON_SmallcppParser_OUTPUTS}
-    ${FLEX_SmallcppScanner_OUTPUTS})
+    ${FLEX_SmallcppScanner_OUTPUTS}
+    yyerror.c)
+set_source_files_properties(symbols.c PROPERTIES
+    OBJECT_DEPENDS "${BISON_SmallcppParser_OUTPUTS};${FLEX_SmallcppScanner_OUTPUTS}")
 target_include_directories(smallcpp_parse PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR})

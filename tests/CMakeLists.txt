@@ -477,3 +477,8 @@ add_test(
         -DHELPER=${CMAKE_SOURCE_DIR}/cmake/InstallPrefix.cmake
         -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/install-prefix
         -P ${CMAKE_CURRENT_SOURCE_DIR}/InstallPrefix.cmake)
+
+add_executable(lsp_test EXCLUDE_FROM_ALL lsp_test.cpp)
+target_compile_features(lsp_test PRIVATE cxx_std_17)
+add_test(NAME lsp_session
+    COMMAND lsp_test "${CMAKE_SOURCE_DIR}/bin/scpp-lsp")

@@ -336,6 +336,22 @@ static int peek_lparen(void)
     return c == '(';
 }
 
+void smallcpp_reset_lexer(void)
+{
+    int i;
+
+    for (i = 0; i < type_count; i++)
+        free(type_names[i]);
+    type_count = 0;
+    class_depth = 0;
+    class_name_pending = 0;
+    typedef_pending = 0;
+    paren_depth = 0;
+    member_start = 0;
+    yycolumn = 1;
+    BEGIN(INITIAL);
+}
+
 static int at_constructor_name(const char *text)
 {
     if (!member_start || class_depth == 0 || text == NULL)
