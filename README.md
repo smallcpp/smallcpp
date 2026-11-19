@@ -4,10 +4,15 @@ Initial C++ CMake scaffold. `scpp` runs `preproc`, then `scpp_cc`, and then Clan
 
 ## Build
 
+`scripts/setup` configures `build/` and starts a project shell. `scripts/clean` removes `bin/`, `build/`, `lib/`, `doc/out/`, and `share/`. `scripts/showdocs` builds the CMake `docs` target and opens `doc/out/html/index.html` in Firefox. Run `showdocs` in that shell. This checkout defines no `docs` target, so that build fails.
+
+Start at the checkout root:
+
 ```sh
-cmake -S . -B build
-cmake --build build
-cmake --build build --target test
+scripts/setup
+build
+build test
+exit
 ./bin/scpp tests/examples/return-zero.scpp
 ./bin/scpp --emit-llvm tests/examples/return-zero.scpp program.bc
 ./bin/scpp --emit-llvm tests/examples/return-zero.scpp tests/examples/extern.scpp
@@ -18,19 +23,24 @@ cmake --build build --target test
 ./bin/parse_test tests/examples/accept.scpp
 ```
 
-Binaries are written to `bin/` and libraries to `lib/`. A normal build writes `scpp`, `scpp_cc`, `preproc`, and the libraries. `command_line_test`, `parse_test`, and `verify_module` are built by the `test` target, and CTest runs after that.
+`scripts/setup [--clean] [debug|release|profile]` works from any directory when you invoke this checkout's `scripts/setup`. A symlink kept outside `scripts/` resolves the wrong root. `debug`, `release`, and `profile` set `CMAKE_BUILD_TYPE` to `Debug`, `Release`, and `RelWithDebInfo`. With no type, a fresh directory keeps CMake's default and a later run keeps the cached type. `--clean` runs `scripts/clean` before configuration. It may precede or follow the type. Setup refuses to start when a project shell is already active. Exit that shell first. An unknown argument exits 2.
+
+The shell reads `.project_env`, puts `bin/` and `scripts/` on `PATH`, and changes to `build/`. `build` and `rebuild` are functions in that shell. `build` compiles the default targets. `build test` builds those targets, then CTest builds `command_line_test`, `parse_test`, and `verify_module` and runs the suite. `rebuild` is a clean-first build. A name after `build` or `rebuild` is a target. `exit` leaves the shell. The `./bin/scpp` lines above run from the checkout root. `parse_test` exists after `build test`.
+
+Binaries are written to `bin/` and libraries to `lib/`. A normal `build` writes `scpp`, `scpp_cc`, `preproc`, and the libraries.
 
 ## Install
 
-A fresh configuration installs to `$HOME/opt/smallcpp`. CMake expands `HOME` at configure time. Programs go in `bin/`, headers in `include/`, and libraries in `lib/`.
+A fresh configuration installs to `$HOME/opt/smallcpp`. `scripts/setup` runs that configuration, and CMake expands `HOME` then. Programs go in `bin/`, headers in `include/`, and libraries in `lib/`. No script installs. In the project shell the current directory is `build/`.
 
 ```sh
-cmake -S . -B build
-cmake --build build
-cmake --install build
+scripts/setup
+build
+cmake --install .
+exit
 ```
 
-`-DCMAKE_INSTALL_PREFIX=/absolute/path` selects another prefix. For a new build directory, CMake 3.29 and newer also reads the `CMAKE_INSTALL_PREFIX` environment variable. A later configure keeps the cached prefix. `cmake --install build --prefix /absolute/path` applies to that install. `DESTDIR` only stages the files. It is not part of the recorded paths.
+`scripts/setup` accepts `--clean` and a build type. A prefix is a CMake option. On CMake 3.29 and newer, a new build directory takes `CMAKE_INSTALL_PREFIX` from the environment, so `CMAKE_INSTALL_PREFIX=/absolute/path scripts/setup` selects it. A later configure keeps the cached prefix. `-DCMAKE_INSTALL_PREFIX=/absolute/path` still selects another prefix, including `/usr/local`. Pass that with CMake: `cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/absolute/path`. Inside the shell, `cmake -S "$_PROJECT_LOC" -B . -DCMAKE_INSTALL_PREFIX=/absolute/path` does the same. `cmake --install . --prefix /absolute/path` applies to that install. `DESTDIR=/tmp/stage cmake --install .` only stages the files. It is not part of the recorded paths.
 
 The install step writes `$HOME/.config/smallcpp/config.ini` and creates that directory when it is missing. `HOME` has to be absolute. A missing or relative `HOME` stops the install and does not write the file. Header search and the link read this file. An explicit `-I` or `-L` is searched first. An explicit `-l` for one of the recorded libraries is linked, and that recorded path is left off the link. When the file is missing, `scpp` and `preproc` use the prefix that contains their `bin/` directory, then the configured prefix, and the compile does not fail.
 
@@ -56,6 +66,6 @@ libc=/lib/x86_64-linux-gnu/libc.so
 - `src/compiler` — Bison grammar and Flex scanner
 - `src/preprocessor` — source directory for a later target
 - `docs` — documentation (`docs/smallcpp.y` and `docs/smallcpp.l` are copies of the grammar and scanner)
-- `scripts` — helper scripts
+- `scripts` — `setup`, `clean`, and `showdocs`
 - `tests` — `parse_test` driver
 - `tests/examples` — parser inputs
