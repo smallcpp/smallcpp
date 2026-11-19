@@ -1,3 +1,4 @@
+#include "prefix.hpp"
 #include "process.hpp"
 #include "smallcpp/CommandLine.hpp"
 
@@ -10,6 +11,12 @@
 
 #ifndef SMALLCPP_VERSION
 #define SMALLCPP_VERSION "0.1"
+#endif
+#ifndef SMALLCPP_PREFIX
+#define SMALLCPP_PREFIX ""
+#endif
+#ifndef SMALLCPP_STDINC
+#define SMALLCPP_STDINC ""
 #endif
 
 static smallcpp::CommandLine make_command_line()
@@ -142,6 +149,11 @@ int main(int argc, char **argv)
     request.force_includes = command_line.values("force-include");
     request.ignore_environment = command_line.switch_value("ignore-environment");
     request.nostdinc = command_line.switch_value("nostdinc");
+    const std::string prefix = install_prefix(argv[0], SMALLCPP_PREFIX);
+    if (!prefix.empty())
+        request.stdinc = prefix + "/include";
+    else
+        request.stdinc = SMALLCPP_STDINC;
     for (const smallcpp::CommandLineEvent &event : command_line.events()) {
         if (event.name == "define")
             request.cli_macros.push_back(smallcpp::CliMacro{false, event.value});

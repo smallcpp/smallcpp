@@ -2,6 +2,8 @@
 
 `scpp` coordinates compilation. It runs `preproc`, then `scpp_cc`, and, for an executable, Clang. Several source files are compiled one at a time and linked together. It does not parse, and it does not emit LLVM IR. Each option is passed only to the phase that uses it. `-o` is optional, and the default executable is `a.out`.
 
+`scpp` takes its prefix from the directory that contains its `bin/` directory. A fresh install uses `$HOME/opt/smallcpp`. `preproc` and `scpp_cc` are `bin/preproc` and `bin/scpp_cc`. Language headers are `include/`. Libraries are `lib/`, searched after an explicit `-L`. The runtime archive is `lib/libsmallcpp_runtime.a`.
+
 ```sh
 ./bin/scpp tests/examples/return-zero.scpp
 ./bin/scpp --emit-llvm tests/examples/return-zero.scpp program.bc

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(smallcpp LANGUAGES C CXX)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallPrefix.cmake")
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
@@ -49,7 +51,9 @@ endif()
 
 add_executable(preproc
     src/preproc/main.cpp
-    src/preproc/process.cpp)
+    src/preproc/process.cpp
+    src/prefix.cpp)
+target_include_directories(preproc PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(preproc PRIVATE smallcpp_cli)
 target_compile_features(preproc PRIVATE cxx_std_17)
 if(NOT LLVM_ENABLE_RTTI)
@@ -57,6 +61,7 @@ if(NOT LLVM_ENABLE_RTTI)
 endif()
 target_compile_definitions(preproc PRIVATE
     "SMALLCPP_VERSION=\"0.1\""
+    "SMALLCPP_PREFIX=\"${CMAKE_INSTALL_PREFIX}\""
     "SMALLCPP_STDINC=\"${CMAKE_SOURCE_DIR}/include\"")
 
 add_library(smallcpp_runtime STATIC
@@ -75,6 +80,7 @@ if(NOT SMALLCPP_CLANGXX)
 endif()
 
 add_library(smallcpp_emit STATIC
+    src/prefix.cpp
     src/emit/codegen.cpp
     src/emit/link.cpp
     src/emit/lower_scalar.cpp
@@ -89,9 +95,11 @@ add_library(smallcpp_emit STATIC
     src/emit/lower_print.cpp
     src/emit/debug.cpp)
 target_include_directories(smallcpp_emit PUBLIC ${CMAKE_SOURCE_DIR}/src/emit)
+target_include_directories(smallcpp_emit PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(smallcpp_emit PUBLIC smallcpp_parse ${SMALLCPP_LLVM_LIBS})
 smallcpp_use_llvm(smallcpp_emit)
 target_compile_definitions(smallcpp_emit PRIVATE
+    "SMALLCPP_PREFIX=\"${CMAKE_INSTALL_PREFIX}\""
     "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
     "SMALLCPP_RUNTIME_LIB=\"$<TARGET_FILE:smallcpp_runtime>\"")
 add_dependencies(smallcpp_emit smallcpp_runtime)
@@ -109,7 +117,9 @@ add_dependencies(scpp_cc smallcpp_runtime)
 
 add_executable(scpp
     src/scpp/main.cpp
-    src/scpp/stackmap.cpp)
+    src/scpp/stackmap.cpp
+    src/prefix.cpp)
+target_include_directories(scpp PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(scpp PRIVATE smallcpp_cli)
 target_compile_features(scpp PRIVATE cxx_std_17)
 if(NOT LLVM_ENABLE_RTTI)
@@ -117,6 +127,7 @@ if(NOT LLVM_ENABLE_RTTI)
 endif()
 target_compile_definitions(scpp PRIVATE
     "SMALLCPP_VERSION=\"0.1\""
+    "SMALLCPP_PREFIX=\"${CMAKE_INSTALL_PREFIX}\""
     "SMALLCPP_PREPROC=\"$<TARGET_FILE:preproc>\""
     "SMALLCPP_CC=\"$<TARGET_FILE:scpp_cc>\""
     "SMALLCPP_CLANGXX=\"${SMALLCPP_CLANGXX}\""
@@ -169,5 +180,23 @@ add_custom_command(
     DEPENDS ${SMALLCPP_GTK_OBJECTS}
     VERBATIM)
 add_custom_target(smallcpp_gtk ALL DEPENDS "${SMALLCPP_GTK_ARCHIVE}")
+
+if(NOT DEFINED CMAKE_INSTALL_LIBDIR)
+    set(CMAKE_INSTALL_LIBDIR "lib" CACHE PATH "Object code libraries")
+endif()
+include(GNUInstallDirs)
+install(TARGETS scpp preproc scpp_cc smallcpp_runtime
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+set_source_files_properties(
+    "${SMALLCPP_SQLITE_ARCHIVE}"
+    "${SMALLCPP_GTK_ARCHIVE}"
+    PROPERTIES GENERATED TRUE)
+install(FILES
+    "${SMALLCPP_SQLITE_ARCHIVE}"
+    "${SMALLCPP_GTK_ARCHIVE}"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
 add_subdirectory(tests)

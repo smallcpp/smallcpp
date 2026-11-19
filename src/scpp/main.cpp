@@ -1,3 +1,4 @@
+#include "prefix.hpp"
 #include "smallcpp/CommandLine.hpp"
 #include "stackmap.hpp"
 
@@ -29,6 +30,9 @@ extern char **environ;
 #endif
 #ifndef SMALLCPP_RUNTIME
 #define SMALLCPP_RUNTIME ""
+#endif
+#ifndef SMALLCPP_PREFIX
+#define SMALLCPP_PREFIX ""
 #endif
 
 static smallcpp::CommandLine make_command_line()
@@ -126,7 +130,7 @@ static smallcpp::CommandLine make_command_line()
     library_path.long_name = "library-path";
     library_path.name = "library-path";
     library_path.description = "Pass DIR to the Clang link. Repeat -L, or separate several directories with ':'. "
-                               "They are searched in order";
+                               "They are searched in order, before the install prefix lib directory";
     library_path.value_type = smallcpp::CommandLineValueType::String;
     library_path.list = true;
     library_path.list_separator = ':';
@@ -163,12 +167,22 @@ static int usage_error(const smallcpp::CommandLine &command_line, const char *me
     return 2;
 }
 
-static std::string tool_path(const char *env_name, const char *built_in)
+static std::string tool_path(const char *env_name, const std::string &built_in)
 {
     const char *value = std::getenv(env_name);
     if (value != nullptr && value[0] != '\0')
         return value;
     return built_in;
+}
+
+static std::string under_prefix(const std::string &prefix, const char *relative,
+                                const char *built_in)
+{
+    if (!prefix.empty())
+        return prefix + "/" + relative;
+    if (built_in != nullptr)
+        return built_in;
+    return "";
 }
 
 static bool ends_with(const std::string &path, const char *suffix)
@@ -534,9 +548,15 @@ int main(int argc, char **argv)
         units.push_back(unit);
     }
 
-    const std::string preproc = tool_path("SMALLCPP_PREPROC", SMALLCPP_PREPROC);
-    const std::string cc = tool_path("SMALLCPP_CC", SMALLCPP_CC);
+    const std::string prefix = install_prefix(argv[0], SMALLCPP_PREFIX);
+    const std::string preproc = tool_path("SMALLCPP_PREPROC",
+                                          under_prefix(prefix, "bin/preproc", SMALLCPP_PREPROC));
+    const std::string cc = tool_path("SMALLCPP_CC",
+                                     under_prefix(prefix, "bin/scpp_cc", SMALLCPP_CC));
     const std::string clang = tool_path("SMALLCPP_CLANGXX", SMALLCPP_CLANGXX);
+    const std::string runtime = tool_path("SMALLCPP_RUNTIME",
+                                          under_prefix(prefix, "lib/libsmallcpp_runtime.a",
+                                                       SMALLCPP_RUNTIME));
     const bool debug = command_line.switch_value("debug");
     const bool keep = command_line.switch_value("keep");
     const std::string ignore = ignore_spelling(arguments);
@@ -591,13 +611,17 @@ int main(int argc, char **argv)
     if (debug)
         link.push_back("-g");
     append_library_paths(link, command_line);
+    if (!prefix.empty()) {
+        link.push_back("-L");
+        link.push_back(prefix + "/lib");
+    }
     link.push_back("-o");
     link.push_back(output);
     for (const std::string &object : objects)
         link.push_back(object);
     append_library_names(link, command_line);
     link.push_back("-Wl,-u,smallcpp_uncaught_init");
-    link.push_back(SMALLCPP_RUNTIME);
+    link.push_back(runtime);
     link.push_back("-ldl");
     const int status = run_program(clang, link, "");
     if (status != 0)
