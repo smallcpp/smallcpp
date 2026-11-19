@@ -1,3 +1,4 @@
+#include "config.hpp"
 #include "prefix.hpp"
 #include "smallcpp/CommandLine.hpp"
 #include "stackmap.hpp"
@@ -129,8 +130,9 @@ static smallcpp::CommandLine make_command_line()
     library_path.short_name = 'L';
     library_path.long_name = "library-path";
     library_path.name = "library-path";
-    library_path.description = "Pass DIR to the Clang link. Repeat -L, or separate several directories with ':'. "
-                               "They are searched in order, before the install prefix lib directory";
+    library_path.description = "Pass DIR to the Clang link. Repeat -L, or separate "
+                               "several directories with ':'. They are searched in order, "
+                               "before the compiler config library path";
     library_path.value_type = smallcpp::CommandLineValueType::String;
     library_path.list = true;
     library_path.list_separator = ':';
@@ -426,13 +428,26 @@ static void append_library_paths(std::vector<std::string> &args, const smallcpp:
     }
 }
 
-static void append_library_names(std::vector<std::string> &args, const smallcpp::CommandLine &command_line)
+static void collect_library_names(
+        std::vector<std::string> &names,
+        const smallcpp::CommandLine &command_line)
 {
     for (const smallcpp::CommandLineEvent &event : command_line.events()) {
         if (event.name != "library")
             continue;
+        names.push_back(event.value);
+    }
+}
+
+static void append_library_names(
+        std::vector<std::string> &args,
+        const smallcpp::CommandLine &command_line)
+{
+    std::vector<std::string> names;
+    collect_library_names(names, command_line);
+    for (const std::string &name : names) {
         args.push_back("-l");
-        args.push_back(event.value);
+        args.push_back(name);
     }
 }
 
@@ -549,14 +564,15 @@ int main(int argc, char **argv)
     }
 
     const std::string prefix = install_prefix(argv[0], SMALLCPP_PREFIX);
+    const CompilerConfig config = read_compiler_config();
     const std::string preproc = tool_path("SMALLCPP_PREPROC",
                                           under_prefix(prefix, "bin/preproc", SMALLCPP_PREPROC));
     const std::string cc = tool_path("SMALLCPP_CC",
                                      under_prefix(prefix, "bin/scpp_cc", SMALLCPP_CC));
     const std::string clang = tool_path("SMALLCPP_CLANGXX", SMALLCPP_CLANGXX);
-    const std::string runtime = tool_path("SMALLCPP_RUNTIME",
-                                          under_prefix(prefix, "lib/libsmallcpp_runtime.a",
-                                                       SMALLCPP_RUNTIME));
+    const std::string runtime = tool_path(
+        "SMALLCPP_RUNTIME",
+        config_runtime_path(config, prefix, SMALLCPP_RUNTIME));
     const bool debug = command_line.switch_value("debug");
     const bool keep = command_line.switch_value("keep");
     const std::string ignore = ignore_spelling(arguments);
@@ -611,9 +627,10 @@ int main(int argc, char **argv)
     if (debug)
         link.push_back("-g");
     append_library_paths(link, command_line);
-    if (!prefix.empty()) {
+    const std::string libdir = config_library_dir(config, prefix);
+    if (!libdir.empty()) {
         link.push_back("-L");
-        link.push_back(prefix + "/lib");
+        link.push_back(libdir);
     }
     link.push_back("-o");
     link.push_back(output);
@@ -622,7 +639,9 @@ int main(int argc, char **argv)
     append_library_names(link, command_line);
     link.push_back("-Wl,-u,smallcpp_uncaught_init");
     link.push_back(runtime);
-    link.push_back("-ldl");
+    std::vector<std::string> named;
+    collect_library_names(named, command_line);
+    config_append_libraries(config, named, link);
     const int status = run_program(clang, link, "");
     if (status != 0)
         return finish(status, keep, intermediates);

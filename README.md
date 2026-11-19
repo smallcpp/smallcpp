@@ -30,7 +30,23 @@ cmake --build build
 cmake --install build
 ```
 
-`-DCMAKE_INSTALL_PREFIX=/absolute/path` selects another prefix. For a new build directory, CMake 3.29 and newer also reads the `CMAKE_INSTALL_PREFIX` environment variable. A later configure keeps the cached prefix. `cmake --install build --prefix /absolute/path` applies to that install. `scpp` finds `preproc`, `scpp_cc`, headers, and libraries under the prefix that contains its own `bin/` directory.
+`-DCMAKE_INSTALL_PREFIX=/absolute/path` selects another prefix. For a new build directory, CMake 3.29 and newer also reads the `CMAKE_INSTALL_PREFIX` environment variable. A later configure keeps the cached prefix. `cmake --install build --prefix /absolute/path` applies to that install. `DESTDIR` only stages the files. It is not part of the recorded paths.
+
+The install step writes `$HOME/.config/smallcpp/config.ini` and creates that directory when it is missing. `HOME` has to be absolute. A missing or relative `HOME` stops the install and does not write the file. Header search and the link read this file. An explicit `-I` or `-L` is searched first. An explicit `-l` for one of the recorded libraries is linked, and that recorded path is left off the link. When the file is missing, `scpp` and `preproc` use the prefix that contains their `bin/` directory, then the configured prefix, and the compile does not fail.
+
+```ini
+include=/home/ada/opt/smallcpp/include
+library=/home/ada/opt/smallcpp/lib
+runtime=/home/ada/opt/smallcpp/lib/libsmallcpp_runtime.a
+libdl=/lib/x86_64-linux-gnu/libdl.a
+libstdc++=/usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so
+libm=/lib/x86_64-linux-gnu/libm.a
+libgcc_s=/usr/lib/gcc/x86_64-linux-gnu/14/libgcc_s.so
+libgcc=/usr/lib/gcc/x86_64-linux-gnu/14/libgcc.a
+libc=/lib/x86_64-linux-gnu/libc.so
+```
+
+`include` is the installed headers. `library` is the default `-L` directory. `runtime` is `libsmallcpp_runtime.a`. The other keys are the system libraries the link uses. `clang++ -print-file-name` finds each one on the machine that runs the install. `libm` is `libm.a`. `scpp` still finds `preproc` and `scpp_cc` under the prefix that contains its own `bin/` directory.
 
 ## Layout
 

@@ -2,7 +2,25 @@
 
 These headers declare the functions a program calls. Include each one as `<name>`. A call with no declaration is still an external `int` function. The headers give the real C types. `<sqlite>` and `<gtk>` have their own pages. Group the examples by the header that declares the function.
 
-A running example prints one line. CTest checks that line and an exit status of 0. `abort` stops the process, so its example is compiled with `-c` and is not run. Link `<math>` with `-l m` and `<pthread>` with `-l pthread`.
+A running example prints one line. CTest checks that line and an exit status of 0. `abort` stops the process, so its example is compiled with `-c` and is not run. `<math>` uses the `libm` path from the compiler config, which is `libm.a`. `<pthread>` is not one of those libraries, so link it with `-l pthread`.
+
+## Compiler config
+
+`cmake --install` writes `~/.config/smallcpp/config.ini` for the user who runs the install, and creates the directory when it is missing. Header search reads `include`. The link reads `library` as its default `-L`, after any `-L` on the command line. It links `runtime`, which is `libsmallcpp_runtime.a`, and then each system library path. `libm` is the absolute path of `libm.a`. An explicit `-l` for one of those libraries is linked first, and the recorded path is not added again. When the file is missing, the compiler uses the prefix that contains its `bin/` directory, then the configured prefix, and the compile still runs.
+
+```ini
+include=/home/ada/opt/smallcpp/include
+library=/home/ada/opt/smallcpp/lib
+runtime=/home/ada/opt/smallcpp/lib/libsmallcpp_runtime.a
+libdl=/lib/x86_64-linux-gnu/libdl.a
+libstdc++=/usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so
+libm=/lib/x86_64-linux-gnu/libm.a
+libgcc_s=/usr/lib/gcc/x86_64-linux-gnu/14/libgcc_s.so
+libgcc=/usr/lib/gcc/x86_64-linux-gnu/14/libgcc.a
+libc=/lib/x86_64-linux-gnu/libc.so
+```
+
+`include`, `library`, and `runtime` are the prefix this install used. A `DESTDIR` staging directory is not part of those paths. The other values are the files `clang++ -print-file-name` found while installing. `libdl` is the library the driver already passed as `-ldl`. `libstdc++`, `libgcc_s`, `libgcc`, and `libc` are the libraries `clang++` links with it. `libm` names `libm.a`, not `libm.so`.
 
 ## exceptions
 
@@ -88,7 +106,7 @@ Include it as `<glob>`. `glob` fills a `glob_t` with sorted matches of `*`, `?`,
 
 ## math
 
-Include it as `<math>` and link with `-l m`. Each double function has a float twin whose name ends in `f`. `labs` is the absolute value of a `long`.
+Include it as `<math>`. The link uses the `libm` file from the compiler config. `-l m` still selects a library first. Each double function has a float twin whose name ends in `f`. `labs` is the absolute value of a `long`.
 
 `fabs` returns the absolute value of a double. [`docs/examples/rt-fabs.scpp`](examples/rt-fabs.scpp) prints `rt-fabs 1`.
 
