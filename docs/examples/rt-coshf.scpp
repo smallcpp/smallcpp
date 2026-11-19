@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (coshf(0.0f) > 0.85f && coshf(0.0f) < 1.15f)
+        ok = 1;
+    print("rt-coshf {}\n", ok);
+    return 0;
+}

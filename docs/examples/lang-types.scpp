@@ -1,0 +1,35 @@
+int main(void) {
+    char letter;
+    short small;
+    int whole;
+    long wide;
+    float single;
+    double real;
+    signed int negative;
+    unsigned int positive;
+    bool flag;
+    int ok;
+
+    letter = 'A';
+    small = 12;
+    whole = 3;
+    wide = 9;
+    single = 1.5f;
+    real = 2.5;
+    negative = -1;
+    positive = 4;
+    flag = true;
+    ok = 0;
+    if (letter == 'A' && small == 12 && whole == 3)
+        ok = 1;
+    if (wide != 9 || negative != -1 || positive != 4)
+        ok = 0;
+    if (single < 1.4f || single > 1.6f)
+        ok = 0;
+    if (real < 2.4 || real > 2.6)
+        ok = 0;
+    if (flag != true)
+        ok = 0;
+    print("lang-types {}\n", ok);
+    return 0;
+}

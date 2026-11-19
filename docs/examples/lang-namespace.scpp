@@ -1,0 +1,10 @@
+namespace audio {
+    int level(void) {
+        return 9;
+    }
+}
+
+int main(void) {
+    print("lang-namespace {}\n", audio::level());
+    return 0;
+}

@@ -1,0 +1,9 @@
+int main(void) {
+    int n;
+    int shown;
+
+    n = 1;
+    shown = (n = 2, n + 1);
+    print("lang-comma {}\n", shown);
+    return 0;
+}

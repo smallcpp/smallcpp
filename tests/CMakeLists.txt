@@ -450,6 +450,8 @@ foreach(check default keep preprocess emit-llvm library include library-order ba
             -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectDriver.cmake)
 endforeach()
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/DocsExamples.cmake)
+
 add_test(
     NAME build_test_programs
         COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}

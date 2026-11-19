@@ -1,0 +1,11 @@
+#include <errno>
+
+int main(void) {
+    int ok;
+
+    errno = 0;
+    perror("docs");
+    ok = 1;
+    print("rt-perror {}\n", ok);
+    return 0;
+}

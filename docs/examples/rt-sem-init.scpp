@@ -1,0 +1,13 @@
+#include <pthread>
+
+
+int main(void) {
+    sem_t sem;
+    int ok;
+
+    ok = 0;
+    if (sem_init(&sem, 0, 1) == 0 && sem_destroy(&sem) == 0)
+        ok = 1;
+    print("rt-sem-init {}\n", ok);
+    return 0;
+}

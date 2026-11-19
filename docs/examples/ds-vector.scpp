@@ -1,0 +1,25 @@
+#include <vector>
+
+VECTOR(IntVec, int)
+
+int main(void) {
+    IntVec *values;
+    long cursor;
+    int first;
+
+    values = new IntVec();
+    values->add(10);
+    values->add(30);
+    values->insert(1, 20);
+    values->replace(-1, 40);
+    cursor = 0;
+    first = values->next(&cursor);
+    values->remove(0);
+    print("vector {} {} {} {} {}\n",
+        (int)values->find(20),
+        first,
+        values->at(0),
+        values->at(-1),
+        (int)values->size());
+    return 0;
+}

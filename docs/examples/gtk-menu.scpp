@@ -1,0 +1,47 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+void picked(void *data, const char *label) {
+    (void)data;
+    (void)label;
+}
+
+int main(void) {
+    MenuButton *button;
+    const char *labels[1];
+    int ok;
+
+    try {
+        button = new MenuButton("Open");
+        button->set_label("Menu");
+        labels[0] = "Quit";
+        button->set_menu(labels, 1, picked, nullptr);
+        ok = 0;
+        if (same(button->label(), "Menu"))
+            ok = 1;
+        print("gtk-menu {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

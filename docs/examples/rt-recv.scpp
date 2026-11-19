@@ -1,0 +1,86 @@
+
+#include <pthread>
+#include <socket>
+#include <unistd>
+
+int listenFd;
+int got;
+
+extern int getsockname(
+        int fd,
+        struct sockaddr *addr,
+        socklen_t *len);
+
+void zero(void *ptr, long n) {
+    char *bytes;
+    long i;
+
+    bytes = (char *)ptr;
+    i = 0;
+    while (i < n) {
+        bytes[i] = 0;
+        i = i + 1;
+    }
+}
+
+void *serve(void *arg) {
+    int fd;
+    char byte;
+
+    (void)arg;
+    fd = accept(listenFd, nullptr, nullptr);
+    if (fd < 0)
+        return nullptr;
+    if (recv(fd, (void *)&byte, 1, 0) == 1)
+        got = (int)byte;
+    close(fd);
+    return nullptr;
+}
+
+int main(void) {
+    pthread_t thread;
+    struct sockaddr_in addr;
+    struct sockaddr_in bound;
+    socklen_t len;
+    int fd;
+    char byte;
+    int ok;
+
+    ok = 0;
+    listenFd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (listenFd < 0)
+        return 1;
+    zero((void *)&addr, (long)sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(0);
+    if (inet_pton(
+            AF_INET, "127.0.0.1", (void *)&addr.sin_addr) != 1)
+        return 1;
+    len = (socklen_t)sizeof(addr);
+    if (bind(listenFd, (struct sockaddr *)&addr, len) != 0)
+        return 1;
+    if (listen(listenFd, 1) != 0)
+        return 1;
+    len = (socklen_t)sizeof(bound);
+    zero((void *)&bound, (long)sizeof(bound));
+    if (getsockname(
+            listenFd, (struct sockaddr *)&bound, &len) != 0)
+        return 1;
+    got = 0;
+    if (pthread_create(&thread, nullptr, serve, nullptr) != 0)
+        return 1;
+    fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (connect(fd, (struct sockaddr *)&bound, len) != 0)
+        return 1;
+    byte = 'Q';
+    if (send(fd, (void *)&byte, 1, 0) != 1)
+        return 1;
+    if (pthread_join(thread, nullptr) != 0)
+        return 1;
+    close(fd);
+    close(listenFd);
+    if (got == 'Q')
+        ok = 1;
+    print("rt-recv {}\n", ok);
+    return 0;
+}

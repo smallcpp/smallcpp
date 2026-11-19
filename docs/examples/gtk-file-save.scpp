@@ -1,0 +1,16 @@
+#include <gtk>
+
+using namespace Gtk;
+
+
+void picked(void *data, const char *path) {
+    (void)data;
+    (void)path;
+}
+
+void choose(void) {
+    FileDialog *files;
+
+    files = new FileDialog();
+    files->save(picked, nullptr);
+}

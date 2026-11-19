@@ -1,0 +1,39 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    AlertDialog *alert;
+    int ok;
+
+    try {
+        alert = new AlertDialog("Hello", "Detail");
+        ok = 0;
+        if (same(alert->message(), "Hello")
+                && same(alert->detail(), "Detail"))
+            ok = 1;
+        print("gtk-alert {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

@@ -1,0 +1,18 @@
+int add(int left, int right) {
+    return left + right;
+}
+
+int sub(int left, int right) {
+    return left - right;
+}
+
+int main(void) {
+    int (*fns[2])(int, int);
+
+    fns[0] = add;
+    fns[1] = sub;
+    print("lang-fn-array {} {}\n",
+        fns[0](2, 5),
+        fns[1](5, 2));
+    return 0;
+}

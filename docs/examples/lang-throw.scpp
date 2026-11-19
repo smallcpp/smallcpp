@@ -1,0 +1,11 @@
+#include <exceptions>
+
+int main(void) {
+    try {
+        throw *new Exception("missing");
+    } catch (Exception error) {
+        print("lang-throw {:s}\n", error.message);
+        return 0;
+    }
+    return 1;
+}

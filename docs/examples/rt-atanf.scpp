@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (atanf(0.0f) > -0.15f && atanf(0.0f) < 0.15f)
+        ok = 1;
+    print("rt-atanf {}\n", ok);
+    return 0;
+}

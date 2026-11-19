@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (cbrtf(8.0f) > 1.85f && cbrtf(8.0f) < 2.15f)
+        ok = 1;
+    print("rt-cbrtf {}\n", ok);
+    return 0;
+}

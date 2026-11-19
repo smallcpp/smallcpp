@@ -1,0 +1,24 @@
+#include <sqlite>
+
+using namespace Sqlite;
+
+
+int main(void) {
+    Database *database;
+    int ok;
+
+    database = new Connection(":memory:");
+    ok = 0;
+    if (database->is_open() && database->error()[0] == 0
+            && database->execute(
+                "CREATE TABLE sample (n)"))
+        ok = 1;
+    if (database->execute("NOT SQL"))
+        ok = 0;
+    if (database->error()[0] == 0)
+        ok = 0;
+    if (!database->close())
+        ok = 0;
+    print("sql-execute {}\n", ok);
+    return 0;
+}

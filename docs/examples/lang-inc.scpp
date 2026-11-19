@@ -1,0 +1,19 @@
+int main(void) {
+    int n;
+    int post;
+    int pre;
+    int postDown;
+    int preDown;
+
+    n = 4;
+    post = n++;
+    pre = ++n;
+    postDown = n--;
+    preDown = --n;
+    print("lang-inc {} {} {} {}\n",
+        post,
+        pre,
+        postDown,
+        preDown);
+    return 0;
+}

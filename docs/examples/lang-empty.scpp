@@ -1,0 +1,8 @@
+int answer() {
+    return 7;
+}
+
+int main(void) {
+    print("lang-empty {}\n", answer());
+    return 0;
+}

@@ -1,0 +1,16 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    char *block;
+
+    block = (char *)malloc(4);
+    if (block != nullptr)
+        block[0] = 'h';
+    ok = 0;
+    if (block != nullptr && block[0] == 'h')
+        ok = 1;
+    print("rt-malloc {}\n", ok);
+    return 0;
+}

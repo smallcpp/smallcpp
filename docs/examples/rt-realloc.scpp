@@ -1,0 +1,17 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    char *block;
+
+    block = (char *)malloc(4);
+    block = (char *)realloc((void *)block, 8);
+    if (block != nullptr)
+        block[7] = 'z';
+    ok = 0;
+    if (block != nullptr && block[7] == 'z')
+        ok = 1;
+    print("rt-realloc {}\n", ok);
+    return 0;
+}

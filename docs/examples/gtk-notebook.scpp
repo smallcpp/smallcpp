@@ -1,0 +1,52 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+void switched(void *data, long index) {
+    (void)data;
+    (void)index;
+}
+
+int main(void) {
+    Notebook *book;
+    Label *page;
+    SignalConnection slot;
+    long index;
+    int ok;
+
+    try {
+        book = new Notebook();
+        page = new Label("Page");
+        slot = book->on_switch_page(switched, nullptr);
+        index = book->append_page((Widget *)page, "Tab");
+        book->set_current_page(index);
+        ok = 0;
+        if (book->current_page() == index && slot.connected()) {
+            book->remove_page(index);
+            ok = 1;
+        }
+        print("gtk-notebook {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

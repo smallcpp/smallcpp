@@ -1,0 +1,10 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (atol("34") == 34)
+        ok = 1;
+    print("rt-atol {}\n", ok);
+    return 0;
+}

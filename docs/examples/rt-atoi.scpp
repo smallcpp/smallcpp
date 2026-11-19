@@ -1,0 +1,10 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (atoi("12") == 12)
+        ok = 1;
+    print("rt-atoi {}\n", ok);
+    return 0;
+}

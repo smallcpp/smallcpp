@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (sqrtf(9.0f) > 2.85f && sqrtf(9.0f) < 3.15f)
+        ok = 1;
+    print("rt-sqrtf {}\n", ok);
+    return 0;
+}

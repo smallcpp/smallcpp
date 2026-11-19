@@ -1,0 +1,15 @@
+#include <random>
+
+int main(void) {
+    int ok;
+
+    unsigned char byte;
+    long count;
+
+    count = getrandom((void *)&byte, 1, 0);
+    ok = 0;
+    if (count == 1)
+        ok = 1;
+    print("rt-getrandom {}\n", ok);
+    return 0;
+}

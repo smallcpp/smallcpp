@@ -1,0 +1,32 @@
+#include <exceptions>
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+int main(void) {
+    Exception *blank;
+    int saw;
+
+    blank = new Exception();
+    saw = 0;
+    try {
+        throw *new Exception("missing");
+    } catch (Exception error) {
+        if (same(error.message, "missing"))
+            saw = 1;
+    }
+    print("rt-exception {} {}\n",
+        (int)(blank->message == nullptr),
+        saw);
+    return 0;
+}

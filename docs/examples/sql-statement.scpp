@@ -1,0 +1,43 @@
+#include <sqlite>
+
+using namespace Sqlite;
+
+
+int main(void) {
+    Database *database;
+    Statement *insert;
+    Statement *query;
+    Value *stored;
+    int ok;
+
+    database = new Connection(":memory:");
+    ok = 0;
+    if (!database->execute("CREATE TABLE sample (value)"))
+        return 1;
+    insert = database->prepare(
+        "INSERT INTO sample VALUES (?)");
+    stored = new Value("hi");
+    if (insert == nullptr || !insert->bind(1, stored))
+        return 1;
+    insert->step();
+    if (insert->failed() || !insert->is_done()
+            || insert->has_row())
+        return 1;
+    if (insert->error() == nullptr)
+        return 1;
+    insert->close();
+    query = database->prepare("SELECT value FROM sample");
+    if (query == nullptr || !query->step() || !query->has_row())
+        return 1;
+    if (query->value(0)->as_text()[0] != 'h')
+        return 1;
+    if (query->step())
+        return 1;
+    if (!query->is_done() || query->failed())
+        return 1;
+    query->close();
+    database->close();
+    ok = 1;
+    print("sql-statement {}\n", ok);
+    return 0;
+}

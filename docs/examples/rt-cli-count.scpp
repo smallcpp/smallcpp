@@ -1,0 +1,51 @@
+#include <cli>
+
+using namespace Cli;
+
+int starts(const char *text, const char *prefix) {
+    long i;
+
+    i = 0;
+    while (prefix[i] != 0) {
+        if (text == nullptr || text[i] != prefix[i])
+            return 0;
+        i = i + 1;
+    }
+    return 1;
+}
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    CommandLine *command;
+    Option *verbose;
+    char *args[3];
+    int ok;
+
+    command = new CommandLine("demo", "count", "1");
+    verbose = new Option();
+    verbose->short_name = "v";
+    verbose->name = "verbose";
+    verbose->value_type = CLI_COUNTER;
+    command->add_option(verbose);
+    args[0] = "demo";
+    args[1] = "-vv";
+    command->parse(2, args);
+    ok = 0;
+    if (command->count("verbose") == 2)
+        ok = 1;
+    print("rt-cli-count {}\n", ok);
+    return 0;
+}

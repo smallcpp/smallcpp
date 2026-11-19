@@ -1,0 +1,28 @@
+#include <stdlib>
+#include <unistd>
+
+
+void copy_text(char *buf, const char *text) {
+    long i;
+
+    i = 0;
+    while (text[i] != 0) {
+        buf[i] = text[i];
+        i = i + 1;
+    }
+    buf[i] = 0;
+}
+
+int main(void) {
+    char pattern[40];
+    char *dir;
+    int ok;
+
+    ok = 0;
+    copy_text(pattern, "/tmp/scpp-mkdtemp-XXXXXX");
+    dir = mkdtemp(pattern);
+    if (dir != nullptr && rmdir(dir) == 0)
+        ok = 1;
+    print("rt-mkdtemp {}\n", ok);
+    return 0;
+}

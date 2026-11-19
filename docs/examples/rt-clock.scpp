@@ -1,0 +1,15 @@
+#include <time>
+
+int main(void) {
+    int ok;
+
+    struct timespec clock;
+    int rc;
+
+    rc = clock_gettime(CLOCK_MONOTONIC, &clock);
+    ok = 0;
+    if (rc == 0 && clock.tv_sec >= 0)
+        ok = 1;
+    print("rt-clock {}\n", ok);
+    return 0;
+}

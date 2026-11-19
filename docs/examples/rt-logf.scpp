@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (logf(1.0f) > -0.15f && logf(1.0f) < 0.15f)
+        ok = 1;
+    print("rt-logf {}\n", ok);
+    return 0;
+}

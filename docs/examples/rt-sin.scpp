@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (sin(0.0) == 0.0)
+        ok = 1;
+    print("rt-sin {}\n", ok);
+    return 0;
+}

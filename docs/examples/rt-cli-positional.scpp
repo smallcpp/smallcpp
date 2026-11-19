@@ -1,0 +1,42 @@
+#include <cli>
+
+using namespace Cli;
+
+int starts(const char *text, const char *prefix) {
+    long i;
+
+    i = 0;
+    while (prefix[i] != 0) {
+        if (text == nullptr || text[i] != prefix[i])
+            return 0;
+        i = i + 1;
+    }
+    return 1;
+}
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    Positional *input;
+    int ok;
+
+    input = new Positional();
+    input->name = "input";
+    ok = 0;
+    if (input->required == false && input->is_list == false)
+        ok = 1;
+    print("rt-cli-positional {}\n", ok);
+    return 0;
+}

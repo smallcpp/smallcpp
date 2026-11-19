@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (log10(100.0) == 2.0)
+        ok = 1;
+    print("rt-log10 {}\n", ok);
+    return 0;
+}

@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (asinf(0.0f) > -0.15f && asinf(0.0f) < 0.15f)
+        ok = 1;
+    print("rt-asinf {}\n", ok);
+    return 0;
+}

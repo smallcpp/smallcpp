@@ -1,0 +1,7 @@
+int main(void) {
+    int n;
+
+    n = (int)'A';
+    print("lang-cast {}\n", n);
+    return 0;
+}

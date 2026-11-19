@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (cosf(0.0f) > 0.85f && cosf(0.0f) < 1.15f)
+        ok = 1;
+    print("rt-cosf {}\n", ok);
+    return 0;
+}

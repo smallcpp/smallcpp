@@ -1,0 +1,22 @@
+class Pair {
+    int x;
+    int y;
+public:
+    Pair(int ax, int ay);
+    int sum(void);
+};
+
+Pair::Pair(int ax, int ay) : x(ax), y(ay) {
+}
+
+int Pair::sum(void) {
+    return x + y;
+}
+
+int main(void) {
+    Pair *pair;
+
+    pair = new Pair(2, 5);
+    print("lang-init-list {}\n", pair->sum());
+    return 0;
+}

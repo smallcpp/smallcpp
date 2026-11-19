@@ -1,0 +1,12 @@
+enum Color {
+    RED = 1,
+    BLUE = 4
+};
+
+int main(void) {
+    enum Color color;
+
+    color = BLUE;
+    print("lang-enum {}\n", (int)color);
+    return 0;
+}

@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (exp(0.0) == 1.0)
+        ok = 1;
+    print("rt-exp {}\n", ok);
+    return 0;
+}

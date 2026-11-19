@@ -1,0 +1,12 @@
+union Slot {
+    int n;
+    char letter;
+};
+
+int main(void) {
+    union Slot slot;
+
+    slot.n = 65;
+    print("lang-union {}\n", slot.n);
+    return 0;
+}

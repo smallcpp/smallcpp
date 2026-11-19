@@ -1,0 +1,14 @@
+#include <pthread>
+
+
+int main(void) {
+    pthread_cond_t cond;
+    int ok;
+
+    ok = 0;
+    if (pthread_cond_init(&cond, nullptr) == 0
+            && pthread_cond_destroy(&cond) == 0)
+        ok = 1;
+    print("rt-cond-destroy {}\n", ok);
+    return 0;
+}

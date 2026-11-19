@@ -1,0 +1,12 @@
+namespace audio {
+    int gain(int n) {
+        return n + 1;
+    }
+}
+
+using namespace audio;
+
+int main(void) {
+    print("lang-using-namespace {}\n", gain(2));
+    return 0;
+}

@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if ((int)labs(-4) == 4)
+        ok = 1;
+    print("rt-labs {}\n", ok);
+    return 0;
+}

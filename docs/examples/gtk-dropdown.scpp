@@ -1,0 +1,56 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int picks;
+
+void changed(void *data) {
+    int *flag;
+
+    flag = (int *)data;
+    *flag = *flag + 1;
+}
+
+int main(void) {
+    DropDown *drop;
+    const char *items[2];
+    int ok;
+
+    try {
+        drop = new DropDown();
+        items[0] = "red";
+        items[1] = "blue";
+        picks = 0;
+        drop->on_changed(changed, (void *)&picks);
+        drop->set_items(items, 2);
+        drop->set_selected(1);
+        ok = 0;
+        if (drop->selected() == 1
+                && same(drop->selected_string(), "blue")
+                && picks >= 1)
+            ok = 1;
+        print("gtk-dropdown {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

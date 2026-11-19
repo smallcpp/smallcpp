@@ -1,0 +1,24 @@
+int hits;
+
+class Box {
+public:
+    Box();
+    ~Box();
+};
+
+Box::Box() {
+}
+
+Box::~Box() {
+    hits = hits + 1;
+}
+
+int main(void) {
+    Box *box;
+
+    hits = 0;
+    box = new Box();
+    delete box;
+    print("lang-delete {}\n", hits);
+    return 0;
+}

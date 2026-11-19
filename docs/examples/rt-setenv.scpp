@@ -1,0 +1,14 @@
+#include <stdlib>
+
+int main(void) {
+    int ok;
+
+    int rc;
+
+    rc = setenv("SMALLCPP_DOC_SET", "hello", 1);
+    ok = 0;
+    if (rc == 0 && getenv("SMALLCPP_DOC_SET") != nullptr)
+        ok = 1;
+    print("rt-setenv {}\n", ok);
+    return 0;
+}

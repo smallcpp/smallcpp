@@ -1,0 +1,10 @@
+extern int extra(int n);
+
+int main(void) {
+    print("lang-extern {}\n", extra(2));
+    return 0;
+}
+
+int extra(int n) {
+    return n + 1;
+}

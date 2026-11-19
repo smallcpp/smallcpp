@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (floor(3.7) == 3.0)
+        ok = 1;
+    print("rt-floor {}\n", ok);
+    return 0;
+}

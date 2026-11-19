@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (truncf(3.9f) > 2.85f && truncf(3.9f) < 3.15f)
+        ok = 1;
+    print("rt-truncf {}\n", ok);
+    return 0;
+}

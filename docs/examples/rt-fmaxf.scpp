@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (fmaxf(2.0f, 5.0f) > 4.85f && fmaxf(2.0f, 5.0f) < 5.15f)
+        ok = 1;
+    print("rt-fmaxf {}\n", ok);
+    return 0;
+}

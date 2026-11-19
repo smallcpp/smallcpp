@@ -1,0 +1,12 @@
+#include <errno>
+
+int main(void) {
+    int ok;
+
+    errno = EPERM;
+    ok = 0;
+    if (errno == EPERM)
+        ok = 1;
+    print("rt-errno {}\n", ok);
+    return 0;
+}

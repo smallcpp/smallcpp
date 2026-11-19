@@ -1,0 +1,42 @@
+#include <exceptions>
+#include <gtk>
+
+using namespace Gtk;
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    Spinner *spinner;
+    int ok;
+
+    try {
+        spinner = new Spinner();
+        spinner->start();
+        ok = 0;
+        if (spinner->spinning()) {
+            spinner->stop();
+            if (spinner->spinning() == false)
+                ok = 1;
+        }
+        print("gtk-spinner {}\n", ok);
+        return 0;
+    } catch (Exception error) {
+        if (same(error.message, "display")) {
+            print("SKIP gtk display\n");
+            return 77;
+        }
+        return 1;
+    }
+}

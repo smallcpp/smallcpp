@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (log2f(8.0f) > 2.85f && log2f(8.0f) < 3.15f)
+        ok = 1;
+    print("rt-log2f {}\n", ok);
+    return 0;
+}

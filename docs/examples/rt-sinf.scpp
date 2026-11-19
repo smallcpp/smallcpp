@@ -1,0 +1,10 @@
+#include <math>
+
+int main(void) {
+    int ok;
+    ok = 0;
+    if (sinf(0.0f) > -0.15f && sinf(0.0f) < 0.15f)
+        ok = 1;
+    print("rt-sinf {}\n", ok);
+    return 0;
+}

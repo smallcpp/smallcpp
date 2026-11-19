@@ -1,0 +1,28 @@
+int hits;
+
+class Base {
+public:
+    virtual ~Base();
+};
+
+Base::~Base() {
+}
+
+class Derived : public Base {
+public:
+    ~Derived();
+};
+
+Derived::~Derived() {
+    hits = hits + 1;
+}
+
+int main(void) {
+    Base *object;
+
+    hits = 0;
+    object = new Derived();
+    delete object;
+    print("lang-virtual-dtor {}\n", hits);
+    return 0;
+}

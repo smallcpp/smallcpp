@@ -1,0 +1,11 @@
+#include <gtk>
+
+using namespace Gtk;
+
+
+void open_app(void) {
+    Application *app;
+
+    app = new Application("com.smallcpp.docs");
+    app->run();
+}

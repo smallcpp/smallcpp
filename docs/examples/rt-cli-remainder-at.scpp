@@ -1,0 +1,47 @@
+#include <cli>
+
+using namespace Cli;
+
+int starts(const char *text, const char *prefix) {
+    long i;
+
+    i = 0;
+    while (prefix[i] != 0) {
+        if (text == nullptr || text[i] != prefix[i])
+            return 0;
+        i = i + 1;
+    }
+    return 1;
+}
+
+int same(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == right[i])
+        return 1;
+    return 0;
+}
+
+
+int main(void) {
+    CommandLine *command;
+    char *args[4];
+    int ok;
+
+    command = new CommandLine("demo", "remainder at", "1");
+    command->set_capture_remainder(true);
+    args[0] = "demo";
+    args[1] = "--";
+    args[2] = "rest";
+    command->parse(3, args);
+    ok = 0;
+    if (same(command->remainder_at(0), "rest"))
+        ok = 1;
+    print("rt-cli-remainder-at {}\n", ok);
+    return 0;
+}

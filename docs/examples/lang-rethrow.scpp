@@ -1,0 +1,13 @@
+int main(void) {
+    try {
+        try {
+            throw 4;
+        } catch (...) {
+            throw;
+        }
+    } catch (int error) {
+        print("lang-rethrow {}\n", error);
+        return 0;
+    }
+    return 1;
+}

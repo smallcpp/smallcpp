@@ -1,0 +1,26 @@
+#include <pthread>
+
+
+int box;
+
+void *work(void *arg) {
+    int *slot;
+
+    slot = (int *)arg;
+    *slot = 7;
+    return nullptr;
+}
+
+int main(void) {
+    pthread_t thread;
+    int ok;
+
+    box = 0;
+    ok = 0;
+    if (pthread_create(&thread, nullptr, work, (void *)&box) == 0
+            && pthread_join(thread, nullptr) == 0
+            && box == 7)
+        ok = 1;
+    print("rt-pthread-join {}\n", ok);
+    return 0;
+}

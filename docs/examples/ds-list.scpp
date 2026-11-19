@@ -1,0 +1,27 @@
+#include <list>
+
+LIST(IntList, int)
+
+int main(void) {
+    IntList *items;
+    long cursor;
+    int first;
+    int before;
+
+    items = new IntList();
+    items->add(1);
+    items->add(2);
+    items->insert(0, 9);
+    items->replace(-1, 8);
+    cursor = 0;
+    first = items->next(&cursor);
+    before = (int)items->size();
+    items->remove(1);
+    print("list {} {} {} {} {}\n",
+        before,
+        (int)items->find(2),
+        items->from_end(0),
+        first,
+        (int)items->size());
+    return 0;
+}

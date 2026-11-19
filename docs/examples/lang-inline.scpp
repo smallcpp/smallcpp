@@ -1,0 +1,8 @@
+inline int add(int left, int right) {
+    return left + right;
+}
+
+int main(void) {
+    print("lang-inline {}\n", add(2, 4));
+    return 0;
+}

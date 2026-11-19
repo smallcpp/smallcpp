@@ -1,0 +1,14 @@
+#include <time>
+
+int main(void) {
+    int ok;
+
+    time_t now;
+
+    now = time(nullptr);
+    ok = 0;
+    if (now > 0)
+        ok = 1;
+    print("rt-time {}\n", ok);
+    return 0;
+}
