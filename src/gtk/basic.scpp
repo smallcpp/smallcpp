@@ -111,7 +111,7 @@ void Window::remove(Widget *child) {
 
 void Window::present() {
     gtk_use((Widget *)this);
-    gtk_window_present(native);
+    gtk_present_window(native);
 }
 
 void Window::close() {
@@ -318,6 +318,7 @@ SignalConnection CheckButton::on_toggled(
 }
 
 ScrolledWindow::ScrolledWindow() : Widget() {
+    kind = GTK_KIND_SCROLLED;
     native = gtk_sink(gtk_scrolled_window_new());
 }
 

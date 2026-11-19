@@ -9,7 +9,11 @@ namespace Gtk {
 
 enum {
     GTK_KIND_PLAIN,
-    GTK_KIND_WINDOW
+    GTK_KIND_WINDOW,
+    GTK_KIND_NOTEBOOK,
+    GTK_KIND_PANED,
+    GTK_KIND_SCROLLED,
+    GTK_KIND_POPOVER
 };
 
 void gtk_fail(const char *message);
@@ -41,6 +45,7 @@ void gtk_keep_app(
 void gtk_keep_buffer(
         TextBuffer *buffer,
         SignalConnection *slot);
+void gtk_present_window(void *window);
 void gtk_clear_iter(long *words);
 void gtk_place(
         void *buffer,

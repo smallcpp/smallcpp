@@ -337,6 +337,7 @@ void MenuButton::set_menu(
 }
 
 Popover::Popover() : Widget() {
+    kind = GTK_KIND_POPOVER;
     native = gtk_sink(gtk_popover_new());
 }
 
@@ -362,6 +363,7 @@ Paned::Paned(int orientation) : Widget() {
             && orientation != GTK_VERTICAL)
         gtk_fail("range");
     orient = orientation;
+    kind = GTK_KIND_PANED;
     native = gtk_sink(gtk_paned_new(orientation));
     startChild = nullptr;
     endChild = nullptr;
@@ -415,6 +417,7 @@ long Paned::position() const {
 }
 
 Notebook::Notebook() : Widget() {
+    kind = GTK_KIND_NOTEBOOK;
     native = gtk_sink(gtk_notebook_new());
 }
 

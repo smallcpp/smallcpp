@@ -221,7 +221,7 @@ SignalConnection Dialog::on_response(
 
 void Dialog::present() {
     gtk_use((Widget *)this);
-    gtk_window_present(native);
+    gtk_present_window(native);
 }
 
 AlertDialog::AlertDialog(

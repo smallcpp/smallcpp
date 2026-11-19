@@ -28,6 +28,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Fixed
 
+- `Widget::dispose` removed a child with `gtk_widget_unparent`. A window, a paned, a scrolled window, and a popover keep their own child pointer. That pointer stayed set, so the container's dispose unparented storage that was no longer a widget. A notebook page is parented to the notebook's stack, and unparenting it makes the next removal fail. Dispose now clears the child through that container's remove call. `present` adds the window to the application after startup, so the window stays up for the run. GTK examples run under `xvfb-run` and do not use the caller's display. A missing `xvfb-run` fails the example.
 - A pure virtual method declared in a header is linked once when more than one translation unit includes that header. `Database` relies on this.
 - `scpp` joins the stack maps when a link contains more than one smallcpp object. The collector then traces a safepoint in a later object, including `new` inside a constructor in a library. `sqlite-round` relies on this.
 - A call through a function pointer in an array, written `fns[i](args)`, was rejected. The call runs the function stored at that index.

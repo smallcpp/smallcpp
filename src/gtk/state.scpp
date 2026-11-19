@@ -444,6 +444,93 @@ bool Widget::disposed() const {
     return gone != 0;
 }
 
+static long gtk_child_index(
+        Widget *parent,
+        Widget *child) {
+    long i;
+
+    i = 0;
+    while (i < parent->childCount) {
+        if (parent->children[i] == child)
+            return i;
+        i = i + 1;
+    }
+    return -1;
+}
+
+/* A container keeps its own child pointer. Unparenting
+ * the child leaves that pointer set. The container's
+ * dispose then unparents storage that is no longer a
+ * widget. A notebook page is parented to the stack, so
+ * removing it any other way fails the same way. Clear
+ * the pointer through the container's own remove.
+ */
+static int gtk_detach_child(Widget *widget) {
+    Widget *parent;
+    void *native;
+    long index;
+
+    parent = widget->parentWidget;
+    if (parent == nullptr)
+        return 0;
+    if (parent->native == nullptr)
+        return 0;
+    native = widget->native;
+    if (parent->kind == GTK_KIND_NOTEBOOK) {
+        index = gtk_child_index(parent, widget);
+        if (index < 0)
+            return 0;
+        gtk_notebook_remove_page(
+                parent->native,
+                gtk_int(index));
+        return 1;
+    }
+    if (parent->kind == GTK_KIND_WINDOW) {
+        if (gtk_window_get_child(parent->native)
+                != native)
+            return 0;
+        gtk_window_set_child(parent->native, nullptr);
+        return 1;
+    }
+    if (parent->kind == GTK_KIND_PANED) {
+        if (gtk_paned_get_start_child(parent->native)
+                == native) {
+            gtk_paned_set_start_child(
+                    parent->native,
+                    nullptr);
+            return 1;
+        }
+        if (gtk_paned_get_end_child(parent->native)
+                == native) {
+            gtk_paned_set_end_child(
+                    parent->native,
+                    nullptr);
+            return 1;
+        }
+        return 0;
+    }
+    if (parent->kind == GTK_KIND_SCROLLED) {
+        gtk_scrolled_window_set_child(
+                parent->native,
+                nullptr);
+        return 1;
+    }
+    if (parent->kind == GTK_KIND_POPOVER) {
+        gtk_popover_set_child(parent->native, nullptr);
+        return 1;
+    }
+    return 0;
+}
+
+static void gtk_release_native(Widget *widget) {
+    if (widget->native == nullptr)
+        return;
+    if (gtk_detach_child(widget) != 0)
+        return;
+    if (gtk_widget_get_parent(widget->native) != nullptr)
+        gtk_widget_unparent(widget->native);
+}
+
 void Widget::dispose() {
     long i;
 
@@ -451,13 +538,6 @@ void Widget::dispose() {
     if (gone != 0)
         gtk_fail("disposed");
     gone = 1;
-    i = childCount - 1;
-    while (i >= 0) {
-        if (children[i] != nullptr
-                && children[i]->gone == 0)
-            children[i]->dispose();
-        i = i - 1;
-    }
     i = 0;
     while (i < slotCount) {
         if (slots[i] != nullptr && slots[i]->live != 0) {
@@ -470,14 +550,30 @@ void Widget::dispose() {
         }
         i = i + 1;
     }
+    i = childCount - 1;
+    while (i >= 0) {
+        if (children[i] != nullptr
+                && children[i]->gone == 0)
+            children[i]->dispose();
+        i = i - 1;
+    }
     if (cleanup != nullptr)
         cleanup(this);
     if (native != nullptr) {
-        if (gtk_widget_get_parent(native) != nullptr)
-            gtk_widget_unparent(native);
+        gtk_release_native(this);
         g_object_unref(native);
         native = nullptr;
     }
+}
+
+void gtk_present_window(void *window) {
+    if (gtkApp != nullptr
+            && gtkApp->native != nullptr
+            && gtkApp->running != 0)
+        gtk_application_add_window(
+                gtkApp->native,
+                window);
+    gtk_window_present(window);
 }
 
 void Widget::set_visible(bool value) {

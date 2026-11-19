@@ -69,6 +69,9 @@ extern int gtk_init_check(void);
 extern void *gtk_application_new(
         const char *id,
         int flags);
+extern void gtk_application_add_window(
+        void *application,
+        void *window);
 extern void *gtk_window_new(void);
 extern void gtk_window_set_title(
         void *window,
@@ -81,6 +84,7 @@ extern void gtk_window_set_default_size(
 extern void gtk_window_set_child(
         void *window,
         void *child);
+extern void *gtk_window_get_child(void *window);
 extern void gtk_window_present(void *window);
 extern void gtk_window_close(void *window);
 extern void gtk_widget_set_visible(void *widget, int value);
@@ -179,9 +183,11 @@ extern void *gtk_paned_new(int orientation);
 extern void gtk_paned_set_start_child(
         void *paned,
         void *child);
+extern void *gtk_paned_get_start_child(void *paned);
 extern void gtk_paned_set_end_child(
         void *paned,
         void *child);
+extern void *gtk_paned_get_end_child(void *paned);
 extern void gtk_paned_set_position(
         void *paned,
         int position);
