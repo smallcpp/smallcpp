@@ -123,6 +123,7 @@ endif()
 
 foreach(relative IN ITEMS
         bin/scpp bin/preproc bin/scpp_cc bin/scpp-lsp
+        bin/scpp bin/preproc bin/scpp_cc bin/scpp-format
         include/exceptions
         lib/libsmallcpp_runtime.a
         lib/libsmallcpp_sqlite.a
