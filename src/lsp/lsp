@@ -1,0 +1,143 @@
+#ifndef SMALLCPP_LSP
+#define SMALLCPP_LSP
+
+#include <string>
+
+enum {
+    JSON_BAD = 0,
+    JSON_NULL = 1,
+    JSON_BOOL = 2,
+    JSON_NUMBER = 3,
+    JSON_STRING = 4,
+    JSON_ARRAY = 5,
+    JSON_OBJECT = 6
+};
+
+enum {
+    SYMBOL_USE = 0,
+    SYMBOL_FUNCTION = 1,
+    SYMBOL_METHOD = 2,
+    SYMBOL_CLASS = 3,
+    SYMBOL_VARIABLE = 4,
+    SYMBOL_PARAMETER = 5,
+    SYMBOL_FIELD = 6,
+    SYMBOL_ENUMERATOR = 7,
+    SYMBOL_NAMESPACE = 8,
+    SYMBOL_TAG = 9
+};
+
+int text_eq(const char *left, const char *right);
+
+class Json {
+public:
+    int kind;
+    int flag;
+    long number;
+    String *text;
+    String *key;
+    Json *child;
+    Json *next;
+
+    Json();
+    Json *member(const char *key);
+    Json *at(long index);
+};
+
+Json *json_null(void);
+Json *json_bool(int flag);
+Json *json_number(long value);
+Json *json_string(const char *text);
+Json *json_array(void);
+Json *json_object(void);
+void json_put(Json *object, const char *key, Json *value);
+void json_push(Json *array, Json *value);
+Json *parse_json(const char *text, long length);
+void write_json(String *out, Json *value);
+void write_message(Json *value);
+
+class Symbol {
+public:
+    String *name;
+    long line;
+    long column;
+    long length;
+    int kind;
+    int defining;
+    Symbol *next;
+
+    Symbol();
+};
+
+class Diag {
+public:
+    long line;
+    long column;
+    long end_column;
+    String *message;
+    Diag *next;
+
+    Diag();
+};
+
+class Document {
+public:
+    String *uri;
+    String *text;
+    long version;
+    Symbol *symbols;
+    Document *next;
+
+    Document();
+};
+
+class Server {
+public:
+    Document *documents;
+    String *compiler;
+    int shutdown;
+    int started;
+    int done;
+    int code;
+
+    Server();
+    void serve(void);
+    void handle(Json *root);
+    void refresh(Document *doc);
+    void publish(Document *doc, Diag *diags);
+    Document *find(const char *uri);
+    Document *document_at(Json *params);
+    void on_initialize(Json *id);
+    void on_open(Json *params);
+    void on_change(Json *params);
+    void on_save(Json *params);
+    void on_close(Json *params);
+    void on_definition(Json *id, Json *params);
+    void on_completion(Json *id, Json *params);
+    void reply(Json *id, Json *result);
+    void fail(
+            Json *id,
+            long code,
+            const char *message);
+};
+
+int write_buffer(const char *path, const char *text);
+Diag *check_buffer(
+        const char *compiler,
+        const char *text,
+        Document *doc);
+Diag *compile_file(
+        const char *compiler,
+        const char *dir,
+        const char *text);
+void load_symbols(Document *doc, const char *path);
+
+extern int scpp_index_file(const char *path);
+extern int scpp_symbol_count(void);
+extern const char *scpp_symbol_name(int index);
+extern int scpp_symbol_line(int index);
+extern int scpp_symbol_column(int index);
+extern int scpp_symbol_length(int index);
+extern int scpp_symbol_kind(int index);
+extern int scpp_symbol_defining(int index);
+
+#endif

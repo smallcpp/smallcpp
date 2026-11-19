@@ -1,0 +1,1002 @@
+#include <lsp>
+#include <stdio>
+#include <stdlib>
+#include <unistd>
+
+extern long readlink(const char *path, char *buf, unsigned long size);
+
+static String *keyword_text(void) {
+    String *text;
+
+    text = new String();
+    text->add("NULL auto bool break case catch char ");
+    text->add("class const continue default delete do ");
+    text->add("double else enum extern false float for ");
+    text->add("format goto if inline int long namespace ");
+    text->add("new nullptr print private protected public ");
+    text->add("register return short signed sizeof static ");
+    text->add("struct switch this throw true try ");
+    text->add("typedef typeid union unsigned using virtual ");
+    text->add("void volatile while");
+    return text;
+}
+
+static int read_exact(char *buf, long length);
+static int read_headers(char *header, long cap, long *body);
+static Json *read_message(void);
+static Json *copy_id(Json *id);
+static const char *field_text(Json *object, const char *key);
+static long field_number(Json *object, const char *key);
+static Json *make_pos(long line, long character);
+static Json *make_range(
+        long line,
+        long start,
+        long end_line,
+        long end);
+static void drop_document(Server *server, const char *uri);
+static void store_text(Document *doc, const char *text, long version);
+static int ident_char(char ch);
+static const char *prefix_at(
+        const char *text,
+        long line,
+        long character,
+        char *buf,
+        long cap);
+static int list_has(Json *items, const char *label);
+static int completion_kind(int kind);
+static void add_item(Json *items, const char *label, int kind);
+static int covers(
+        Symbol *sym,
+        long line,
+        long character,
+        int *after);
+static Symbol *symbol_at(
+        Document *doc,
+        long line,
+        long character);
+static Symbol *find_definition(Document *doc, const char *name);
+static void find_compiler(Server *server);
+
+static int read_exact(char *buf, long length) {
+    long got;
+
+    got = 0;
+    while (got < length) {
+        unsigned long n;
+
+        n = fread(
+                (void *)(buf + got),
+                1,
+                (unsigned long)(length - got),
+                stdin);
+        if (n == 0)
+            return 0;
+        got = got + (long)n;
+    }
+    return 1;
+}
+
+static int read_byte(void) {
+    unsigned char ch;
+    unsigned long n;
+
+    n = fread((void *)&ch, 1, 1, stdin);
+    if (n == 0)
+        return -1;
+    return (int)ch;
+}
+
+static int read_headers(char *header, long cap, long *body) {
+    long n;
+    int blank;
+    long i;
+
+    n = 0;
+    blank = 0;
+    *body = -1;
+    while (n + 1 < cap) {
+        int ch;
+
+        ch = read_byte();
+        if (ch < 0)
+            return 0;
+        header[n] = (char)ch;
+        n = n + 1;
+        header[n] = 0;
+        if (n >= 4
+                && header[n - 4] == '\r'
+                && header[n - 3] == '\n'
+                && header[n - 2] == '\r'
+                && header[n - 1] == '\n')
+            blank = 1;
+        if (n >= 2
+                && header[n - 2] == '\n'
+                && header[n - 1] == '\n')
+            blank = 1;
+        if (blank == 0)
+            continue;
+        i = 0;
+        while (i + 15 < n) {
+            if (header[i] == 'C'
+                    && header[i + 1] == 'o'
+                    && header[i + 2] == 'n'
+                    && header[i + 3] == 't'
+                    && header[i + 4] == 'e'
+                    && header[i + 5] == 'n'
+                    && header[i + 6] == 't'
+                    && header[i + 7] == '-'
+                    && header[i + 8] == 'L'
+                    && header[i + 9] == 'e'
+                    && header[i + 10] == 'n'
+                    && header[i + 11] == 'g'
+                    && header[i + 12] == 't'
+                    && header[i + 13] == 'h'
+                    && header[i + 14] == ':') {
+                long j;
+                long value;
+
+                j = i + 15;
+                while (header[j] == ' ')
+                    j = j + 1;
+                value = 0;
+                while (header[j] >= '0' && header[j] <= '9') {
+                    value = value * 10 + (header[j] - '0');
+                    j = j + 1;
+                }
+                *body = value;
+                return 1;
+            }
+            i = i + 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+static Json *read_message(void) {
+    char header[4096];
+    long length;
+    char *body;
+    Json *root;
+
+    if (read_headers(header, 4096, &length) == 0)
+        return nullptr;
+    if (length < 0 || length > 8388608)
+        return nullptr;
+    body = (char *)malloc((unsigned long)length + 1);
+    if (body == nullptr)
+        return nullptr;
+    if (length > 0 && read_exact(body, length) == 0) {
+        free((void *)body);
+        return nullptr;
+    }
+    body[length] = 0;
+    root = parse_json(body, length);
+    free((void *)body);
+    return root;
+}
+
+static Json *copy_id(Json *id) {
+    if (id == nullptr)
+        return json_null();
+    if (id->kind == JSON_NUMBER)
+        return json_number(id->number);
+    if (id->kind == JSON_STRING) {
+        const char *text;
+
+        text = "";
+        if (id->text != nullptr)
+            text = id->text->c_str();
+        return json_string(text);
+    }
+    return json_null();
+}
+
+static const char *field_text(Json *object, const char *key) {
+    Json *member;
+
+    if (object == nullptr)
+        return nullptr;
+    member = object->member(key);
+    if (member == nullptr || member->kind != JSON_STRING)
+        return nullptr;
+    if (member->text == nullptr)
+        return "";
+    return member->text->c_str();
+}
+
+static long field_number(Json *object, const char *key) {
+    Json *member;
+
+    if (object == nullptr)
+        return 0;
+    member = object->member(key);
+    if (member == nullptr || member->kind != JSON_NUMBER)
+        return 0;
+    return member->number;
+}
+
+static Json *make_pos(long line, long character) {
+    Json *pos;
+
+    if (line < 0)
+        line = 0;
+    if (character < 0)
+        character = 0;
+    pos = json_object();
+    json_put(pos, "line", json_number(line));
+    json_put(pos, "character", json_number(character));
+    return pos;
+}
+
+static Json *make_range(
+        long line,
+        long start,
+        long end_line,
+        long end) {
+    Json *range;
+
+    range = json_object();
+    json_put(range, "start", make_pos(line, start));
+    json_put(range, "end", make_pos(end_line, end));
+    return range;
+}
+
+static void drop_document(Server *server, const char *uri) {
+    Document *prev;
+    Document *doc;
+
+    prev = nullptr;
+    doc = server->documents;
+    while (doc != nullptr) {
+        if (doc->uri != nullptr && text_eq(doc->uri->c_str(), uri)) {
+            if (prev == nullptr)
+                server->documents = doc->next;
+            else
+                prev->next = doc->next;
+            return;
+        }
+        prev = doc;
+        doc = doc->next;
+    }
+}
+
+static void store_text(
+        Document *doc,
+        const char *text,
+        long version) {
+    if (text == nullptr)
+        text = "";
+    doc->text = new String();
+    doc->text->add(text);
+    doc->version = version;
+}
+
+static int ident_char(char ch) {
+    if (ch >= 'a' && ch <= 'z')
+        return 1;
+    if (ch >= 'A' && ch <= 'Z')
+        return 1;
+    if (ch >= '0' && ch <= '9')
+        return 1;
+    if (ch == '_')
+        return 1;
+    return 0;
+}
+
+static const char *prefix_at(
+        const char *text,
+        long line,
+        long character,
+        char *buf,
+        long cap) {
+    long current;
+    long i;
+    long at;
+    long start;
+    long n;
+
+    buf[0] = 0;
+    if (text == nullptr || cap < 2)
+        return buf;
+    current = 0;
+    i = 0;
+    while (text[i] != 0 && current < line) {
+        if (text[i] == '\n')
+            current = current + 1;
+        i = i + 1;
+    }
+    if (current != line)
+        return buf;
+    at = 0;
+    while (at < character && text[i] != 0 && text[i] != '\n') {
+        i = i + 1;
+        at = at + 1;
+    }
+    start = i;
+    while (start > 0 && text[start - 1] != '\n'
+            && ident_char(text[start - 1]))
+        start = start - 1;
+    n = 0;
+    while (start < i && n + 1 < cap) {
+        buf[n] = text[start];
+        n = n + 1;
+        start = start + 1;
+    }
+    buf[n] = 0;
+    return buf;
+}
+
+static int list_has(Json *items, const char *label) {
+    Json *item;
+
+    item = items->child;
+    while (item != nullptr) {
+        const char *name;
+
+        name = field_text(item, "label");
+        if (name != nullptr && text_eq(name, label))
+            return 1;
+        item = item->next;
+    }
+    return 0;
+}
+
+static int completion_kind(int kind) {
+    if (kind == SYMBOL_METHOD)
+        return 2;
+    if (kind == SYMBOL_FUNCTION)
+        return 3;
+    if (kind == SYMBOL_FIELD)
+        return 5;
+    if (kind == SYMBOL_VARIABLE || kind == SYMBOL_PARAMETER)
+        return 6;
+    if (kind == SYMBOL_CLASS)
+        return 7;
+    if (kind == SYMBOL_NAMESPACE)
+        return 9;
+    if (kind == SYMBOL_ENUMERATOR)
+        return 20;
+    if (kind == SYMBOL_TAG)
+        return 22;
+    return 6;
+}
+
+static void add_item(Json *items, const char *label, int kind) {
+    Json *item;
+    long count;
+
+    if (label == nullptr || label[0] == 0)
+        return;
+    if (list_has(items, label))
+        return;
+    count = 0;
+    item = items->child;
+    while (item != nullptr) {
+        count = count + 1;
+        item = item->next;
+    }
+    if (count >= 200)
+        return;
+    item = json_object();
+    json_put(item, "label", json_string(label));
+    json_put(item, "kind", json_number(kind));
+    json_push(items, item);
+}
+
+static int covers(
+        Symbol *sym,
+        long line,
+        long character,
+        int *after) {
+    long start;
+    long end;
+
+    *after = 0;
+    if (sym->line != line + 1)
+        return 0;
+    start = sym->column - 1;
+    end = start + sym->length;
+    if (character >= start && character < end)
+        return 1;
+    if (character == end) {
+        *after = 1;
+        return 1;
+    }
+    return 0;
+}
+
+static Symbol *symbol_at(
+        Document *doc,
+        long line,
+        long character) {
+    Symbol *best;
+    int best_after;
+    Symbol *sym;
+
+    best = nullptr;
+    best_after = 1;
+    if (doc == nullptr)
+        return nullptr;
+    sym = doc->symbols;
+    while (sym != nullptr) {
+        int after;
+        int better;
+
+        if (covers(sym, line, character, &after)) {
+            better = 0;
+            if (best == nullptr)
+                better = 1;
+            else if (best_after && after == 0)
+                better = 1;
+            else if (best_after == after
+                    && sym->column >= best->column)
+                better = 1;
+            if (better) {
+                best = sym;
+                best_after = after;
+            }
+        }
+        sym = sym->next;
+    }
+    return best;
+}
+
+static Symbol *find_definition(Document *doc, const char *name) {
+    Symbol *sym;
+
+    if (doc == nullptr || name == nullptr)
+        return nullptr;
+    sym = doc->symbols;
+    while (sym != nullptr) {
+        if (sym->defining && sym->name != nullptr
+                && text_eq(sym->name->c_str(), name))
+            return sym;
+        sym = sym->next;
+    }
+    return nullptr;
+}
+
+static void find_compiler(Server *server) {
+    char exe[4096];
+    long n;
+    long i;
+    char path[4096];
+    long p;
+
+    server->compiler = new String();
+    n = readlink("/proc/self/exe", exe, 4095);
+    if (n <= 0)
+        return;
+    exe[n] = 0;
+    i = n - 1;
+    while (i >= 0 && exe[i] != '/')
+        i = i - 1;
+    if (i < 0)
+        return;
+    p = 0;
+    while (p <= i && p < 4080) {
+        path[p] = exe[p];
+        p = p + 1;
+    }
+    path[p] = 's';
+    path[p + 1] = 'c';
+    path[p + 2] = 'p';
+    path[p + 3] = 'p';
+    path[p + 4] = 0;
+    server->compiler->add(path);
+}
+
+Symbol::Symbol() {
+    name = nullptr;
+    line = 0;
+    column = 0;
+    length = 0;
+    kind = SYMBOL_USE;
+    defining = 0;
+    next = nullptr;
+}
+
+Diag::Diag() {
+    line = 1;
+    column = 1;
+    end_column = 2;
+    message = nullptr;
+    next = nullptr;
+}
+
+Document::Document() {
+    uri = nullptr;
+    text = nullptr;
+    version = 0;
+    symbols = nullptr;
+    next = nullptr;
+}
+
+Server::Server() {
+    documents = nullptr;
+    compiler = nullptr;
+    shutdown = 0;
+    started = 0;
+    done = 0;
+    code = 1;
+    find_compiler(this);
+}
+
+Document *Server::find(const char *uri) {
+    Document *doc;
+
+    if (uri == nullptr)
+        return nullptr;
+    doc = documents;
+    while (doc != nullptr) {
+        if (doc->uri != nullptr && text_eq(doc->uri->c_str(), uri))
+            return doc;
+        doc = doc->next;
+    }
+    return nullptr;
+}
+
+Document *Server::document_at(Json *params) {
+    Json *docj;
+    const char *uri;
+
+    if (params == nullptr)
+        return nullptr;
+    docj = params->member("textDocument");
+    uri = field_text(docj, "uri");
+    return find(uri);
+}
+
+void Server::publish(Document *doc, Diag *diags) {
+    Json *note;
+    Json *params;
+    Json *list;
+    Diag *diag;
+
+    if (doc == nullptr || doc->uri == nullptr)
+        return;
+    list = json_array();
+    diag = diags;
+    while (diag != nullptr) {
+        Json *item;
+        const char *message;
+        long end_col;
+
+        message = "";
+        if (diag->message != nullptr)
+            message = diag->message->c_str();
+        end_col = diag->end_column;
+        if (end_col <= diag->column)
+            end_col = diag->column + 1;
+        item = json_object();
+        json_put(
+                item,
+                "range",
+                make_range(
+                        diag->line - 1,
+                        diag->column - 1,
+                        diag->line - 1,
+                        end_col - 1));
+        json_put(item, "severity", json_number(1));
+        json_put(item, "source", json_string("scpp"));
+        json_put(item, "message", json_string(message));
+        json_push(list, item);
+        diag = diag->next;
+    }
+    params = json_object();
+    json_put(params, "uri", json_string(doc->uri->c_str()));
+    json_put(params, "diagnostics", list);
+    note = json_object();
+    json_put(note, "jsonrpc", json_string("2.0"));
+    json_put(note, "method", json_string("textDocument/publishDiagnostics"));
+    json_put(note, "params", params);
+    write_message(note);
+}
+
+void Server::refresh(Document *doc) {
+    const char *text;
+    const char *compiler;
+    Diag *diags;
+
+    if (doc == nullptr)
+        return;
+    text = "";
+    if (doc->text != nullptr)
+        text = doc->text->c_str();
+    compiler = "";
+    if (this->compiler != nullptr)
+        compiler = this->compiler->c_str();
+    diags = check_buffer(compiler, text, doc);
+    publish(doc, diags);
+}
+
+void Server::reply(Json *id, Json *result) {
+    Json *message;
+
+    if (result == nullptr)
+        result = json_null();
+    message = json_object();
+    json_put(message, "jsonrpc", json_string("2.0"));
+    json_put(message, "id", copy_id(id));
+    json_put(message, "result", result);
+    write_message(message);
+}
+
+void Server::fail(Json *id, long code, const char *message) {
+    Json *error;
+    Json *root;
+
+    error = json_object();
+    json_put(error, "code", json_number(code));
+    json_put(error, "message", json_string(message));
+    root = json_object();
+    json_put(root, "jsonrpc", json_string("2.0"));
+    json_put(root, "id", copy_id(id));
+    json_put(root, "error", error);
+    write_message(root);
+}
+
+void Server::on_initialize(Json *id) {
+    Json *result;
+    Json *caps;
+    Json *sync;
+    Json *save;
+    Json *complete;
+    Json *triggers;
+    Json *info;
+
+    save = json_object();
+    json_put(save, "includeText", json_bool(1));
+    sync = json_object();
+    json_put(sync, "openClose", json_bool(1));
+    json_put(sync, "change", json_number(1));
+    json_put(sync, "save", save);
+    triggers = json_array();
+    json_push(triggers, json_string("."));
+    json_push(triggers, json_string(":"));
+    json_push(triggers, json_string(">"));
+    complete = json_object();
+    json_put(complete, "triggerCharacters", triggers);
+    caps = json_object();
+    json_put(caps, "textDocumentSync", sync);
+    json_put(caps, "definitionProvider", json_bool(1));
+    json_put(caps, "completionProvider", complete);
+    info = json_object();
+    json_put(info, "name", json_string("scpp-lsp"));
+    json_put(info, "version", json_string("0.1"));
+    result = json_object();
+    json_put(result, "capabilities", caps);
+    json_put(result, "serverInfo", info);
+    started = 1;
+    reply(id, result);
+}
+
+void Server::on_open(Json *params) {
+    Json *docj;
+    const char *uri;
+    const char *text;
+    Document *doc;
+
+    if (params == nullptr)
+        return;
+    docj = params->member("textDocument");
+    uri = field_text(docj, "uri");
+    text = field_text(docj, "text");
+    if (uri == nullptr)
+        return;
+    drop_document(this, uri);
+    doc = new Document();
+    doc->uri = new String();
+    doc->uri->add(uri);
+    store_text(doc, text, field_number(docj, "version"));
+    doc->next = documents;
+    documents = doc;
+    refresh(doc);
+}
+
+void Server::on_change(Json *params) {
+    Document *doc;
+    Json *changes;
+    Json *last;
+    const char *text;
+    Json *docj;
+
+    doc = document_at(params);
+    if (doc == nullptr || params == nullptr)
+        return;
+    changes = params->member("contentChanges");
+    if (changes == nullptr || changes->kind != JSON_ARRAY)
+        return;
+    last = nullptr;
+    changes = changes->child;
+    while (changes != nullptr) {
+        if (field_text(changes, "text") != nullptr)
+            last = changes;
+        changes = changes->next;
+    }
+    if (last == nullptr)
+        return;
+    text = field_text(last, "text");
+    docj = params->member("textDocument");
+    store_text(doc, text, field_number(docj, "version"));
+    refresh(doc);
+}
+
+void Server::on_save(Json *params) {
+    Document *doc;
+    const char *text;
+
+    doc = document_at(params);
+    if (doc == nullptr)
+        return;
+    text = field_text(params, "text");
+    if (text != nullptr)
+        store_text(doc, text, doc->version);
+    refresh(doc);
+}
+
+void Server::on_close(Json *params) {
+    Document *doc;
+    const char *uri;
+    Json *docj;
+
+    doc = document_at(params);
+    if (doc == nullptr || doc->uri == nullptr)
+        return;
+    uri = doc->uri->c_str();
+    doc->text = new String();
+    doc->symbols = nullptr;
+    publish(doc, nullptr);
+    docj = params->member("textDocument");
+    uri = field_text(docj, "uri");
+    if (uri != nullptr)
+        drop_document(this, uri);
+}
+
+void Server::on_definition(Json *id, Json *params) {
+    Document *doc;
+    Json *pos;
+    Symbol *hit;
+    Symbol *def;
+    const char *name;
+    Json *loc;
+    const char *text;
+
+    doc = document_at(params);
+    if (doc == nullptr) {
+        reply(id, json_null());
+        return;
+    }
+    pos = params->member("position");
+    hit = symbol_at(
+            doc,
+            field_number(pos, "line"),
+            field_number(pos, "character"));
+    if (hit == nullptr || hit->name == nullptr) {
+        reply(id, json_null());
+        return;
+    }
+    def = hit;
+    if (hit->defining == 0) {
+        name = hit->name->c_str();
+        def = find_definition(doc, name);
+        if (def == nullptr)
+            def = hit;
+    }
+    name = "";
+    if (def->name != nullptr)
+        name = def->name->c_str();
+    text = "";
+    if (doc->uri != nullptr)
+        text = doc->uri->c_str();
+    loc = json_object();
+    json_put(loc, "uri", json_string(text));
+    json_put(
+            loc,
+            "range",
+            make_range(
+                    def->line - 1,
+                    def->column - 1,
+                    def->line - 1,
+                    def->column - 1 + def->length));
+    reply(id, loc);
+}
+
+void Server::on_completion(Json *id, Json *params) {
+    Document *doc;
+    Json *pos;
+    char prefix[256];
+    const char *text;
+    Symbol *sym;
+    Json *items;
+    Json *result;
+    int capped;
+
+    doc = document_at(params);
+    items = json_array();
+    if (doc != nullptr) {
+        text = "";
+        if (doc->text != nullptr)
+            text = doc->text->c_str();
+        pos = params->member("position");
+        prefix_at(
+                text,
+                field_number(pos, "line"),
+                field_number(pos, "character"),
+                prefix,
+                256);
+        sym = doc->symbols;
+        while (sym != nullptr) {
+            const char *name;
+            long n;
+            int match;
+
+            name = "";
+            if (sym->name != nullptr)
+                name = sym->name->c_str();
+            match = 1;
+            n = 0;
+            while (prefix[n] != 0) {
+                if (name[n] != prefix[n]) {
+                    match = 0;
+                    break;
+                }
+                n = n + 1;
+            }
+            if (sym->defining && match)
+                add_item(items, name, completion_kind(sym->kind));
+            sym = sym->next;
+        }
+        {
+            String *words;
+            const char *scan;
+            char word[32];
+
+            words = keyword_text();
+            scan = words->c_str();
+            while (scan[0] != 0) {
+                long n;
+                int match;
+
+                while (scan[0] == ' ')
+                    scan = scan + 1;
+                n = 0;
+                while (scan[0] != 0
+                        && scan[0] != ' '
+                        && n + 1 < 32) {
+                    word[n] = scan[0];
+                    n = n + 1;
+                    scan = scan + 1;
+                }
+                word[n] = 0;
+                if (n == 0)
+                    break;
+                match = 1;
+                n = 0;
+                while (prefix[n] != 0) {
+                    if (word[n] != prefix[n]) {
+                        match = 0;
+                        break;
+                    }
+                    n = n + 1;
+                }
+                if (match)
+                    add_item(items, word, 14);
+            }
+        }
+    }
+    capped = 0;
+    {
+        Json *item;
+        long count;
+
+        count = 0;
+        item = items->child;
+        while (item != nullptr) {
+            count = count + 1;
+            item = item->next;
+        }
+        if (count >= 200)
+            capped = 1;
+    }
+    result = json_object();
+    json_put(result, "isIncomplete", json_bool(capped));
+    json_put(result, "items", items);
+    reply(id, result);
+}
+
+void Server::handle(Json *root) {
+    const char *method;
+    Json *id;
+    Json *params;
+    int has_id;
+
+    if (root == nullptr || root->kind != JSON_OBJECT)
+        return;
+    method = field_text(root, "method");
+    id = root->member("id");
+    params = root->member("params");
+    has_id = id != nullptr;
+    if (method == nullptr) {
+        if (has_id)
+            fail(id, -32600, "method is required");
+        return;
+    }
+    if (text_eq(method, "exit")) {
+        done = 1;
+        if (shutdown)
+            code = 0;
+        else
+            code = 1;
+        return;
+    }
+    if (shutdown) {
+        if (has_id)
+            fail(id, -32600, "server is shutting down");
+        return;
+    }
+    if (started == 0 && !text_eq(method, "initialize")) {
+        if (has_id)
+            fail(id, -32002, "server is not initialized");
+        return;
+    }
+    if (text_eq(method, "initialize")) {
+        on_initialize(id);
+        return;
+    }
+    if (text_eq(method, "initialized"))
+        return;
+    if (text_eq(method, "$/cancelRequest"))
+        return;
+    if (text_eq(method, "shutdown")) {
+        shutdown = 1;
+        reply(id, json_null());
+        return;
+    }
+    if (text_eq(method, "textDocument/didOpen")) {
+        on_open(params);
+        return;
+    }
+    if (text_eq(method, "textDocument/didChange")) {
+        on_change(params);
+        return;
+    }
+    if (text_eq(method, "textDocument/didSave")) {
+        on_save(params);
+        return;
+    }
+    if (text_eq(method, "textDocument/didClose")) {
+        on_close(params);
+        return;
+    }
+    if (text_eq(method, "textDocument/definition")) {
+        on_definition(id, params);
+        return;
+    }
+    if (text_eq(method, "textDocument/completion")) {
+        on_completion(id, params);
+        return;
+    }
+    if (has_id)
+        fail(id, -32601, "method not found");
+}
+
+void Server::serve(void) {
+    while (done == 0) {
+        Json *root;
+
+        root = read_message();
+        if (root == nullptr) {
+            if (feof(stdin)) {
+                if (shutdown)
+                    code = 0;
+                done = 1;
+                break;
+            }
+            fail(nullptr, -32700, "parse error");
+            continue;
+        }
+        handle(root);
+    }
+}

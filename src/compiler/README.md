@@ -4,4 +4,4 @@
 
 `-o FILE` passes the tree to the emitter. `--emit-llvm`, or a path ending in `.bc`, writes LLVM IR and does not link. `-c` writes an object and does not link. Any other path is an executable, and `-g` is passed to Clang on that link. With `-g`, the object records the source file, line numbers, functions, and types. `--debug-file` names that source file; the default is the input. `--ast-text FILE` writes a structured text form of the tree. `--ast-dot FILE` writes a Graphviz DOT file. Any combination of the dump files and one code output is accepted, including any one of them alone.
 
-A typedef name is recorded so a later use is a type name.
+A typedef name is recorded so a later use is a type name. The parse library can index names for the language server through `scpp_index_file`. That index resets the lexer and parser state between buffers.

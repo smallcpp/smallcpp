@@ -122,6 +122,7 @@ if(NOT install_result EQUAL 0)
 endif()
 
 foreach(relative IN ITEMS
+        bin/scpp bin/preproc bin/scpp_cc bin/scpp-lsp
         bin/scpp bin/preproc bin/scpp_cc bin/scpp-format
         include/exceptions
         lib/libsmallcpp_runtime.a

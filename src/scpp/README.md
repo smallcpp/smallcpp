@@ -1,5 +1,7 @@
 # scpp
 
+`scpp-lsp` is the language server beside this driver. See `docs/LSP.md`.
+
 `scpp` coordinates compilation. It runs `preproc`, then `scpp_cc`, and, for an executable, Clang. Several source files are compiled one at a time and linked together. It does not parse, and it does not emit LLVM IR. Each option is passed only to the phase that uses it. `-o` is optional, and the default executable is `a.out`.
 
 `scpp` reads `~/.config/smallcpp/config.ini` when that file exists. `include` is the header directory. `library` is the default `-L`, after an explicit `-L`. `runtime` is `libsmallcpp_runtime.a`. `libm` and the other system-library keys are absolute paths on the link, and `libm` is `libm.a`. An explicit `-l` for one of those libraries is linked instead of the recorded path. When the file is missing, `scpp` uses the prefix that contains its `bin/` directory, then the configured prefix. A fresh install uses `$HOME/opt/smallcpp` and writes the file. `preproc` and `scpp_cc` are `bin/preproc` and `bin/scpp_cc`.
