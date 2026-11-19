@@ -7,9 +7,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
 
-# The test target builds the ordinary targets first. Test programs are not
-# among them; CTest builds those before it runs the suite.
-set(CMAKE_SKIP_TEST_ALL_DEPENDENCY FALSE)
+# The test target is defined after the other targets. It builds the
+# ordinary targets and the test drivers, then runs CTest.
 enable_testing()
 
 find_package(LLVM 22.1 REQUIRED CONFIG)
@@ -209,3 +208,51 @@ configure_file(
 install(SCRIPT "${CMAKE_BINARY_DIR}/cmake/InstallConfig.cmake")
 
 add_subdirectory(tests)
+
+# CMake reserves the target name "test" (CMP0037). The built-in
+# target can depend only on all, so an excluded driver stays out of
+# `build test`. OLD keeps this project target, and generation leaves
+# it in place. It depends on the drivers and on every target the
+# default build includes, then runs CTest.
+function(attach_test_drivers)
+    set(CMAKE_WARN_DEPRECATED OFF)
+    cmake_policy(SET CMP0037 OLD)
+    add_custom_target(test
+        COMMAND ${CMAKE_CTEST_COMMAND} --force-new-ctest-process $(ARGS)
+        USES_TERMINAL)
+
+    set(pending "${CMAKE_SOURCE_DIR}")
+    set(ordinary "")
+    while(pending)
+        list(POP_FRONT pending dir)
+        get_property(targets DIRECTORY "${dir}"
+            PROPERTY BUILDSYSTEM_TARGETS)
+        get_property(subs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+        list(APPEND pending ${subs})
+        list(APPEND ordinary ${targets})
+    endwhile()
+
+    foreach(name IN LISTS ordinary)
+        if(name STREQUAL "test")
+            continue()
+        endif()
+        get_target_property(excluded ${name} EXCLUDE_FROM_ALL)
+        if(excluded)
+            continue()
+        endif()
+        add_dependencies(test ${name})
+    endforeach()
+    foreach(name IN LISTS ARGN)
+        if(NOT TARGET ${name})
+            message(FATAL_ERROR
+                "Test driver '${name}' is not a target")
+        endif()
+        add_dependencies(test ${name})
+    endforeach()
+endfunction()
+
+attach_test_drivers(
+    command_line_test
+    prefix_test
+    parse_test
+    verify_module)
