@@ -38,6 +38,7 @@ class Name##Node { \
 public: \
     Type value; \
     int height; \
+    long size; \
     Name##Node *left; \
     Name##Node *right; \
 }; \
@@ -55,13 +56,12 @@ class Name { \
     long span(Name##Node *node); \
     Name##Node *graft(Name##Node *node, long index, \
         Type value); \
-    int write(Name##Node *node, long *seen, \
-        long index, Type value); \
+    int write(Name##Node *node, long index, \
+        Type value); \
     Name##Node *drop_at(Name##Node *node, long index); \
     int locate(Name##Node *node, Type value, \
         long *seen, long *out); \
-    int pick(Name##Node *node, long *seen, \
-        long index, Type *out); \
+    int pick(Name##Node *node, long index, Type *out); \
 public: \
     Name(); \
     virtual long compare(Type left, Type right); \
@@ -80,16 +80,39 @@ Name::Name() { \
     count = 0; \
 } \
 long Name::compare(Type left, Type right) { \
-    String *tool; \
+    const char *a; \
+    const char *b; \
+    long i; \
+    unsigned char ca; \
+    unsigned char cb; \
+    String *left_text; \
+    String *right_text; \
     if (typeid(Type) == typeid(const char *)) { \
-        tool = new String(); \
-        return tool->cmp((const char *)left, \
-            (const char *)right); \
+        a = (const char *)left; \
+        b = (const char *)right; \
+        if (a == nullptr || b == nullptr) \
+            throw *new Exception("string"); \
+        i = 0; \
+        while (a[i] != 0 && a[i] == b[i]) \
+            i = i + 1; \
+        ca = (unsigned char)a[i]; \
+        cb = (unsigned char)b[i]; \
+        return (long)ca - (long)cb; \
     } \
     if (typeid(Type) == typeid(String *)) { \
-        tool = new String(); \
-        return tool->cmp((String *)left, \
-            (String *)right); \
+        left_text = (String *)left; \
+        right_text = (String *)right; \
+        if (left_text == nullptr \
+                || right_text == nullptr) \
+            throw *new Exception("string"); \
+        a = left_text->c_str(); \
+        b = right_text->c_str(); \
+        i = 0; \
+        while (a[i] != 0 && a[i] == b[i]) \
+            i = i + 1; \
+        ca = (unsigned char)a[i]; \
+        cb = (unsigned char)b[i]; \
+        return (long)ca - (long)cb; \
     } \
     if (left < right) \
         return (long)-1; \
@@ -112,6 +135,15 @@ int Name::taller(Name##Node *left, Name##Node *right) { \
     return b; \
 } \
 void Name::measure(Name##Node *node) { \
+    long left_n; \
+    long right_n; \
+    left_n = 0; \
+    right_n = 0; \
+    if (node->left != nullptr) \
+        left_n = node->left->size; \
+    if (node->right != nullptr) \
+        right_n = node->right->size; \
+    node->size = 1 + left_n + right_n; \
     node->height = 1 + taller(node->left, node->right); \
 } \
 int Name::factor(Name##Node *node) { \
@@ -143,6 +175,7 @@ Name##Node *Name::plant(Name##Node *node, Type value) { \
         node->left = nullptr; \
         node->right = nullptr; \
         node->height = 1; \
+        node->size = 1; \
         count = count + 1; \
         return node; \
     } \
@@ -193,7 +226,7 @@ Name##Node *Name::settle(Name##Node *node) { \
 long Name::span(Name##Node *node) { \
     if (node == nullptr) \
         return 0; \
-    return 1 + span(node->left) + span(node->right); \
+    return node->size; \
 } \
 Name##Node *Name::graft(Name##Node *node, long index, \
     Type value) { \
@@ -204,6 +237,7 @@ Name##Node *Name::graft(Name##Node *node, long index, \
         node->left = nullptr; \
         node->right = nullptr; \
         node->height = 1; \
+        node->size = 1; \
         count = count + 1; \
         return node; \
     } \
@@ -215,20 +249,20 @@ Name##Node *Name::graft(Name##Node *node, long index, \
             index - left_count - 1, value); \
     return settle(node); \
 } \
-int Name::write(Name##Node *node, long *seen, \
-    long index, Type value) { \
-    int found; \
+int Name::write(Name##Node *node, long index, \
+    Type value) { \
+    long left_count; \
     if (node == nullptr) \
         return 0; \
-    found = write(node->left, seen, index, value); \
-    if (found) \
-        return 1; \
-    if (*seen == index) { \
+    left_count = span(node->left); \
+    if (index < left_count) \
+        return write(node->left, index, value); \
+    if (index == left_count) { \
         node->value = value; \
         return 1; \
     } \
-    *seen = *seen + 1; \
-    return write(node->right, seen, index, value); \
+    return write(node->right, \
+        index - left_count - 1, value); \
 } \
 Name##Node *Name::drop_at(Name##Node *node, long index) { \
     Name##Node *least; \
@@ -271,33 +305,31 @@ int Name::locate(Name##Node *node, Type value, \
     *seen = *seen + 1; \
     return locate(node->right, value, seen, out); \
 } \
-int Name::pick(Name##Node *node, long *seen, \
-    long index, Type *out) { \
-    int found; \
+int Name::pick(Name##Node *node, long index, \
+    Type *out) { \
+    long left_count; \
     if (node == nullptr) \
         return 0; \
-    found = pick(node->left, seen, index, out); \
-    if (found) \
-        return 1; \
-    if (*seen == index) { \
+    left_count = span(node->left); \
+    if (index < left_count) \
+        return pick(node->left, index, out); \
+    if (index == left_count) { \
         *out = node->value; \
         return 1; \
     } \
-    *seen = *seen + 1; \
-    return pick(node->right, seen, index, out); \
+    return pick(node->right, \
+        index - left_count - 1, out); \
 } \
 void Name::add(Type value) { \
     top = plant(top, value); \
 } \
 Type Name::at(long index) { \
     Type found; \
-    long seen; \
     if (index < 0) \
         index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
-    seen = 0; \
-    pick(top, &seen, index, &found); \
+    pick(top, index, &found); \
     return found; \
 } \
 Type Name::root(void) { \
@@ -317,13 +349,11 @@ long Name::find(Type value) { \
     return out; \
 } \
 void Name::replace(long index, Type value) { \
-    long seen; \
     if (index < 0) \
         index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
-    seen = 0; \
-    write(top, &seen, index, value); \
+    write(top, index, value); \
 } \
 void Name::insert(long index, Type value) { \
     if (index < 0) \

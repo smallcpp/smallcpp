@@ -489,6 +489,7 @@ private:
     void emit_delete(const AstNode *node);
     Ty new_element(const AstNode *node, std::vector<const AstNode *> &bounds);
     std::vector<llvm::Value *> live_pointers();
+    void record_frame();
     llvm::Value *allocate(llvm::Value *bytes, llvm::Value *count);
     RValue emit_native(const AstNode *node);
     RValue emit_new(const AstNode *node);

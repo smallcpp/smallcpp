@@ -62,16 +62,39 @@ Name::Name() : Array((long)sizeof(Name##Slot)) { \
     zero(); \
 } \
 long Name::compare(Key left, Key right) { \
-    String *tool; \
+    const char *a; \
+    const char *b; \
+    long i; \
+    unsigned char ca; \
+    unsigned char cb; \
+    String *left_text; \
+    String *right_text; \
     if (typeid(Key) == typeid(const char *)) { \
-        tool = new String(); \
-        return tool->cmp((const char *)left, \
-            (const char *)right); \
+        a = (const char *)left; \
+        b = (const char *)right; \
+        if (a == nullptr || b == nullptr) \
+            throw *new Exception("string"); \
+        i = 0; \
+        while (a[i] != 0 && a[i] == b[i]) \
+            i = i + 1; \
+        ca = (unsigned char)a[i]; \
+        cb = (unsigned char)b[i]; \
+        return (long)ca - (long)cb; \
     } \
     if (typeid(Key) == typeid(String *)) { \
-        tool = new String(); \
-        return tool->cmp((String *)left, \
-            (String *)right); \
+        left_text = (String *)left; \
+        right_text = (String *)right; \
+        if (left_text == nullptr \
+                || right_text == nullptr) \
+            throw *new Exception("string"); \
+        a = left_text->c_str(); \
+        b = right_text->c_str(); \
+        i = 0; \
+        while (a[i] != 0 && a[i] == b[i]) \
+            i = i + 1; \
+        ca = (unsigned char)a[i]; \
+        cb = (unsigned char)b[i]; \
+        return (long)ca - (long)cb; \
     } \
     if (left == right) \
         return (long)0; \
@@ -210,7 +233,7 @@ void Name::remove(Key key) { \
         if (table[slot].state == Name##FILLED \
             && compare(table[slot].key, key) == 0) { \
             table[slot].state = Name##EMPTY; \
-            rehash(room); \
+            count = count - 1; \
             return; \
         } \
         slot = slot + 1; \

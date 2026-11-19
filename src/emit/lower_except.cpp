@@ -79,13 +79,18 @@ llvm::Value *Codegen::call_maybe_unwind(
         llvm::Value *callee,
         const std::vector<llvm::Value *> &args)
 {
+    llvm::Value *result;
+
     if (handlers.empty())
-        return builder.CreateCall(type, callee, args);
-    note_unwind();
-    llvm::BasicBlock *normal = new_block("invoke.cont");
-    llvm::Value *result = builder.CreateInvoke(
-        type, callee, normal, handlers.back(), args);
-    builder.SetInsertPoint(normal);
+        result = builder.CreateCall(type, callee, args);
+    else {
+        note_unwind();
+        llvm::BasicBlock *normal = new_block("invoke.cont");
+        result = builder.CreateInvoke(
+            type, callee, normal, handlers.back(), args);
+        builder.SetInsertPoint(normal);
+    }
+    record_frame();
     return result;
 }
 

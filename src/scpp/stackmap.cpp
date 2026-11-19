@@ -145,46 +145,61 @@ bool remainder_clear(const std::vector<uint8_t> &bytes, size_t at)
 int merge_stackmaps(const std::string &path)
 {
     std::fstream file(path, std::ios::in | std::ios::out | std::ios::binary);
-    std::vector<uint8_t> bytes;
     Elf64_Ehdr header;
-    Elf64_Shdr names_header;
+    std::vector<Elf64_Shdr> sections;
     std::vector<char> names;
     Elf64_Off section_offset = 0;
     uint64_t section_size = 0;
     bool found = false;
+    std::streamoff file_size;
 
     if (!file)
         return 0;
-    bytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-    if (bytes.size() < sizeof header)
+    file.seekg(0, std::ios::end);
+    file_size = file.tellg();
+    file.seekg(0);
+    if (!file || file_size < static_cast<std::streamoff>(sizeof header))
         return 0;
-    std::memcpy(&header, bytes.data(), sizeof header);
-    if (std::memcmp(header.e_ident, ELFMAG, SELFMAG) != 0 || header.e_ident[EI_CLASS] != ELFCLASS64
+    file.read(reinterpret_cast<char *>(&header), sizeof header);
+    if (!file || std::memcmp(header.e_ident, ELFMAG, SELFMAG) != 0 || header.e_ident[EI_CLASS] != ELFCLASS64
         || header.e_ident[EI_DATA] != ELFDATA2LSB || header.e_shoff == 0
         || header.e_shentsize != sizeof(Elf64_Shdr) || header.e_shnum == 0
         || header.e_shstrndx >= header.e_shnum)
         return 0;
-    if (header.e_shoff + static_cast<uint64_t>(header.e_shnum) * sizeof(Elf64_Shdr) > bytes.size())
+    if (header.e_shoff > static_cast<Elf64_Off>(file_size)
+        || static_cast<uint64_t>(header.e_shnum) * sizeof(Elf64_Shdr)
+            > static_cast<uint64_t>(file_size) - header.e_shoff)
         return 0;
-    std::memcpy(&names_header,
-                bytes.data() + header.e_shoff + static_cast<uint64_t>(header.e_shstrndx) * sizeof(Elf64_Shdr),
-                sizeof names_header);
-    if (names_header.sh_offset + names_header.sh_size > bytes.size())
+    sections.resize(header.e_shnum);
+    file.seekg(static_cast<std::streamoff>(header.e_shoff));
+    file.read(reinterpret_cast<char *>(sections.data()),
+              static_cast<std::streamsize>(sections.size() * sizeof(Elf64_Shdr)));
+    if (!file)
         return 0;
-    names.assign(bytes.begin() + static_cast<std::ptrdiff_t>(names_header.sh_offset),
-                 bytes.begin() + static_cast<std::ptrdiff_t>(names_header.sh_offset + names_header.sh_size));
+    {
+        const Elf64_Shdr &names_header = sections[header.e_shstrndx];
+
+        if (names_header.sh_size == 0 || names_header.sh_offset > static_cast<Elf64_Off>(file_size)
+            || names_header.sh_size > static_cast<uint64_t>(file_size) - names_header.sh_offset)
+            return 0;
+        names.resize(static_cast<size_t>(names_header.sh_size) + 1);
+        file.seekg(static_cast<std::streamoff>(names_header.sh_offset));
+        file.read(names.data(), static_cast<std::streamsize>(names_header.sh_size));
+        if (!file)
+            return 0;
+        names[names_header.sh_size] = 0;
+    }
     for (uint16_t index = 0; index < header.e_shnum; ++index) {
-        Elf64_Shdr section;
+        const Elf64_Shdr &section = sections[index];
         const char *name;
 
-        std::memcpy(&section, bytes.data() + header.e_shoff + static_cast<uint64_t>(index) * sizeof section,
-                    sizeof section);
-        if (section.sh_name >= names.size())
+        if (section.sh_name >= names.size() - 1)
             continue;
         name = names.data() + section.sh_name;
         if (std::strcmp(name, ".llvm_stackmaps") != 0)
             continue;
-        if (section.sh_offset + section.sh_size > bytes.size())
+        if (section.sh_offset > static_cast<Elf64_Off>(file_size)
+            || section.sh_size > static_cast<uint64_t>(file_size) - section.sh_offset)
             return 0;
         section_offset = section.sh_offset;
         section_size = section.sh_size;
@@ -194,8 +209,12 @@ int merge_stackmaps(const std::string &path)
     if (!found || section_size < 16)
         return 0;
 
-    std::vector<uint8_t> section(bytes.begin() + static_cast<std::ptrdiff_t>(section_offset),
-                                 bytes.begin() + static_cast<std::ptrdiff_t>(section_offset + section_size));
+    std::vector<uint8_t> section(static_cast<size_t>(section_size));
+    file.clear();
+    file.seekg(static_cast<std::streamoff>(section_offset));
+    file.read(reinterpret_cast<char *>(section.data()), static_cast<std::streamsize>(section.size()));
+    if (!file)
+        return 0;
     std::vector<Map> maps;
     size_t cursor = 0;
     while (cursor + 16 <= section.size() && section[cursor] == 3) {
