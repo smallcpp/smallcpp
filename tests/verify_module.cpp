@@ -742,6 +742,22 @@ static int check_shift_kind(const char *mode, llvm::Module &module,
     return ret_bin(mode, module, op, 1, 1);
 }
 
+static bool stack_metadata(const llvm::CallInst *call)
+{
+    const llvm::Function *fn;
+    llvm::Intrinsic::ID id;
+
+    if (call == NULL)
+        return false;
+    fn = call->getCalledFunction();
+    if (fn == NULL || !fn->isIntrinsic())
+        return false;
+    id = fn->getIntrinsicID();
+    return id == llvm::Intrinsic::experimental_stackmap
+        || id == llvm::Intrinsic::experimental_gc_result
+        || id == llvm::Intrinsic::experimental_gc_relocate;
+}
+
 static llvm::CallInst *direct_call(llvm::Function &fn)
 {
     llvm::CallInst *found = NULL;
@@ -749,6 +765,8 @@ static llvm::CallInst *direct_call(llvm::Function &fn)
     for (llvm::Instruction &inst : llvm::instructions(fn)) {
         auto *call = llvm::dyn_cast<llvm::CallInst>(&inst);
         if (call == NULL || call->getCalledFunction() == NULL)
+            continue;
+        if (stack_metadata(call))
             continue;
         if (found != NULL)
             return NULL;

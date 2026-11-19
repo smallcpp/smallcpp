@@ -632,7 +632,23 @@ void ColumnView::append_row(
 }
 
 void ColumnView::clear_rows() {
+    long row;
+    long column;
+
     gtk_use((Widget *)this);
+    row = 0;
+    while (row < rowCount) {
+        char **line;
+
+        line = (char **)cells[row];
+        column = 0;
+        while (column < columnCount) {
+            if (line[column] != nullptr)
+                free((void *)line[column]);
+            column = column + 1;
+        }
+        row = row + 1;
+    }
     while (rowCount > 0) {
         rowCount = rowCount - 1;
         gtk_string_list_remove(

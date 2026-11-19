@@ -29,6 +29,9 @@ public: \
     Name##Node *next; \
 }; \
 class Name { \
+    Name##Node *cached; \
+    long cached_at; \
+    void forget(void); \
     Name##Node *node_at(long index); \
 public: \
     Name##Node *head; \
@@ -48,17 +51,56 @@ public: \
 Name::Name() { \
     head = nullptr; \
     tail = nullptr; \
+    cached = nullptr; \
+    cached_at = 0; \
     count = 0; \
+} \
+void Name::forget(void) { \
+    cached = nullptr; \
 } \
 Name##Node *Name::node_at(long index) { \
     Name##Node *node; \
     long i; \
-    node = head; \
-    i = 0; \
-    while (i < index) { \
-        node = node->next; \
-        i = i + 1; \
+    long from_head; \
+    long from_tail; \
+    long from_cache; \
+    int backward; \
+    from_head = index; \
+    from_tail = (count - 1) - index; \
+    from_cache = count; \
+    if (cached != nullptr) { \
+        if (index >= cached_at) \
+            from_cache = index - cached_at; \
+        else \
+            from_cache = cached_at - index; \
     } \
+    if (cached != nullptr && from_cache <= from_head \
+            && from_cache <= from_tail) { \
+        node = cached; \
+        i = cached_at; \
+        backward = index < cached_at; \
+    } else if (from_tail < from_head) { \
+        node = tail; \
+        i = count - 1; \
+        backward = 1; \
+    } else { \
+        node = head; \
+        i = 0; \
+        backward = 0; \
+    } \
+    if (backward) { \
+        while (i > index) { \
+            node = node->prev; \
+            i = i - 1; \
+        } \
+    } else { \
+        while (i < index) { \
+            node = node->next; \
+            i = i + 1; \
+        } \
+    } \
+    cached = node; \
+    cached_at = index; \
     return node; \
 } \
 void Name::add(Type value) { \
@@ -73,20 +115,15 @@ void Name::add(Type value) { \
         tail->next = node; \
     tail = node; \
     count = count + 1; \
+    forget(); \
 } \
 Type Name::at(long index) { \
     Name##Node *node; \
-    long i; \
     if (index < 0) \
         index = count + index; \
     if (index < 0 || index >= count) \
         throw *new Exception("index"); \
-    node = head; \
-    i = 0; \
-    while (i < index) { \
-        node = node->next; \
-        i = i + 1; \
-    } \
+    node = node_at(index); \
     return node->value; \
 } \
 Type Name::from_end(long index) { \
@@ -148,6 +185,7 @@ void Name::insert(long index, Type value) { \
         head->prev = node; \
         head = node; \
         count = count + 1; \
+        forget(); \
         return; \
     } \
     at = node_at(index); \
@@ -156,6 +194,7 @@ void Name::insert(long index, Type value) { \
     at->prev->next = node; \
     at->prev = node; \
     count = count + 1; \
+    forget(); \
 } \
 void Name::remove(long index) { \
     Name##Node *node; \
@@ -173,6 +212,7 @@ void Name::remove(long index) { \
     else \
         node->next->prev = node->prev; \
     count = count - 1; \
+    forget(); \
 } \
 Type Name::next(long *cursor) { \
     long index; \

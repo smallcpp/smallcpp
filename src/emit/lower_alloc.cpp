@@ -67,6 +67,43 @@ std::vector<llvm::Value *> Codegen::live_pointers()
     return live;
 }
 
+void Codegen::record_frame()
+{
+    llvm::BasicBlock *block;
+    llvm::Function *here;
+    std::vector<llvm::Value *> live;
+    llvm::Function *stackmap;
+    std::vector<llvm::Value *> args;
+    std::size_t scope;
+
+    block = builder.GetInsertBlock();
+    here = block == NULL ? NULL : block->getParent();
+    if (here == NULL || terminated())
+        return;
+    for (llvm::Argument &arg : here->args()) {
+        if (arg.getType()->isPointerTy())
+            live.push_back(&arg);
+    }
+    if (here == function) {
+        for (scope = 1; scope < scopes.size(); scope++) {
+            for (const auto &item : scopes[scope]) {
+                llvm::Instruction *slot;
+
+                slot = llvm::dyn_cast<llvm::Instruction>(item.second.addr);
+                if (!item.second.ty.is_pointer || slot == NULL || slot->getFunction() != here)
+                    continue;
+                live.push_back(slot);
+            }
+        }
+    }
+    stackmap = llvm::Intrinsic::getOrInsertDeclaration(
+        &module, llvm::Intrinsic::experimental_stackmap);
+    args.push_back(llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 2));
+    args.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0));
+    args.insert(args.end(), live.begin(), live.end());
+    builder.CreateCall(stackmap, args);
+}
+
 llvm::Value *Codegen::allocate(llvm::Value *bytes, llvm::Value *count)
 {
     if (function != NULL && !function->hasGC())

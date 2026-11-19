@@ -229,14 +229,51 @@ void String::splice(long at, long n, const char *text) {
     long tail;
     long next;
     long after;
+    long need;
     char *fresh;
+    int inside;
+    unsigned long text_addr;
+    unsigned long bytes_addr;
+    unsigned long bytes_end;
 
     m = text_length(text);
     if (n == 0 && m == 0)
         return;
     drop_saved();
+    need = count - n + m + 1;
+    inside = 0;
+    text_addr = (unsigned long)text;
+    bytes_addr = (unsigned long)bytes;
+    bytes_end = bytes_addr + (unsigned long)count;
+    if (text_addr >= bytes_addr && text_addr <= bytes_end)
+        inside = 1;
+    if (inside == 0 && need <= room) {
+        after = at + n;
+        tail = count - after;
+        if (m > n) {
+            i = tail;
+            while (i > 0) {
+                i = i - 1;
+                bytes[at + m + i] = bytes[after + i];
+            }
+        } else if (m < n) {
+            i = 0;
+            while (i < tail) {
+                bytes[at + m + i] = bytes[after + i];
+                i = i + 1;
+            }
+        }
+        i = 0;
+        while (i < m) {
+            bytes[at + i] = text[i];
+            i = i + 1;
+        }
+        count = at + m + tail;
+        bytes[count] = 0;
+        return;
+    }
     next = room;
-    while (next < count - n + m + 1)
+    while (next < need)
         next = next * 2;
     fresh = new char[next];
     after = at + n;
