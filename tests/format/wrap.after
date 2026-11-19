@@ -1,0 +1,15 @@
+int main(void) {
+    print(
+            "abcdefghijklmnopqrstuvwxyz",
+            "abcdefghijklmnopqrstuvwxyz",
+            "abcdefghijklmnopqrstuvwxyz");
+}
+int Point::read(
+        int alpha,
+        int beta,
+        int gamma,
+        int delta,
+        int epsilon,
+        int zeta) {
+    return alpha;
+}

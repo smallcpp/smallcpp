@@ -1,0 +1,607 @@
+#include <lsp>
+#include <stdio>
+
+struct Cursor {
+    const char *text;
+    long length;
+    long at;
+    int failed;
+};
+
+static int peek(struct Cursor *cursor);
+static void advance(struct Cursor *cursor);
+static void skip(struct Cursor *cursor);
+static void fail(struct Cursor *cursor);
+static int hex_value(int ch);
+static void append_code(String *out, long code);
+static String *parse_string(struct Cursor *cursor);
+static Json *parse_value(struct Cursor *cursor);
+static void write_string(String *out, const char *text);
+
+int text_eq(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return left == right;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    return left[i] == right[i];
+}
+
+Json::Json() {
+    kind = JSON_BAD;
+    flag = 0;
+    number = 0;
+    text = nullptr;
+    key = nullptr;
+    child = nullptr;
+    next = nullptr;
+}
+
+Json *Json::member(const char *key) {
+    Json *item;
+
+    if (kind != JSON_OBJECT || key == nullptr)
+        return nullptr;
+    item = child;
+    while (item != nullptr) {
+        if (item->key != nullptr
+                && text_eq(item->key->c_str(), key))
+            return item;
+        item = item->next;
+    }
+    return nullptr;
+}
+
+Json *Json::at(long index) {
+    Json *item;
+    long n;
+
+    if (kind != JSON_ARRAY || index < 0)
+        return nullptr;
+    item = child;
+    n = 0;
+    while (item != nullptr) {
+        if (n == index)
+            return item;
+        n = n + 1;
+        item = item->next;
+    }
+    return nullptr;
+}
+
+Json *json_null(void) {
+    Json *value;
+
+    value = new Json();
+    value->kind = JSON_NULL;
+    return value;
+}
+
+Json *json_bool(int flag) {
+    Json *value;
+
+    value = new Json();
+    value->kind = JSON_BOOL;
+    if (flag)
+        value->flag = 1;
+    else
+        value->flag = 0;
+    return value;
+}
+
+Json *json_number(long value) {
+    Json *node;
+
+    node = new Json();
+    node->kind = JSON_NUMBER;
+    node->number = value;
+    return node;
+}
+
+Json *json_string(const char *text) {
+    Json *value;
+
+    value = new Json();
+    value->kind = JSON_STRING;
+    value->text = new String();
+    if (text == nullptr)
+        text = "";
+    value->text->add(text);
+    return value;
+}
+
+Json *json_array(void) {
+    Json *value;
+
+    value = new Json();
+    value->kind = JSON_ARRAY;
+    return value;
+}
+
+Json *json_object(void) {
+    Json *value;
+
+    value = new Json();
+    value->kind = JSON_OBJECT;
+    return value;
+}
+
+void json_push(Json *array, Json *value) {
+    Json *tail;
+
+    if (array == nullptr || value == nullptr)
+        return;
+    value->next = nullptr;
+    if (array->child == nullptr) {
+        array->child = value;
+        return;
+    }
+    tail = array->child;
+    while (tail->next != nullptr)
+        tail = tail->next;
+    tail->next = value;
+}
+
+void json_put(Json *object, const char *key, Json *value) {
+    if (value == nullptr)
+        value = json_null();
+    value->key = new String();
+    if (key == nullptr)
+        key = "";
+    value->key->add(key);
+    json_push(object, value);
+}
+
+static int peek(struct Cursor *cursor) {
+    unsigned char ch;
+
+    if (cursor->at >= cursor->length)
+        return -1;
+    ch = (unsigned char)cursor->text[cursor->at];
+    return (int)ch;
+}
+
+static void advance(struct Cursor *cursor) {
+    if (cursor->at < cursor->length)
+        cursor->at = cursor->at + 1;
+}
+
+static void skip(struct Cursor *cursor) {
+    int ch;
+
+    ch = peek(cursor);
+    while (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+        advance(cursor);
+        ch = peek(cursor);
+    }
+}
+
+static void fail(struct Cursor *cursor) {
+    cursor->failed = 1;
+}
+
+static int hex_value(int ch) {
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'a' && ch <= 'f')
+        return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F')
+        return ch - 'A' + 10;
+    return -1;
+}
+
+static void append_code(String *out, long code) {
+    if (code < 0)
+        code = 0;
+    if (code < 128) {
+        out->add((char)code);
+        return;
+    }
+    if (code < 0x800) {
+        out->add((char)(0xC0 | (code >> 6)));
+        out->add((char)(0x80 | (code & 63)));
+        return;
+    }
+    out->add((char)(0xE0 | (code >> 12)));
+    out->add((char)(0x80 | ((code >> 6) & 63)));
+    out->add((char)(0x80 | (code & 63)));
+}
+
+static String *parse_string(struct Cursor *cursor) {
+    String *text;
+    int ch;
+
+    if (peek(cursor) != '"') {
+        fail(cursor);
+        return nullptr;
+    }
+    advance(cursor);
+    text = new String();
+    while (1) {
+        ch = peek(cursor);
+        if (ch < 0) {
+            fail(cursor);
+            return nullptr;
+        }
+        if (ch == '"') {
+            advance(cursor);
+            return text;
+        }
+        advance(cursor);
+        if (ch != '\\') {
+            text->add((char)ch);
+            continue;
+        }
+        ch = peek(cursor);
+        if (ch < 0) {
+            fail(cursor);
+            return nullptr;
+        }
+        advance(cursor);
+        if (ch == '"' || ch == '\\' || ch == '/')
+            text->add((char)ch);
+        else if (ch == 'b')
+            text->add('\b');
+        else if (ch == 'f')
+            text->add('\f');
+        else if (ch == 'n')
+            text->add('\n');
+        else if (ch == 'r')
+            text->add('\r');
+        else if (ch == 't')
+            text->add('\t');
+        else if (ch == 'u') {
+            long code;
+            int k;
+            int hex;
+
+            code = 0;
+            k = 0;
+            while (k < 4) {
+                hex = hex_value(peek(cursor));
+                if (hex < 0) {
+                    fail(cursor);
+                    return nullptr;
+                }
+                advance(cursor);
+                code = (code << 4) + hex;
+                k = k + 1;
+            }
+            append_code(text, code);
+        } else {
+            fail(cursor);
+            return nullptr;
+        }
+    }
+}
+
+static Json *parse_number(struct Cursor *cursor) {
+    Json *value;
+    int negative;
+    int ch;
+    long number;
+
+    negative = 0;
+    ch = peek(cursor);
+    if (ch == '-') {
+        negative = 1;
+        advance(cursor);
+        ch = peek(cursor);
+    }
+    if (ch < '0' || ch > '9') {
+        fail(cursor);
+        return nullptr;
+    }
+    number = 0;
+    while (ch >= '0' && ch <= '9') {
+        number = number * 10 + (ch - '0');
+        advance(cursor);
+        ch = peek(cursor);
+    }
+    if (ch == '.') {
+        advance(cursor);
+        ch = peek(cursor);
+        while (ch >= '0' && ch <= '9') {
+            advance(cursor);
+            ch = peek(cursor);
+        }
+    }
+    if (ch == 'e' || ch == 'E') {
+        advance(cursor);
+        ch = peek(cursor);
+        if (ch == '+' || ch == '-') {
+            advance(cursor);
+            ch = peek(cursor);
+        }
+        while (ch >= '0' && ch <= '9') {
+            advance(cursor);
+            ch = peek(cursor);
+        }
+    }
+    if (negative)
+        number = -number;
+    value = json_number(number);
+    return value;
+}
+
+static Json *parse_value(struct Cursor *cursor) {
+    int ch;
+    Json *value;
+    String *text;
+
+    skip(cursor);
+    ch = peek(cursor);
+    if (ch < 0) {
+        fail(cursor);
+        return nullptr;
+    }
+    if (ch == '{') {
+        advance(cursor);
+        value = json_object();
+        skip(cursor);
+        if (peek(cursor) == '}') {
+            advance(cursor);
+            return value;
+        }
+        while (1) {
+            String *key;
+            Json *member;
+
+            skip(cursor);
+            key = parse_string(cursor);
+            if (key == nullptr || cursor->failed)
+                return nullptr;
+            skip(cursor);
+            if (peek(cursor) != ':') {
+                fail(cursor);
+                return nullptr;
+            }
+            advance(cursor);
+            member = parse_value(cursor);
+            if (member == nullptr || cursor->failed)
+                return nullptr;
+            member->key = key;
+            json_push(value, member);
+            skip(cursor);
+            if (peek(cursor) == ',') {
+                advance(cursor);
+                continue;
+            }
+            if (peek(cursor) == '}') {
+                advance(cursor);
+                return value;
+            }
+            fail(cursor);
+            return nullptr;
+        }
+    }
+    if (ch == '[') {
+        advance(cursor);
+        value = json_array();
+        skip(cursor);
+        if (peek(cursor) == ']') {
+            advance(cursor);
+            return value;
+        }
+        while (1) {
+            Json *member;
+
+            member = parse_value(cursor);
+            if (member == nullptr || cursor->failed)
+                return nullptr;
+            json_push(value, member);
+            skip(cursor);
+            if (peek(cursor) == ',') {
+                advance(cursor);
+                continue;
+            }
+            if (peek(cursor) == ']') {
+                advance(cursor);
+                return value;
+            }
+            fail(cursor);
+            return nullptr;
+        }
+    }
+    if (ch == '"') {
+        text = parse_string(cursor);
+        if (text == nullptr)
+            return nullptr;
+        value = json_string(text->c_str());
+        return value;
+    }
+    if (ch == 't') {
+        if (cursor->at + 4 > cursor->length
+                || cursor->text[cursor->at + 1] != 'r'
+                || cursor->text[cursor->at + 2] != 'u'
+                || cursor->text[cursor->at + 3] != 'e') {
+            fail(cursor);
+            return nullptr;
+        }
+        cursor->at = cursor->at + 4;
+        return json_bool(1);
+    }
+    if (ch == 'f') {
+        if (cursor->at + 5 > cursor->length
+                || cursor->text[cursor->at + 1] != 'a'
+                || cursor->text[cursor->at + 2] != 'l'
+                || cursor->text[cursor->at + 3] != 's'
+                || cursor->text[cursor->at + 4] != 'e') {
+            fail(cursor);
+            return nullptr;
+        }
+        cursor->at = cursor->at + 5;
+        return json_bool(0);
+    }
+    if (ch == 'n') {
+        if (cursor->at + 4 > cursor->length
+                || cursor->text[cursor->at + 1] != 'u'
+                || cursor->text[cursor->at + 2] != 'l'
+                || cursor->text[cursor->at + 3] != 'l') {
+            fail(cursor);
+            return nullptr;
+        }
+        cursor->at = cursor->at + 4;
+        return json_null();
+    }
+    if (ch == '-' || (ch >= '0' && ch <= '9'))
+        return parse_number(cursor);
+    fail(cursor);
+    return nullptr;
+}
+
+Json *parse_json(const char *text, long length) {
+    struct Cursor cursor;
+    Json *value;
+
+    if (text == nullptr)
+        return nullptr;
+    cursor.text = text;
+    cursor.length = length;
+    cursor.at = 0;
+    cursor.failed = 0;
+    value = parse_value(&cursor);
+    if (cursor.failed)
+        return nullptr;
+    skip(&cursor);
+    if (cursor.at != cursor.length)
+        return nullptr;
+    return value;
+}
+
+static void write_hex(String *out, int value) {
+    const char *digits;
+    int hi;
+    int lo;
+
+    digits = "0123456789abcdef";
+    hi = (value >> 4) & 15;
+    lo = value & 15;
+    out->add(digits[hi]);
+    out->add(digits[lo]);
+}
+
+static void write_string(String *out, const char *text) {
+    long i;
+    unsigned char ch;
+
+    out->add('"');
+    if (text == nullptr)
+        text = "";
+    i = 0;
+    while (text[i] != 0) {
+        ch = (unsigned char)text[i];
+        if (ch == '"' || ch == '\\') {
+            out->add('\\');
+            out->add((char)ch);
+        } else if (ch == '\n') {
+            out->add('\\');
+            out->add('n');
+        } else if (ch == '\r') {
+            out->add('\\');
+            out->add('r');
+        } else if (ch == '\t') {
+            out->add('\\');
+            out->add('t');
+        } else if (ch < 32) {
+            out->add('\\');
+            out->add('u');
+            out->add('0');
+            out->add('0');
+            write_hex(out, (int)ch);
+        } else {
+            out->add((char)ch);
+        }
+        i = i + 1;
+    }
+    out->add('"');
+}
+
+void write_json(String *out, Json *value) {
+    Json *item;
+    int first;
+    char buf[32];
+    const char *text;
+    const char *key;
+
+    if (out == nullptr)
+        return;
+    if (value == nullptr || value->kind == JSON_NULL
+            || value->kind == JSON_BAD) {
+        out->add("null");
+        return;
+    }
+    if (value->kind == JSON_BOOL) {
+        if (value->flag)
+            out->add("true");
+        else
+            out->add("false");
+        return;
+    }
+    if (value->kind == JSON_NUMBER) {
+        snprintf(buf, 32, "%ld", value->number);
+        out->add(buf);
+        return;
+    }
+    if (value->kind == JSON_STRING) {
+        text = "";
+        if (value->text != nullptr)
+            text = value->text->c_str();
+        write_string(out, text);
+        return;
+    }
+    if (value->kind == JSON_ARRAY) {
+        out->add('[');
+        item = value->child;
+        first = 1;
+        while (item != nullptr) {
+            if (first == 0)
+                out->add(',');
+            first = 0;
+            write_json(out, item);
+            item = item->next;
+        }
+        out->add(']');
+        return;
+    }
+    if (value->kind == JSON_OBJECT) {
+        out->add('{');
+        item = value->child;
+        first = 1;
+        while (item != nullptr) {
+            if (first == 0)
+                out->add(',');
+            first = 0;
+            key = "";
+            if (item->key != nullptr)
+                key = item->key->c_str();
+            write_string(out, key);
+            out->add(':');
+            write_json(out, item);
+            item = item->next;
+        }
+        out->add('}');
+        return;
+    }
+    out->add("null");
+}
+
+void write_message(Json *value) {
+    String *body;
+
+    body = new String();
+    write_json(body, value);
+    fprintf(
+            stdout,
+            "Content-Length: %ld\r\n\r\n",
+            body->size());
+    if (body->size() > 0)
+        fwrite(
+                (void *)body->chars(),
+                1,
+                (unsigned long)body->size(),
+                stdout);
+    fflush(stdout);
+}

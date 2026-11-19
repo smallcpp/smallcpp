@@ -138,6 +138,16 @@ static int name_is_pointer(const char *name)
     return 0;
 }
 
+/* The language server parses more than one buffer in one process. */
+void smallcpp_reset_parser(void)
+{
+    int i;
+
+    for (i = 0; i < pointer_count; i++)
+        free(pointer_names[i]);
+    pointer_count = 0;
+}
+
 static const char *declarator_name(const struct AstNode *node)
 {
     const char *name;

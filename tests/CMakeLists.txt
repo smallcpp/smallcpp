@@ -471,9 +471,59 @@ add_test(
         -DCLANG=${SMALLCPP_CLANGXX}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectInstall.cmake)
 
+function(add_format_case name)
+    add_test(
+        NAME format_${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DFORMAT=${CMAKE_SOURCE_DIR}/bin/scpp-format
+            -DMODE=file
+            -DBEFORE=${CMAKE_CURRENT_SOURCE_DIR}/format/${name}.before
+            -DAFTER=${CMAKE_CURRENT_SOURCE_DIR}/format/${name}.after
+            -DWORK=${CMAKE_CURRENT_BINARY_DIR}/format-${name}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectFormat.cmake)
+endfunction()
+
+foreach(name operators layout pointers class wrap enum comments blanks)
+    add_format_case(${name})
+endforeach()
+
+add_test(
+    NAME format_stdin
+    COMMAND ${CMAKE_COMMAND}
+        -DFORMAT=${CMAKE_SOURCE_DIR}/bin/scpp-format
+        -DMODE=stdin
+        -DBEFORE=${CMAKE_CURRENT_SOURCE_DIR}/format/operators.before
+        -DAFTER=${CMAKE_CURRENT_SOURCE_DIR}/format/operators.after
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/format-stdin
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectFormat.cmake)
+add_test(
+    NAME format_inplace
+    COMMAND ${CMAKE_COMMAND}
+        -DFORMAT=${CMAKE_SOURCE_DIR}/bin/scpp-format
+        -DMODE=inplace
+        -DBEFORE=${CMAKE_CURRENT_SOURCE_DIR}/format/operators.before
+        -DAFTER=${CMAKE_CURRENT_SOURCE_DIR}/format/operators.after
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/format-inplace
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectFormat.cmake)
+
+foreach(mode help version unknown missing stdin-inplace)
+    add_test(
+        NAME format_${mode}
+        COMMAND ${CMAKE_COMMAND}
+            -DFORMAT=${CMAKE_SOURCE_DIR}/bin/scpp-format
+            -DMODE=${mode}
+            -DWORK=${CMAKE_CURRENT_BINARY_DIR}/format-${mode}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectFormat.cmake)
+endforeach()
+
 add_test(
     NAME install_prefix
     COMMAND ${CMAKE_COMMAND}
         -DHELPER=${CMAKE_SOURCE_DIR}/cmake/InstallPrefix.cmake
         -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/install-prefix
         -P ${CMAKE_CURRENT_SOURCE_DIR}/InstallPrefix.cmake)
+
+add_executable(lsp_test EXCLUDE_FROM_ALL lsp_test.cpp)
+target_compile_features(lsp_test PRIVATE cxx_std_17)
+add_test(NAME lsp_session
+    COMMAND lsp_test "${CMAKE_SOURCE_DIR}/bin/scpp-lsp")

@@ -136,6 +136,16 @@ target_compile_definitions(scpp PRIVATE
     "SMALLCPP_RUNTIME=\"$<TARGET_FILE:smallcpp_runtime>\"")
 add_dependencies(scpp preproc scpp_cc smallcpp_runtime)
 
+set(SMALLCPP_FORMAT_BIN "${CMAKE_SOURCE_DIR}/bin/scpp-format")
+add_custom_command(
+    OUTPUT "${SMALLCPP_FORMAT_BIN}"
+    COMMAND "$<TARGET_FILE:scpp>" -o "${SMALLCPP_FORMAT_BIN}"
+            "${CMAKE_SOURCE_DIR}/src/format/main.scpp"
+    DEPENDS scpp
+            "${CMAKE_SOURCE_DIR}/src/format/main.scpp"
+    VERBATIM)
+add_custom_target(scpp_format ALL DEPENDS "${SMALLCPP_FORMAT_BIN}")
+
 set(SMALLCPP_SQLITE_OBJECT "${CMAKE_BINARY_DIR}/sqlite.o")
 set(SMALLCPP_SQLITE_ARCHIVE "${CMAKE_SOURCE_DIR}/lib/libsmallcpp_sqlite.a")
 add_custom_command(
@@ -191,9 +201,12 @@ install(TARGETS scpp preproc scpp_cc smallcpp_runtime
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 set_source_files_properties(
+    "${SMALLCPP_FORMAT_BIN}"
     "${SMALLCPP_SQLITE_ARCHIVE}"
     "${SMALLCPP_GTK_ARCHIVE}"
     PROPERTIES GENERATED TRUE)
+install(PROGRAMS "${SMALLCPP_FORMAT_BIN}"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES
     "${SMALLCPP_SQLITE_ARCHIVE}"
     "${SMALLCPP_GTK_ARCHIVE}"
@@ -206,6 +219,28 @@ configure_file(
     "${CMAKE_BINARY_DIR}/cmake/InstallConfig.cmake"
     @ONLY)
 install(SCRIPT "${CMAKE_BINARY_DIR}/cmake/InstallConfig.cmake")
+
+set(SMALLCPP_LSP_DIR "${CMAKE_SOURCE_DIR}/src/lsp")
+set(SMALLCPP_LSP_BIN "${CMAKE_SOURCE_DIR}/bin/scpp-lsp")
+add_custom_command(
+    OUTPUT "${SMALLCPP_LSP_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/bin"
+    COMMAND "$<TARGET_FILE:scpp>"
+        -o "${SMALLCPP_LSP_BIN}"
+        -I "${SMALLCPP_LSP_DIR}"
+        -L "${CMAKE_SOURCE_DIR}/lib"
+        -l smallcpp_parse
+        "${SMALLCPP_LSP_DIR}/main.scpp"
+    DEPENDS scpp smallcpp_parse
+        "${SMALLCPP_LSP_DIR}/lsp"
+        "${SMALLCPP_LSP_DIR}/json.scpp"
+        "${SMALLCPP_LSP_DIR}/check.scpp"
+        "${SMALLCPP_LSP_DIR}/protocol.scpp"
+        "${SMALLCPP_LSP_DIR}/main.scpp"
+    VERBATIM)
+add_custom_target(scpp_lsp ALL DEPENDS "${SMALLCPP_LSP_BIN}")
+set_source_files_properties("${SMALLCPP_LSP_BIN}" PROPERTIES GENERATED TRUE)
+install(PROGRAMS "${SMALLCPP_LSP_BIN}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
 add_subdirectory(tests)
 
@@ -255,4 +290,5 @@ attach_test_drivers(
     command_line_test
     prefix_test
     parse_test
-    verify_module)
+    verify_module
+    lsp_test)

@@ -1,0 +1,8 @@
+int main(void) {
+    int n;
+    int *p;
+    n = 5;
+    p = &n;
+    *p = *p + 1;
+    return n * 2;
+}

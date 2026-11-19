@@ -1,0 +1,12 @@
+#include <lsp>
+#include "json.scpp"
+#include "check.scpp"
+#include "protocol.scpp"
+
+int main(void) {
+    Server *server;
+
+    server = new Server();
+    server->serve();
+    return server->code;
+}
