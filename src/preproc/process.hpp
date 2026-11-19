@@ -12,6 +12,7 @@ struct CliMacro {
 
 struct PreprocRequest {
     std::string input;
+    std::string stdinc;
     std::vector<std::string> includes;
     std::vector<CliMacro> cli_macros;
     std::vector<std::string> force_includes;

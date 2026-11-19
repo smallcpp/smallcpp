@@ -2,6 +2,16 @@ add_executable(command_line_test EXCLUDE_FROM_ALL command_line_test.cpp)
 target_link_libraries(command_line_test PRIVATE smallcpp_cli)
 add_test(NAME command_line COMMAND command_line_test)
 
+add_executable(prefix_test EXCLUDE_FROM_ALL
+    prefix_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/prefix.cpp)
+target_include_directories(prefix_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(prefix_test PRIVATE cxx_std_17)
+if(NOT LLVM_ENABLE_RTTI)
+    target_compile_options(prefix_test PRIVATE -fno-rtti)
+endif()
+add_test(NAME prefix_paths COMMAND prefix_test)
+
 add_test(
     NAME scpp_help
     COMMAND ${CMAKE_COMMAND}
@@ -453,9 +463,17 @@ endforeach()
 include(${CMAKE_CURRENT_SOURCE_DIR}/DocsExamples.cmake)
 
 add_test(
+    NAME install_layout
+    COMMAND ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/install-layout
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectInstall.cmake)
+
+add_test(
     NAME build_test_programs
         COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
-            --target command_line_test parse_test verify_module
+            --target command_line_test parse_test verify_module prefix_test
                     smallcpp_sqlite smallcpp_gtk)
 set_tests_properties(build_test_programs PROPERTIES FIXTURES_SETUP smallcpp_test_programs)
 get_property(smallcpp_tests DIRECTORY PROPERTY TESTS)
@@ -464,3 +482,10 @@ foreach(name IN LISTS smallcpp_tests)
         set_property(TEST ${name} APPEND PROPERTY FIXTURES_REQUIRED smallcpp_test_programs)
     endif()
 endforeach()
+
+add_test(
+    NAME install_prefix
+    COMMAND ${CMAKE_COMMAND}
+        -DHELPER=${CMAKE_SOURCE_DIR}/cmake/InstallPrefix.cmake
+        -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/install-prefix
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/InstallPrefix.cmake)

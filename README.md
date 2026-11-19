@@ -20,6 +20,18 @@ cmake --build build --target test
 
 Binaries are written to `bin/` and libraries to `lib/`. A normal build writes `scpp`, `scpp_cc`, `preproc`, and the libraries. `command_line_test`, `parse_test`, and `verify_module` are built by the `test` target, and CTest runs after that.
 
+## Install
+
+A fresh configuration installs to `$HOME/opt/smallcpp`. CMake expands `HOME` at configure time. Programs go in `bin/`, headers in `include/`, and libraries in `lib/`.
+
+```sh
+cmake -S . -B build
+cmake --build build
+cmake --install build
+```
+
+`-DCMAKE_INSTALL_PREFIX=/absolute/path` selects another prefix. For a new build directory, CMake 3.29 and newer also reads the `CMAKE_INSTALL_PREFIX` environment variable. A later configure keeps the cached prefix. `cmake --install build --prefix /absolute/path` applies to that install. `scpp` finds `preproc`, `scpp_cc`, headers, and libraries under the prefix that contains its own `bin/` directory.
+
 ## Layout
 
 - `src/scpp` — the `scpp` driver. It coordinates `preproc`, `scpp_cc`, and the Clang link

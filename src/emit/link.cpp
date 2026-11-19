@@ -3,6 +3,7 @@
  * print and format.
  */
 #include "link.hpp"
+#include "prefix.hpp"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Function.h"
@@ -20,6 +21,10 @@
 
 #include <cstdio>
 #include <string>
+
+#ifndef SMALLCPP_PREFIX
+#define SMALLCPP_PREFIX ""
+#endif
 
 static void keep_frame_pointers(llvm::Module &module)
 {
@@ -81,8 +86,12 @@ int write_object_file(llvm::Module &module, const char *path)
 int emit_and_link(llvm::Module &module, const char *executable, int debug)
 {
     std::string object = std::string(executable) + ".o";
+    const std::string prefix = install_prefix(nullptr, SMALLCPP_PREFIX);
+    std::string runtime_path = SMALLCPP_RUNTIME_LIB;
+    if (!prefix.empty())
+        runtime_path = prefix + "/lib/libsmallcpp_runtime.a";
     llvm::StringRef clang = SMALLCPP_CLANGXX;
-    llvm::StringRef runtime = SMALLCPP_RUNTIME_LIB;
+    llvm::StringRef runtime = runtime_path;
     std::string error;
     int status;
     llvm::SmallVector<llvm::StringRef, 8> args;
