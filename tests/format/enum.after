@@ -1,0 +1,8 @@
+enum Color {
+    RED = 1,
+    BLUE = 4
+};
+struct Point origin = {
+    .x = 1,
+    .y = 2
+};
