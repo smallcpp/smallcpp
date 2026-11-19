@@ -472,19 +472,6 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectInstall.cmake)
 
 add_test(
-    NAME build_test_programs
-        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
-            --target command_line_test parse_test verify_module prefix_test
-                    smallcpp_sqlite smallcpp_gtk)
-set_tests_properties(build_test_programs PROPERTIES FIXTURES_SETUP smallcpp_test_programs)
-get_property(smallcpp_tests DIRECTORY PROPERTY TESTS)
-foreach(name IN LISTS smallcpp_tests)
-    if(NOT name STREQUAL "build_test_programs")
-        set_property(TEST ${name} APPEND PROPERTY FIXTURES_REQUIRED smallcpp_test_programs)
-    endif()
-endforeach()
-
-add_test(
     NAME install_prefix
     COMMAND ${CMAKE_COMMAND}
         -DHELPER=${CMAKE_SOURCE_DIR}/cmake/InstallPrefix.cmake
