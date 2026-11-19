@@ -1,0 +1,72 @@
+#ifndef SMALLCPP_SELECT
+#define SMALLCPP_SELECT
+
+/* Wait on descriptors. Include this header as <select>.
+ * select returns how many descriptors are ready, or -1.
+ * A null timeout waits until one is ready. pselect takes
+ * a timespec and a signal mask. The mask may be null.
+ * errno is set on failure. FD_SETSIZE is the number of
+ * bits in an fd_set. The macros clear, set, and test
+ * one descriptor. */
+
+#ifndef SMALLCPP_TIMEVAL
+#define SMALLCPP_TIMEVAL
+struct timeval {
+    long tv_sec;
+    long tv_usec;
+};
+#endif
+
+#ifndef SMALLCPP_TIMESPEC
+#define SMALLCPP_TIMESPEC
+struct timespec {
+    long tv_sec;
+    long tv_nsec;
+};
+#endif
+
+#ifndef SMALLCPP_SIGSET_T
+#define SMALLCPP_SIGSET_T
+struct sigset {
+    unsigned long __val[16];
+};
+typedef struct sigset sigset_t;
+#endif
+
+struct fd_bits {
+    long __fds_bits[16];
+};
+typedef struct fd_bits fd_set;
+
+#define FD_SETSIZE 1024
+
+#define FD_SET(fd, set) \
+    ((set)->__fds_bits[(fd) / 64] = \
+        (set)->__fds_bits[(fd) / 64] \
+        | (long)(1UL << ((fd) % 64)))
+#define FD_CLR(fd, set) \
+    ((set)->__fds_bits[(fd) / 64] = \
+        (set)->__fds_bits[(fd) / 64] \
+        & (long)~(1UL << ((fd) % 64)))
+#define FD_ISSET(fd, set) \
+    (((set)->__fds_bits[(fd) / 64] \
+        & (long)(1UL << ((fd) % 64))) != 0)
+#define FD_ZERO(set) \
+    do { \
+        int fd_i; \
+        fd_i = 0; \
+        while (fd_i < 16) { \
+            (set)->__fds_bits[fd_i] = 0; \
+            fd_i = fd_i + 1; \
+        } \
+    } while (0)
+
+extern int select(int nfds, fd_set *readfds,
+    fd_set *writefds, fd_set *exceptfds,
+    struct timeval *timeout);
+extern int pselect(int nfds, fd_set *readfds,
+    fd_set *writefds, fd_set *exceptfds,
+    const struct timespec *timeout,
+    const sigset_t *sigmask);
+
+#endif

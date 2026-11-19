@@ -825,6 +825,26 @@ picks a nonnegative timeout.
 
 `send` and `recv` move bytes. They do not treat the buffer as UTF-8.
 
+### Waiting on descriptors
+
+`<select>` declares `select` and `pselect`. `fd_set` holds the
+descriptors. `FD_SETSIZE` is 1024.
+
+```text
+int select(int nfds, fd_set *readfds, fd_set *writefds,
+    fd_set *exceptfds, struct timeval *timeout);
+int pselect(int nfds, fd_set *readfds, fd_set *writefds,
+    fd_set *exceptfds, const struct timespec *timeout,
+    const sigset_t *sigmask);
+```
+
+`FD_ZERO` clears a set. `FD_SET` and `FD_CLR` change one descriptor.
+`FD_ISSET` tests one. `nfds` is the highest descriptor plus one. A null
+timeout makes `select` wait until a descriptor is ready. `pselect` takes
+a `struct timespec` and a signal mask, and the mask may be null. The
+return is the number of ready descriptors, or -1, and a failure sets
+`errno`.
+
 ### Time
 
 `<time>` declares wall time and a monotonic clock.
@@ -844,9 +864,11 @@ cannot be read. `nanosleep` returns 0, or -1. When `errno` is `EINTR`,
 ### Processes
 
 `<spawn>` launches a process without a shell. It declares
-`posix_spawnp`, the file-action and attribute calls, and `waitpid`.
-`<signal>` declares `kill` and the signal macros. `<unistd>` declares
-`pipe`. The executable is `posix_spawnp`. A name with no `/` is searched
+`posix_spawnp`, the file-action and attribute calls, `wait`, and
+`waitpid`. `<signal>` declares `kill`, `raise`, `signal`, `sigaction`,
+`sigemptyset`, `sigaddset`, `sigprocmask`, and the signal macros.
+`<unistd>` declares `pipe`, `fork`, and the exec calls. The executable
+is `posix_spawnp` or one of the exec calls. A name with no `/` is searched
 in `PATH`. The argument vector includes argv[0]. Spaces, quotes, `$`,
 `;`, `|`, `*`, and empty strings are ordinary characters in that vector.
 
@@ -866,7 +888,23 @@ int posix_spawnattr_destroy(posix_spawnattr_t *attr);
 int posix_spawnattr_setflags(posix_spawnattr_t *attr, short flags);
 int posix_spawnattr_setpgroup(posix_spawnattr_t *attr, pid_t group);
 int waitpid(pid_t pid, int *status, int options);
+pid_t wait(int *status);
+pid_t fork(void);
+int execv(const char *path, char *const argv[]);
+int execve(const char *path, char *const argv[],
+    char *const envp[]);
+int execl(const char *path, const char *arg, ...);
+int execle(const char *path, const char *arg, ...);
+int execvp(const char *file, char *const argv[]);
+int execlp(const char *file, const char *arg, ...);
+int execvpe(const char *file, char *const argv[],
+    char *const envp[]);
 int kill(pid_t pid, int sig);
+int raise(int sig);
+void (*signal(int sig, void (*handler)(int)))(int);
+int sigemptyset(sigset_t *set);
+int sigaddset(sigset_t *set, int sig);
+int sigprocmask(int how, const sigset_t *set, sigset_t *old);
 int pipe(int *fds);
 ```
 
@@ -876,10 +914,11 @@ group of 0 puts the child in its own process group. A spawn result of 0
 stores the pid. Any other result is an error number, and `errno` is
 left unchanged.
 
-`waitpid` reaps the child. `WIFEXITED` and `WEXITSTATUS` read a normal
-exit. `WIFSIGNALED` and `WTERMSIG` read a signal death. `WNOHANG` returns
-0 when the child is still running. The caller reaps every child it
-starts. A forgotten child keeps running, and an unreaped child is a
+`wait` reaps one child and returns its pid. `waitpid` reaps the named
+child. `WIFEXITED` and `WEXITSTATUS` read a normal exit. `WIFSIGNALED`
+and `WTERMSIG` read a signal death. `WNOHANG` returns 0 when the child
+is still running. The caller reaps every child it starts. A forgotten
+child keeps running, and an unreaped child is a
 zombie. Nothing in the collector kills a child.
 
 Read both output pipes while the child runs. A child that fills a pipe
@@ -891,9 +930,21 @@ caller's problem.
 `kill(-pid, SIGTERM)` signals the child's process group, and
 `kill(-pid, SIGKILL)` ends it when the grace period has passed. Signal
 only a pid that `waitpid` has not reaped yet. `<signal>` declares
-`SIGTERM`, `SIGKILL`, `SIGPIPE`, and `sigaction`. A parent that writes a
-pipe sets `SIGPIPE` to `SIG_IGN` when a dead child should not kill the
-parent.
+`SIGTERM`, `SIGKILL`, `SIGPIPE`, and the other signal numbers, and
+`sigaction`. `SIG_DFL` is the default action and `SIG_IGN` ignores the
+signal. `signal` returns the previous handler, or `SIG_ERR`. `raise`
+sends a signal to the calling process. `sigemptyset` clears a set and
+`sigaddset` adds one signal. `sigprocmask` uses `SIG_BLOCK`,
+`SIG_UNBLOCK`, or `SIG_SETMASK`. A parent that writes a pipe sets
+`SIGPIPE` to `SIG_IGN` when a dead child should not kill the parent.
+
+`fork` returns 0 in the child and the child's pid in the parent, or -1.
+An exec call replaces the process and returns only on failure, and then
+it returns -1 and sets `errno`. `execv` and `execve` take an argument
+vector. `execl` and `execle` take the arguments in the call, and
+`execle` reads the environment pointer after the null argument.
+`execvp`, `execlp`, and `execvpe` search `PATH` when the file has no
+slash. `execve` and `execvpe` take the environment vector.
 
 There is no environment-override helper beyond the `envp` argument, and
 no pseudo-terminal helper. This is a POSIX host.

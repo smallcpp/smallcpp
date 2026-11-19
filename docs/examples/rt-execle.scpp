@@ -1,0 +1,38 @@
+#include <spawn>
+#include <stdlib>
+#include <unistd>
+
+void copy_text(char *buf, const char *text) {
+    long i;
+
+    i = 0;
+    while (text[i] != 0) {
+        buf[i] = text[i];
+        i = i + 1;
+    }
+    buf[i] = 0;
+}
+
+int main(void) {
+    char arg0[8];
+    char *env[1];
+    pid_t pid;
+    int status;
+    int ok;
+
+    copy_text(arg0, "true");
+    env[0] = nullptr;
+    ok = 0;
+    pid = fork();
+    if (pid == 0) {
+        execle("/bin/true", arg0, (char *)0, env);
+        exit(1);
+    }
+    status = 0;
+    if (pid > 0 && waitpid(pid, &status, 0) == pid
+            && WIFEXITED(status) != 0
+            && WEXITSTATUS(status) == 0)
+        ok = 1;
+    print("rt-execle {}\n", ok);
+    return 0;
+}

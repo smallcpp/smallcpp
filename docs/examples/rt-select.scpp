@@ -1,0 +1,35 @@
+#include <select>
+#include <unistd>
+
+int main(void) {
+    int fds[2];
+    fd_set readfds;
+    struct timeval limit;
+    char byte;
+    int n;
+    int ok;
+
+    ok = 0;
+    byte = 0;
+    if (pipe(fds) == 0) {
+        FD_ZERO(&readfds);
+        FD_SET(fds[0], &readfds);
+        FD_SET(fds[1], &readfds);
+        FD_CLR(fds[1], &readfds);
+        if (write(fds[1], (void *)"x", 1) == 1) {
+            limit.tv_sec = 1;
+            limit.tv_usec = 0;
+            n = select(fds[0] + 1, &readfds,
+                nullptr, nullptr, &limit);
+            if (n == 1 && FD_ISSET(fds[0], &readfds) != 0
+                    && FD_ISSET(fds[1], &readfds) == 0
+                    && read(fds[0], (void *)&byte, 1) == 1
+                    && byte == 'x')
+                ok = 1;
+        }
+        close(fds[0]);
+        close(fds[1]);
+    }
+    print("rt-select {}\n", ok);
+    return 0;
+}

@@ -4,7 +4,8 @@
 /* Spawn a process without a shell. Include this header as
  * <spawn>. A name with no slash is searched in PATH.
  * A spawn result other than 0 is an error number. errno
- * is left unchanged. The caller reaps every child. */
+ * is left unchanged. wait and waitpid reap a child.
+ * The caller reaps every child. */
 
 #ifndef SMALLCPP_PID_T
 #define SMALLCPP_PID_T
@@ -43,6 +44,7 @@ extern int posix_spawnattr_setflags(
     posix_spawnattr_t *attr, short flags);
 extern int posix_spawnattr_setpgroup(
     posix_spawnattr_t *attr, pid_t group);
+extern pid_t wait(int *status);
 extern int waitpid(pid_t pid, int *status, int options);
 
 #define POSIX_SPAWN_SETPGROUP 2
