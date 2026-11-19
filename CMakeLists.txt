@@ -52,7 +52,8 @@ endif()
 add_executable(preproc
     src/preproc/main.cpp
     src/preproc/process.cpp
-    src/prefix.cpp)
+    src/prefix.cpp
+    src/config.cpp)
 target_include_directories(preproc PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(preproc PRIVATE smallcpp_cli)
 target_compile_features(preproc PRIVATE cxx_std_17)
@@ -81,6 +82,7 @@ endif()
 
 add_library(smallcpp_emit STATIC
     src/prefix.cpp
+    src/config.cpp
     src/emit/codegen.cpp
     src/emit/link.cpp
     src/emit/lower_scalar.cpp
@@ -118,7 +120,8 @@ add_dependencies(scpp_cc smallcpp_runtime)
 add_executable(scpp
     src/scpp/main.cpp
     src/scpp/stackmap.cpp
-    src/prefix.cpp)
+    src/prefix.cpp
+    src/config.cpp)
 target_include_directories(scpp PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(scpp PRIVATE smallcpp_cli)
 target_compile_features(scpp PRIVATE cxx_std_17)
@@ -198,5 +201,11 @@ install(FILES
     DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/InstallConfig.cmake.in"
+    "${CMAKE_BINARY_DIR}/cmake/InstallConfig.cmake"
+    @ONLY)
+install(SCRIPT "${CMAKE_BINARY_DIR}/cmake/InstallConfig.cmake")
 
 add_subdirectory(tests)

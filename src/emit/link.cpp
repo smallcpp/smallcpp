@@ -3,6 +3,7 @@
  * print and format.
  */
 #include "link.hpp"
+#include "config.hpp"
 #include "prefix.hpp"
 
 #include "llvm/ADT/SmallVector.h"
@@ -21,6 +22,7 @@
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #ifndef SMALLCPP_PREFIX
 #define SMALLCPP_PREFIX ""
@@ -87,14 +89,17 @@ int emit_and_link(llvm::Module &module, const char *executable, int debug)
 {
     std::string object = std::string(executable) + ".o";
     const std::string prefix = install_prefix(nullptr, SMALLCPP_PREFIX);
-    std::string runtime_path = SMALLCPP_RUNTIME_LIB;
-    if (!prefix.empty())
-        runtime_path = prefix + "/lib/libsmallcpp_runtime.a";
+    const CompilerConfig config = read_compiler_config();
+    const std::string runtime_path = config_runtime_path(
+        config, prefix, SMALLCPP_RUNTIME_LIB);
+    std::vector<std::string> none;
+    std::vector<std::string> system_libs;
+    config_append_libraries(config, none, system_libs);
     llvm::StringRef clang = SMALLCPP_CLANGXX;
     llvm::StringRef runtime = runtime_path;
     std::string error;
     int status;
-    llvm::SmallVector<llvm::StringRef, 8> args;
+    llvm::SmallVector<llvm::StringRef, 16> args;
 
     if (write_object(module, object) != 0) {
         llvm::sys::fs::remove(object);
@@ -109,7 +114,8 @@ int emit_and_link(llvm::Module &module, const char *executable, int debug)
     args.push_back(object);
     args.push_back("-Wl,-u,smallcpp_uncaught_init");
     args.push_back(runtime);
-    args.push_back("-ldl");
+    for (const std::string &path : system_libs)
+        args.push_back(path);
     status = llvm::sys::ExecuteAndWait(clang, args, std::nullopt, {}, 0, 0, &error);
     llvm::sys::fs::remove(object);
     if (status != 0) {

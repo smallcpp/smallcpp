@@ -735,8 +735,9 @@ int main(void) {
 ### `<math>`
 
 `<math>` externs the `double` functions in libm, and the `float` function
-of each name with an `f` suffix (`sqrtf`, `sinf`, and the rest). Link with
-`-l m`.
+of each name with an `f` suffix (`sqrtf`, `sinf`, and the rest). The
+compiler config records `libm.a` and the link uses that file. `-l m`
+still selects a library first.
 
 ```text
 double fabs(double x);

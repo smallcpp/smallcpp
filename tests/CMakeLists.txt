@@ -468,6 +468,7 @@ add_test(
         -DBUILD_DIR=${CMAKE_BINARY_DIR}
         -DWORK=${CMAKE_CURRENT_BINARY_DIR}/install-layout
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/return-zero.scpp
+        -DCLANG=${SMALLCPP_CLANGXX}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectInstall.cmake)
 
 add_test(

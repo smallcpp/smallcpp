@@ -4,7 +4,7 @@ smallcpp compiles a `.scpp` file to a native program. The syntax is the overlap 
 
 A program starts at `int main`. [`docs/examples/lang-main.scpp`](examples/lang-main.scpp) prints `lang-main 0`. `print` and `format` are part of the language. They are not declared in a header. `print` writes a line and flushes when the program returns. `{}` reads an `int`. `{:s}` reads a string. `{:g}` reads a `double`. `{:c}` reads a character stored as an `int`. [`docs/examples/lang-print.scpp`](examples/lang-print.scpp) prints `lang-print 2`. [`docs/examples/lang-format.scpp`](examples/lang-format.scpp) prints `lang-format n 4`. [`docs/examples/lang-string.scpp`](examples/lang-string.scpp) prints `lang-string hello`.
 
-Source is preprocessed before it is parsed. `#include <name>` reads a header from the include path. The headers below are included that way.
+Source is preprocessed before it is parsed. `#include <name>` reads a header from the include path. Each `-I` directory is searched first. The next directory is the `include` key in `~/.config/smallcpp/config.ini`. `cmake --install` writes that file. The other keys are the library paths, including `libm` for `libm.a`, and they are listed in the install notes and in [`RUNTIME.md`](RUNTIME.md). When the file is missing, the header directory is `include` under the prefix that contains the compiler's `bin/` directory, then the configured prefix. The compile does not fail. The headers below are included that way.
 
 ## Types and declarations
 

@@ -1,0 +1,80 @@
+# cmake --install writes ~/.config/smallcpp/config.ini.
+# CMAKE_INSTALL_PREFIX is the prefix this install used, including
+# --prefix. DESTDIR stages files and is not part of the recorded paths.
+if(NOT DEFINED CMAKE_INSTALL_PREFIX OR "${CMAKE_INSTALL_PREFIX}" STREQUAL "")
+    message(FATAL_ERROR
+        "Cannot write the smallcpp compiler config: "
+        "the install prefix is empty.")
+endif()
+if("$ENV{HOME}" STREQUAL "")
+    message(FATAL_ERROR
+        "Cannot write the smallcpp compiler config: HOME is not set. "
+        "Set HOME to an absolute path and run cmake --install again.")
+endif()
+if(NOT IS_ABSOLUTE "$ENV{HOME}")
+    message(FATAL_ERROR
+        "Cannot write the smallcpp compiler config: "
+        "HOME must be an absolute path (got '$ENV{HOME}').")
+endif()
+
+set(smallcpp_clang "@SMALLCPP_CLANGXX@")
+set(smallcpp_includedir "@CMAKE_INSTALL_INCLUDEDIR@")
+set(smallcpp_libdir "@CMAKE_INSTALL_LIBDIR@")
+
+function(smallcpp_join_prefix out dir)
+    if(IS_ABSOLUTE "${dir}")
+        set("${out}" "${dir}" PARENT_SCOPE)
+    else()
+        set("${out}" "${CMAKE_INSTALL_PREFIX}/${dir}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(smallcpp_clang_file out name)
+    execute_process(
+        COMMAND "${smallcpp_clang}" -print-file-name=${name}
+        RESULT_VARIABLE status
+        OUTPUT_VARIABLE found
+        ERROR_VARIABLE errors
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT status EQUAL 0 OR found STREQUAL "" OR found STREQUAL "${name}"
+       OR NOT IS_ABSOLUTE "${found}" OR NOT EXISTS "${found}")
+        message(FATAL_ERROR
+            "Cannot record ${name}: ${smallcpp_clang} did not find it "
+            "(got '${found}'). ${errors}")
+    endif()
+    set("${out}" "${found}" PARENT_SCOPE)
+endfunction()
+
+smallcpp_join_prefix(include_path "${smallcpp_includedir}")
+smallcpp_join_prefix(library_path "${smallcpp_libdir}")
+set(runtime_path "${library_path}/libsmallcpp_runtime.a")
+
+# The driver links libdl. clang++ links the rest. libm is the static
+# archive, because -lm would select libm.so.
+set(library_names
+    "libdl|libdl.a"
+    "libstdc++|libstdc++.so"
+    "libm|libm.a"
+    "libgcc_s|libgcc_s.so"
+    "libgcc|libgcc.a"
+    "libc|libc.so")
+
+set(body "")
+string(APPEND body "include=${include_path}\n")
+string(APPEND body "library=${library_path}\n")
+string(APPEND body "runtime=${runtime_path}\n")
+foreach(item IN LISTS library_names)
+    string(FIND "${item}" "|" bar)
+    if(bar LESS 0)
+        message(FATAL_ERROR "Bad library record '${item}'")
+    endif()
+    string(SUBSTRING "${item}" 0 "${bar}" key)
+    math(EXPR value_at "${bar} + 1")
+    string(SUBSTRING "${item}" "${value_at}" -1 filename)
+    smallcpp_clang_file(path "${filename}")
+    string(APPEND body "${key}=${path}\n")
+endforeach()
+
+set(config_dir "$ENV{HOME}/.config/smallcpp")
+file(MAKE_DIRECTORY "${config_dir}")
+file(WRITE "${config_dir}/config.ini" "${body}")

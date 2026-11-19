@@ -1,10 +1,11 @@
 #ifndef SMALLCPP_MATH
 #define SMALLCPP_MATH
 
-/* libm. Include this header as <math>. Link with -l m.
- * Each double function has a float twin with an f suffix.
- * Angles are radians. A domain error may set errno to
- * EDOM. A range error may set errno to ERANGE. */
+/* libm. Include this header as <math>. The compiler config
+ * records libm.a and the link uses that file. -l m still
+ * selects a library first. Each double function has a float
+ * twin with an f suffix. Angles are radians. A domain error
+ * may set errno to EDOM. A range error may set errno to ERANGE. */
 
 #define MATH_PI 3.14159265358979323846
 #define MATH_E 2.71828182845904523536
