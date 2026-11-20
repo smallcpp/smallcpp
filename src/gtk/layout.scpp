@@ -1,34 +1,12 @@
 /* Header bars, menus, popovers, panes,
  * notebooks, and column views. */
+#include <gtk.shpp>
+#include "layout.shpp"
 #include <exceptions>
 #include "gtk-native"
 #include "gtk-globals"
 
 namespace Gtk {
-
-class ColumnSlot {
-public:
-    ColumnSlot();
-    ColumnView *view;
-    long column;
-};
-
-ColumnSlot::ColumnSlot() {
-    view = nullptr;
-    column = 0;
-}
-
-class MenuPick {
-public:
-    MenuPick();
-    MenuButton *button;
-    const char *label;
-};
-
-MenuPick::MenuPick() {
-    button = nullptr;
-    label = nullptr;
-}
 
 static void write_index(char *buf, long index) {
     char digits[24];

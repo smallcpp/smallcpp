@@ -1,0 +1,30 @@
+#ifndef SMALLCPP_GTK_LAYOUT_TYPES
+#define SMALLCPP_GTK_LAYOUT_TYPES
+
+#include <gtk.shpp>
+
+namespace Gtk {
+
+class ColumnSlot {
+public:
+    ColumnSlot() {
+        view = nullptr;
+        column = 0;
+    }
+    ColumnView *view;
+    long column;
+};
+
+class MenuPick {
+public:
+    MenuPick() {
+        button = nullptr;
+        label = nullptr;
+    }
+    MenuButton *button;
+    const char *label;
+};
+
+}
+
+#endif

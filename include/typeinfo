@@ -1,13 +1,1 @@
-#ifndef SMALLCPP_TYPEINFO
-#define SMALLCPP_TYPEINFO
-
-/* typeid(expression) and typeid(type) yield a const TypeInfo *.
- * == and != compare that pointer. One type has one TypeInfo.
- * A polymorphic object uses the dynamic type.
- * name is the type. Those characters stay for the program. */
-class TypeInfo {
-public:
-    const char *name;
-};
-
-#endif
+#include <typeinfo.shpp>

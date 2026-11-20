@@ -1,0 +1,44 @@
+#include <array.shpp>
+Array::Array(long element) {
+    stride = element;
+    if (stride < 1)
+        stride = 1;
+    count = 0;
+    room = 4;
+    bytes = new char[room * stride];
+}
+
+void Array::reserve(long need) {
+    char *grown;
+    long next;
+    long used;
+    long i;
+
+    if (need <= room)
+        return;
+    next = room;
+    while (next < need)
+        next = next * 2;
+    grown = new char[next * stride];
+    used = count * stride;
+    i = 0;
+    while (i < used) {
+        grown[i] = bytes[i];
+        i = i + 1;
+    }
+    bytes = grown;
+    room = next;
+}
+
+char *Array::address(long index) {
+    if (index < 0)
+        index = count + index;
+    if (index < 0 || index >= count)
+        throw *new Exception("index");
+    return bytes + index * stride;
+}
+
+long Array::size(void) {
+    return count;
+}
+

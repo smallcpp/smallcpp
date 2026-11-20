@@ -1,7 +1,4 @@
-#include <lsp>
-#include "json.scpp"
-#include "check.scpp"
-#include "protocol.scpp"
+#include "lsp.shpp"
 
 int main(void) {
     Server *server;

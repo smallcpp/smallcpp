@@ -1,0 +1,8 @@
+#ifndef LEDGER_REPORT
+#define LEDGER_REPORT
+
+#include "book.shpp"
+
+void report(Book *book);
+
+#endif

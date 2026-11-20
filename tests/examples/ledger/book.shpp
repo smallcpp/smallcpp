@@ -1,0 +1,16 @@
+#ifndef LEDGER_BOOK
+#define LEDGER_BOOK
+
+#include "account.shpp"
+
+class Book {
+    Account *held[4];
+    int held_count;
+public:
+    Book();
+    void add(Account *account);
+    Account *at(int slot);
+    int size(void);
+};
+
+#endif

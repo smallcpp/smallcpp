@@ -1,0 +1,13 @@
+#ifndef LEDGER_MONEY
+#define LEDGER_MONEY
+
+class Amount {
+    int units;
+public:
+    Amount(int value);
+    int read(void);
+    void add(int value);
+    void take(int value);
+};
+
+#endif

@@ -91,7 +91,7 @@ libc=/lib/x86_64-linux-gnu/libc.so
 - `src/scpp` — the `scpp` driver. It coordinates `preproc`, `scpp_cc`, and the Clang link
 - `src/lsp` — the `scpp-lsp` language server
 - `src/format` — `scpp-format`. A normal build writes it beside `scpp`, and install copies it to the same `bin/`
-- `include` — language headers. `<exceptions>` defines the base `Exception` class. `<string>`, `<array>`, `<vector>`, `<list>`, `<tree>`, and `<hash>` are the collections
+- `include` — language headers. `<exceptions>` defines the base `Exception` class. `<string>`, `<array>`, `<vector>`, `<list>`, `<tree>`, and `<hash>` are the collections. A class is defined in the matching `.shpp` file, and the extensionless header includes it
 - `src/runtime` — precise collector, `print` and `format`, and `Exception`. `smallcpp_alloc` traces stack maps at safepoints. `delete` does not free. An exception nothing catches aborts and prints a stack
 - `src/compiler` — Bison grammar and Flex scanner
 - `src/preprocessor` — source directory for a later target

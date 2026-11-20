@@ -1,5 +1,6 @@
 /* Windows, boxes, labels, buttons, entries,
  * checks, and scrolled windows. */
+#include <gtk.shpp>
 #include <exceptions>
 #include "gtk-native"
 #include "gtk-globals"

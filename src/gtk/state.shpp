@@ -1,0 +1,28 @@
+#ifndef SMALLCPP_GTK_STATE_TYPES
+#define SMALLCPP_GTK_STATE_TYPES
+
+#include <gtk.shpp>
+
+namespace Gtk {
+
+class PostSlot {
+public:
+    PostSlot() {
+        token = 0;
+        index = 0;
+        action = nullptr;
+        data = nullptr;
+        source = 0;
+        pending = 0;
+    }
+    long token;
+    long index;
+    void (*action)(void *);
+    void *data;
+    unsigned source;
+    int pending;
+};
+
+}
+
+#endif

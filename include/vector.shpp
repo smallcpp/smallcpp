@@ -1,0 +1,116 @@
+#ifndef SMALLCPP_VECTOR
+#define SMALLCPP_VECTOR
+
+/* VECTOR(Name, Type) defines a growable array of Type.
+ * Include this header as <vector>. Name is the class.
+ * Type is copied by assignment. The class uses Array.
+ * at, replace, remove, and next count a negative index
+ * from the end. insert does too. An index past the end
+ * appends, and an index before the start prepends.
+ * find returns the first == match, or -1. next returns
+ * the value at a caller-owned cursor and writes the
+ * following index. The cursor starts at 0. A null
+ * cursor, or a cursor past either end, throws Exception
+ * with message index.
+ * Expand the macro in one translation unit.
+ *
+ *     VECTOR(IntVec, int)
+ *     IntVec *values;
+ *     values = new IntVec();
+ *     values->add(10);
+ */
+#include <array>
+#include <exceptions>
+
+#define VECTOR(Name, Type) \
+class Name : public Array { \
+public: \
+    Name() : Array((long)sizeof(Type)) { \
+    } \
+    void add(Type value) { \
+        Type *place; \
+        reserve(count + 1); \
+        place = (Type *)(bytes + count * stride); \
+        *place = value; \
+        count = count + 1; \
+    } \
+    Type at(long index) { \
+        Type *place; \
+        if (index < 0) \
+            index = count + index; \
+        if (index < 0 || index >= count) \
+            throw *new Exception("index"); \
+        place = (Type *)address(index); \
+        return *place; \
+    } \
+    long find(Type value) { \
+        Type *place; \
+        long i; \
+        i = 0; \
+        while (i < count) { \
+            place = (Type *)(bytes + i * stride); \
+            if (*place == value) \
+                return i; \
+            i = i + 1; \
+        } \
+        return -1; \
+    } \
+    void replace(long index, Type value) { \
+        Type *place; \
+        if (index < 0) \
+            index = count + index; \
+        if (index < 0 || index >= count) \
+            throw *new Exception("index"); \
+        place = (Type *)address(index); \
+        *place = value; \
+    } \
+    void insert(long index, Type value) { \
+        Type *place; \
+        long i; \
+        if (index < 0) \
+            index = count + index; \
+        if (index < 0) \
+            index = 0; \
+        if (index > count) \
+            index = count; \
+        reserve(count + 1); \
+        i = count; \
+        while (i > index) { \
+            place = (Type *)(bytes + i * stride); \
+            *place = *(Type *)(bytes + (i - 1) * stride); \
+            i = i - 1; \
+        } \
+        place = (Type *)(bytes + index * stride); \
+        *place = value; \
+        count = count + 1; \
+    } \
+    void remove(long index) { \
+        Type *place; \
+        long i; \
+        if (index < 0) \
+            index = count + index; \
+        if (index < 0 || index >= count) \
+            throw *new Exception("index"); \
+        i = index; \
+        while (i + 1 < count) { \
+            place = (Type *)(bytes + i * stride); \
+            *place = *(Type *)(bytes + (i + 1) * stride); \
+            i = i + 1; \
+        } \
+        count = count - 1; \
+    } \
+    Type next(long *cursor) { \
+        long index; \
+        if (cursor == nullptr) \
+            throw *new Exception("index"); \
+        index = *cursor; \
+        if (index < 0) \
+            index = count + index; \
+        if (index < 0 || index >= count) \
+            throw *new Exception("index"); \
+        *cursor = index + 1; \
+        return at(index); \
+    } \
+};
+
+#endif

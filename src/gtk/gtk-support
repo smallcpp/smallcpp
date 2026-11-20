@@ -3,7 +3,7 @@
 
 /* Helpers shared by the wrapper sources. */
 
-#include <gtk>
+#include <gtk.shpp>
 
 namespace Gtk {
 

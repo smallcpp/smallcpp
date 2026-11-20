@@ -1,0 +1,31 @@
+#ifndef LEDGER_ACCOUNT
+#define LEDGER_ACCOUNT
+
+#include "money.shpp"
+
+class Account {
+    Amount cash;
+public:
+    Account(int value);
+    virtual int balance(void);
+    virtual void deposit(int value);
+    virtual void withdraw(int value);
+};
+
+class Checking : public Account {
+public:
+    Checking(int value);
+    virtual int balance(void);
+    virtual void deposit(int value);
+    virtual void withdraw(int value);
+};
+
+class Savings : public Account {
+public:
+    Savings(int value);
+    virtual int balance(void);
+    virtual void deposit(int value);
+    virtual void withdraw(int value);
+};
+
+#endif

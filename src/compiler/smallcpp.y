@@ -44,8 +44,12 @@
  * A direct call is object.~Class(args) or pointer->~Class(args).
  * The argument list may be empty. nullptr and NULL are keywords for
  * the same null pointer constant.
- * Source files use the .scpp extension. Ordinary preprocessing is already
- * done. Semantic actions build a syntax tree. They do not generate code.
+ * A class definition goes in a header whose name ends in `.shpp`. The
+ * method bodies go in a `.scpp` file that is compiled and linked.
+ * Include the `.shpp` file. Do not include a `.scpp` file. A method
+ * written inside the class body is inline and stays in the header.
+ * Ordinary preprocessing is already done. Semantic actions build a
+ * syntax tree. They do not generate code.
  *
  * A syntax error prints the file, line, and column, the source line, and
  * the tokens that were expected. There is no caret under the line. The

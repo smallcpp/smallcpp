@@ -2,7 +2,8 @@
  * these C functions. This file calls them with extern.
  * One backend is compiled into smallcpp_sqlite. */
 #include <exceptions>
-#include <sqlite>
+#include <sqlite.shpp>
+#include "state.shpp"
 
 extern int sqlite3_open(const char *path, void **out);
 extern int sqlite3_close(void *db);
@@ -50,39 +51,6 @@ enum {
     SQLITE_TEXT = 3,
     SQLITE_BLOB = 4,
     SQLITE_NULL = 5
-};
-
-class ConnectionState {
-public:
-    void *database;
-    int opened;
-    char *errorText;
-    Statement **statements;
-    long statementCount;
-    long statementRoom;
-    Transaction **transactions;
-    long transactionCount;
-    long transactionRoom;
-};
-
-class StatementState {
-public:
-    Connection *owner;
-    void *handle;
-    int open;
-    int rowReady;
-    int atEnd;
-    int failed;
-    char *errorText;
-    Value **columns;
-    long columnCount;
-};
-
-class TransactionState {
-public:
-    Connection *owner;
-    int active;
-    int open;
 };
 
 static char *copy_text(const char *text) {

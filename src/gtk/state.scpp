@@ -1,6 +1,8 @@
 /* GTK wrapper core. The public header does not
  * declare the C functions. This file calls them
  * with extern. */
+#include <gtk.shpp>
+#include "state.shpp"
 #include <exceptions>
 #include "gtk-native"
 #include "gtk-support"
@@ -13,26 +15,6 @@ Application *gtkApp;
 void *gtkThread;
 int gtkThreadSet;
 static int gtkReady;
-
-class PostSlot {
-public:
-    PostSlot();
-    long token;
-    long index;
-    void (*action)(void *);
-    void *data;
-    unsigned source;
-    int pending;
-};
-
-PostSlot::PostSlot() {
-    token = 0;
-    index = 0;
-    action = nullptr;
-    data = nullptr;
-    source = 0;
-    pending = 0;
-}
 
 static int post_fire(void *data) {
     PostSlot *slot;

@@ -1,0 +1,112 @@
+#ifndef SMALLCPP_STRING
+#define SMALLCPP_STRING
+
+/* Growable array of char. Include this header as <string>.
+ * size() is the character count. capacity() is the allocated
+ * bytes, including the trailing null. add copies characters.
+ * at, find, rfind, insert, and truncate count a negative
+ * index from the end. find returns -1 when the text is
+ * missing or the start is past the end. rfind walks toward
+ * the front. Its index is the last place a match may begin.
+ * An rfind index past the end searches the whole string.
+ * insert appends past the end and prepends before the start.
+ * truncate clamps each bound and removes nothing when the
+ * first bound is past the second. cmp returns what strcmp
+ * would return. split returns a new StringVec. Each
+ * piece is a new String. split() separates on space,
+ * newline, and return. A missing separator returns one
+ * copy. Consecutive separators yield an empty string.
+ * An empty separator throws Exception with message
+ * string. join returns a new String and leaves this
+ * string as it was. join with no separator uses one
+ * space. An empty separator concatenates. A null
+ * source, separator, or element throws Exception with
+ * message string. token walks the characters and does
+ * not write them. A null pointer is not a string. An
+ * empty string is valid. A program allocates a String
+ * with new. */
+#include <array>
+#include <exceptions>
+#include <vector>
+
+class String;
+
+class StringVec : public Array {
+public:
+    StringVec();
+    void add(String *value);
+    String *at(long index);
+    long find(String *value);
+    void replace(long index, String *value);
+    void insert(long index, String *value);
+    void remove(long index);
+    String *next(long *cursor);
+};
+
+class String : public Array {
+public:
+    String();
+    String(const String *other);
+    void add(char value);
+    void add(const char *text);
+    long capacity(void);
+    char at(long index);
+    const char *chars(void) const;
+    const char *c_str(void) const;
+    int strip(void);
+    int strip(char value);
+    long find(char value);
+    long find(const char *text);
+    long find(const String *text);
+    long find(long index, char value);
+    long find(long index, const char *text);
+    long find(long index, const String *text);
+    long rfind(char value);
+    long rfind(const char *text);
+    long rfind(const String *text);
+    long rfind(long index, char value);
+    long rfind(long index, const char *text);
+    long rfind(long index, const String *text);
+    long cmp(const String *left, const String *right);
+    long cmp(const char *left, const char *right);
+    long cmp(const char *left, const String *right);
+    long cmp(const String *left, const char *right);
+    void append(char value);
+    void append(const char *text);
+    void append(const String *text);
+    void prepend(char value);
+    void prepend(const char *text);
+    void prepend(const String *text);
+    void insert(long index, char value);
+    void insert(long index, const char *text);
+    void insert(long index, const String *text);
+    void truncate(long from, long to);
+    void replace(char needle, char value);
+    void replace(char needle, const char *text);
+    void replace(char needle, const String *text);
+    void replace(const char *needle, char value);
+    void replace(const char *needle, const char *text);
+    void replace(const char *needle, const String *text);
+    void replace(const String *needle, char value);
+    void replace(const String *needle, const char *text);
+    void replace(const String *needle, const String *text);
+    StringVec *split(const char *separator);
+    StringVec *split(void);
+    String *join(StringVec *source, const char *separator);
+    String *join(StringVec *source);
+    const char *token(long *cursor, char separator);
+    const char *token(long *cursor, const char *separator);
+private:
+    char **saved;
+    long saved_count;
+    long saved_room;
+    int blank(char value);
+    long text_length(const char *text);
+    void splice(long at, long n, const char *text);
+    void drop_saved(void);
+    int same_at(long index, const char *text, long n);
+    int is_break(char value, const char *separator);
+    String *copy_span(long from, long to);
+    const char *keep_span(long from, long to);
+};
+#endif

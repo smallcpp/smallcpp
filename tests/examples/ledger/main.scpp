@@ -1,6 +1,4 @@
-#define LEDGER_AS_HEADER
-#include "report.scpp"
-#undef LEDGER_AS_HEADER
+#include "report.shpp"
 
 int main(void) {
     Book *book;

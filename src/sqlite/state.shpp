@@ -1,0 +1,43 @@
+#ifndef SMALLCPP_SQLITE_STATE
+#define SMALLCPP_SQLITE_STATE
+
+#include <sqlite.shpp>
+
+namespace Sqlite {
+
+class ConnectionState {
+public:
+    void *database;
+    int opened;
+    char *errorText;
+    Statement **statements;
+    long statementCount;
+    long statementRoom;
+    Transaction **transactions;
+    long transactionCount;
+    long transactionRoom;
+};
+
+class StatementState {
+public:
+    Connection *owner;
+    void *handle;
+    int open;
+    int rowReady;
+    int atEnd;
+    int failed;
+    char *errorText;
+    Value **columns;
+    long columnCount;
+};
+
+class TransactionState {
+public:
+    Connection *owner;
+    int active;
+    int open;
+};
+
+}
+
+#endif
