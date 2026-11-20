@@ -267,6 +267,7 @@ foreach(name state basic layout input text)
                 "${CMAKE_SOURCE_DIR}/include/gtk.shpp"
                 "${CMAKE_SOURCE_DIR}/src/gtk/layout.shpp"
                 "${CMAKE_SOURCE_DIR}/src/gtk/state.shpp"
+                "${CMAKE_SOURCE_DIR}/src/gtk/key.shpp"
                 "${CMAKE_SOURCE_DIR}/include/exceptions"
                 "${CMAKE_SOURCE_DIR}/include/exceptions.shpp"
                 "${SMALLCPP_RUNTIME_SCPP_STAMP}"

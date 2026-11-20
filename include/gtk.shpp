@@ -94,6 +94,10 @@ public:
     void add_css_class(const char *name);
     void remove_css_class(const char *name);
     void set_tooltip(const char *text);
+    void add_shortcut(
+            const char *accel,
+            void (*action)(void *),
+            void *data);
     void *native;
     int gone;
     int kind;
@@ -437,10 +441,16 @@ public:
     void set_monospace(bool value);
     bool monospace() const;
     void scroll_to(long line, long offset);
+    void set_line_numbers(bool value);
+    bool line_numbers() const;
+    const char *line_number_text() const;
     SignalConnection on_move_cursor(
             void (*action)(void *, long, long),
             void *data);
     TextBuffer *buffer;
+    int showNumbers;
+    Label *numberLabel;
+    int numberHook;
 };
 
 }

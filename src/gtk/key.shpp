@@ -1,0 +1,20 @@
+#ifndef SMALLCPP_GTK_KEY_TYPES
+#define SMALLCPP_GTK_KEY_TYPES
+
+#include <gtk.shpp>
+
+namespace Gtk {
+
+class KeyHook {
+public:
+    KeyHook() {
+        action = nullptr;
+        data = nullptr;
+    }
+    void (*action)(void *);
+    void *data;
+};
+
+}
+
+#endif
