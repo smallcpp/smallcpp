@@ -462,5 +462,72 @@ extern void gtk_text_view_get_line_yrange(
         void *iter,
         int *y,
         int *height);
+extern void g_application_quit(void *app);
+extern void gtk_window_destroy(void *window);
+extern void gtk_window_set_transient_for(
+        void *window,
+        void *parent);
+extern void *gtk_widget_get_style_context(void *widget);
+extern void *gtk_css_provider_new(void);
+extern void gtk_css_provider_load_from_string(
+        void *provider,
+        const char *css);
+extern void gtk_style_context_add_provider(
+        void *context,
+        void *provider,
+        unsigned priority);
+extern void *gtk_notebook_get_nth_page(
+        void *notebook,
+        int index);
+extern void gtk_notebook_set_tab_label(
+        void *notebook,
+        void *child,
+        void *tab);
+extern void gtk_notebook_set_tab_label_text(
+        void *notebook,
+        void *child,
+        const char *text);
+extern void *gtk_text_tag_table_lookup(
+        void *table,
+        const char *name);
+extern void gtk_label_set_yalign(void *label, float yalign);
+extern void gtk_widget_set_valign(void *widget, int align);
+extern void gtk_widget_set_halign(void *widget, int align);
+extern void gtk_widget_set_margin_top(
+        void *widget,
+        int margin);
+extern void gtk_text_view_add_overlay(
+        void *view,
+        void *child,
+        int x,
+        int y);
+extern void gtk_text_view_move_overlay(
+        void *view,
+        void *child,
+        int x,
+        int y);
+extern void gtk_text_view_remove(void *view, void *child);
+extern void *gtk_widget_get_parent(void *widget);
+extern int gtk_text_view_get_left_margin(void *view);
+extern void *gtk_widget_create_pango_layout(
+        void *widget,
+        const char *text);
+extern void pango_layout_get_pixel_size(
+        void *layout,
+        int *width,
+        int *height);
+extern void *gtk_font_dialog_new(void);
+extern void gtk_font_dialog_choose_font(
+        void *dialog,
+        void *parent,
+        void *cancellable,
+        void *callback,
+        void *data);
+extern void *gtk_font_dialog_choose_font_finish(
+        void *dialog,
+        void *result,
+        void **error);
+extern char *pango_font_description_to_string(void *desc);
+extern void pango_font_description_free(void *desc);
 
 #endif

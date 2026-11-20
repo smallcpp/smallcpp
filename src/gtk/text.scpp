@@ -338,6 +338,50 @@ void TextBuffer::create_tag(
         gtk_fail("gtk");
 }
 
+void TextBuffer::set_tag_background(
+        const char *name,
+        const char *color) {
+    long words[4];
+    void *value;
+    void *tag;
+    void *table;
+    int ok;
+    long i;
+
+    use_buffer(this);
+    gtk_check_text(name);
+    gtk_check_text(color);
+    table = gtk_text_buffer_get_tag_table(native);
+    if (table == nullptr)
+        gtk_fail("gtk");
+    tag = gtk_text_tag_table_lookup(table, name);
+    if (tag == nullptr) {
+        tag = gtk_text_tag_new(name);
+        if (tag == nullptr)
+            gtk_fail("gtk");
+        ok = gtk_text_tag_table_add(table, tag);
+        g_object_unref(tag);
+        if (ok == 0)
+            gtk_fail("gtk");
+        tag = gtk_text_tag_table_lookup(table, name);
+        if (tag == nullptr)
+            gtk_fail("gtk");
+    }
+    i = 0;
+    while (i < 4) {
+        words[i] = 0;
+        i = i + 1;
+    }
+    value = (void *)words;
+    g_value_init(value, GTK_TYPE_STRING);
+    g_value_set_string(value, color);
+    g_object_set_property(
+            tag,
+            "paragraph-background",
+            value);
+    g_value_unset(value);
+}
+
 void TextBuffer::apply_tag(
         const char *name,
         TextIter *start,
@@ -524,6 +568,7 @@ TextView::TextView(TextBuffer *buffer) : Widget() {
     showNumbers = 0;
     numberLabel = nullptr;
     numberHook = 0;
+    columnMark = nullptr;
     native = gtk_sink(
             gtk_text_view_new_with_buffer(buffer->native));
 }
@@ -582,6 +627,9 @@ static void paint_numbers(TextView *view) {
         width = width + 1;
         probe = probe * 10 + 9;
     }
+    gtk_widget_set_margin_top(
+            view->numberLabel->native,
+            0);
     if (gtk_widget_get_mapped(view->native) == 0) {
         first = 0;
         count = lines;
@@ -650,10 +698,22 @@ static void paint_numbers(TextView *view) {
             (void *)words,
             &top,
             &height);
-    if (height > 0 && rect[3] > 0)
+    if (height > 0 && rect[3] > 0) {
+        int shift;
+
+        shift = top - rect[1];
+        if (shift < 0 && first + 1 < lines) {
+            first = first + 1;
+            shift = shift + height;
+        }
+        if (shift < 0)
+            shift = 0;
+        gtk_widget_set_margin_top(
+                view->numberLabel->native,
+                shift);
         count = (rect[3] + height - 1) / height + 1;
-    else
-        count = lines;
+    } else
+        count = 1;
     if (count < 1)
         count = 1;
     if (count > GTK_NUMBER_CAP)
@@ -767,8 +827,15 @@ void TextView::set_line_numbers(bool value) {
     }
     showNumbers = 1;
     if (numberLabel == nullptr) {
+        float top;
+
         numberLabel = new Label("");
         numberLabel->add_css_class("monospace");
+        top = 0;
+        gtk_label_set_yalign(numberLabel->native, top);
+        gtk_widget_set_valign(numberLabel->native, 1);
+        gtk_widget_set_halign(numberLabel->native, 2);
+        gtk_widget_set_vexpand(numberLabel->native, 0);
     }
     gtk_text_view_set_gutter(
             native,
@@ -836,6 +903,229 @@ SignalConnection TextView::on_move_cursor(
             GTK_CONNECT_AFTER);
     gtk_keep((Widget *)this, slot);
     return *slot;
+}
+
+static void add_chars(
+        char *dest,
+        long room,
+        long *used,
+        const char *src) {
+    long i;
+
+    i = 0;
+    while (src[i] != 0 && *used + 1 < room) {
+        dest[*used] = src[i];
+        *used = *used + 1;
+        i = i + 1;
+    }
+    dest[*used] = 0;
+}
+
+static void copy_span(
+        char *dest,
+        long room,
+        const char *src,
+        long from,
+        long to) {
+    long used;
+
+    used = 0;
+    if (dest == nullptr || room < 2)
+        return;
+    dest[0] = 0;
+    while (from < to) {
+        char bit[2];
+
+        bit[0] = src[from];
+        if (bit[0] == '"' || bit[0] == '\\'
+                || bit[0] == '{' || bit[0] == '}')
+            bit[0] = ' ';
+        bit[1] = 0;
+        add_chars(dest, room, &used, bit);
+        from = from + 1;
+    }
+}
+
+static void split_font(
+        const char *desc,
+        char *family,
+        long room,
+        char *size,
+        long sroom) {
+    long n;
+    long i;
+    long start;
+    long cut;
+    long used;
+
+    n = 0;
+    while (desc[n] != 0)
+        n = n + 1;
+    while (n > 0 && desc[n - 1] == ' ')
+        n = n - 1;
+    start = n;
+    while (start > 0 && desc[start - 1] != ' ')
+        start = start - 1;
+    size[0] = '1';
+    size[1] = '2';
+    size[2] = 0;
+    cut = n;
+    if (start > 0 && start < n
+            && desc[start] >= '0'
+            && desc[start] <= '9') {
+        used = 0;
+        i = start;
+        size[0] = 0;
+        while (i < n && used + 1 < sroom) {
+            int digit;
+
+            digit = 0;
+            if (desc[i] >= '0' && desc[i] <= '9')
+                digit = 1;
+            if (desc[i] == '.' && used > 0)
+                digit = 1;
+            if (digit == 0)
+                break;
+            size[used] = desc[i];
+            used = used + 1;
+            size[used] = 0;
+            i = i + 1;
+        }
+        if (size[0] == 0) {
+            size[0] = '1';
+            size[1] = '2';
+            size[2] = 0;
+        }
+        cut = start;
+        while (cut > 0 && desc[cut - 1] == ' ')
+            cut = cut - 1;
+    }
+    if (cut <= 0)
+        copy_span(family, room, "Monospace", 0, 9);
+    else
+        copy_span(family, room, desc, 0, cut);
+}
+
+static int char_pixels(void *widget) {
+    void *layout;
+    int width;
+    int height;
+    int pixels;
+
+    width = 0;
+    height = 0;
+    layout = gtk_widget_create_pango_layout(
+            widget,
+            "0000000000");
+    if (layout == nullptr)
+        return 8;
+    pango_layout_get_pixel_size(
+            layout,
+            &width,
+            &height);
+    g_object_unref(layout);
+    if (width < 10)
+        return 8;
+    pixels = width / 10;
+    if (pixels < 1)
+        return 8;
+    return pixels;
+}
+
+void TextView::set_font(const char *description) {
+    char family[128];
+    char size[16];
+    char css[320];
+    long used;
+
+    gtk_use((Widget *)this);
+    gtk_check_text(description);
+    split_font(description, family, 128, size, 16);
+    used = 0;
+    css[0] = 0;
+    add_chars(css, 320, &used, "textview, text { font-family: \"");
+    add_chars(css, 320, &used, family);
+    add_chars(css, 320, &used, "\"; font-size: ");
+    add_chars(css, 320, &used, size);
+    add_chars(css, 320, &used, "pt; }");
+    add_css(css);
+    if (numberLabel != nullptr) {
+        used = 0;
+        css[0] = 0;
+        add_chars(css, 320, &used, "label { font-family: \"");
+        add_chars(css, 320, &used, family);
+        add_chars(css, 320, &used, "\"; font-size: ");
+        add_chars(css, 320, &used, size);
+        add_chars(css, 320, &used, "pt; }");
+        numberLabel->add_css(css);
+    }
+}
+
+void TextView::set_column_marker(
+        long column,
+        const char *color) {
+    char safe[40];
+    char css[96];
+    long i;
+    long used;
+    int x;
+    int pixels;
+
+    gtk_use((Widget *)this);
+    if (column < 1 || color == nullptr || color[0] == 0) {
+        if (columnMark != nullptr) {
+            if (gtk_widget_get_parent(
+                        columnMark->native) == native)
+                gtk_text_view_remove(
+                        native,
+                        columnMark->native);
+            columnMark = nullptr;
+        }
+        return;
+    }
+    i = 0;
+    while (color[i] != 0 && i + 1 < 40) {
+        char ch;
+
+        ch = color[i];
+        if ((ch >= 'a' && ch <= 'z')
+                || (ch >= 'A' && ch <= 'Z')
+                || (ch >= '0' && ch <= '9')
+                || ch == '#')
+            safe[i] = ch;
+        else
+            break;
+        i = i + 1;
+    }
+    safe[i] = 0;
+    if (safe[0] == 0)
+        return;
+    pixels = char_pixels(native);
+    x = gtk_text_view_get_left_margin(native);
+    x = x + (int)column * pixels;
+    if (columnMark == nullptr) {
+        columnMark = (Widget *)new Label(" ");
+        gtk_widget_set_size_request(
+                columnMark->native,
+                2,
+                100000);
+        gtk_text_view_add_overlay(
+                native,
+                columnMark->native,
+                x,
+                0);
+    } else
+        gtk_text_view_move_overlay(
+                native,
+                columnMark->native,
+                x,
+                0);
+    used = 0;
+    css[0] = 0;
+    add_chars(css, 96, &used, "* { background-color: ");
+    add_chars(css, 96, &used, safe);
+    add_chars(css, 96, &used, "; }");
+    columnMark->add_css(css);
 }
 
 }

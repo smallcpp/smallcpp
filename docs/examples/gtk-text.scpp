@@ -92,6 +92,28 @@ int main(void) {
         view->scroll_to(0, 0);
         view->add_shortcut("<Control>s", moved_key, nullptr);
         view->set_line_numbers(true);
+        view->set_font("Monospace 12");
+        view->set_column_marker(80, "#cccccc");
+        view->set_column_marker(0, "#cccccc");
+        buffer->set_tag_background("note", "#eeeeee");
+        {
+            Window *win;
+            Dialog *ask;
+            Notebook *book;
+            FileDialog *files;
+            FontDialog *fonts;
+
+            win = new Window("w");
+            ask = new Dialog("d");
+            ask->set_transient(win);
+            book = new Notebook();
+            book->add_css(
+                    "tab { border: 1px solid #666666; }");
+            files = new FileDialog();
+            files->set_parent(win);
+            fonts = new FontDialog();
+            (void)fonts;
+        }
         slot = view->on_move_cursor(moved, nullptr);
         ok = 0;
         if (same(buffer->get_text(), "hello")
