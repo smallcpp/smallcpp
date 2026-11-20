@@ -76,7 +76,7 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 
 `TextMark` stays with the text. `name` is the name passed to `create_mark`. `move` sets a new line and offset. `line` and `offset` read them.
 
-`TextView` displays a buffer. `set_editable` and `editable` control editing. `set_monospace` and `monospace` control the font. `scroll_to` scrolls to a line and offset. `on_move_cursor` runs when the cursor moves.
+`TextView` displays a buffer. `set_editable` and `editable` control editing. `set_monospace` and `monospace` control the font. `scroll_to` scrolls to a line and offset, and it keeps that place on screen after the buffer changes. `set_line_numbers` shows a gutter of line numbers. `line_numbers` reads that switch. `line_number_text` is the gutter text. `on_move_cursor` runs when the cursor moves. `Widget::add_shortcut` binds an accelerator such as `<Control>s`. The callback is `void (*)(void *)`. The shortcut runs in the capture phase, so it is handled before the text view's own keys.
 
 [`docs/examples/gtk-text.scpp`](examples/gtk-text.scpp) builds a buffer, inserts and undoes, redoes, deletes a range, tags a selection, and reads the view. It prints `gtk-text 1`.
 

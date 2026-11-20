@@ -1361,6 +1361,8 @@ public:
     void add_css_class(const char *name);
     void remove_css_class(const char *name);
     void set_tooltip(const char *text);
+    void add_shortcut(const char *accel,
+        void (*action)(void *), void *data);
 };
 
 class Window : public Widget {
@@ -1612,6 +1614,9 @@ public:
     void set_monospace(bool value);
     bool monospace() const;
     void scroll_to(long line, long offset);
+    void set_line_numbers(bool value);
+    bool line_numbers() const;
+    const char *line_number_text() const;
     SignalConnection on_move_cursor(
         void (*action)(void *, long, long), void *data);
 };
@@ -1697,7 +1702,13 @@ text. `TextBuffer` edits UTF-8. `delete_range` removes a half-open
 range. `create_tag` names a tag and a foreground color. `apply_tag` and
 `remove_tag` use that name. `undo` and `redo` walk the buffer's own
 history. Scrolling is `TextView::scroll_to`, not a buffer method.
-`TextView` is constructed with the buffer it shows.
+`scroll_to` moves a mark and scrolls that mark on screen after the
+layout is ready, so a replacement of the buffer does not leave the
+caret at the top. `set_line_numbers` places a monospace gutter on
+the left. `line_number_text` is the visible numbers.
+`Widget::add_shortcut` parses an accelerator and runs the callback
+before a child handles that key. `TextView` is constructed with the
+buffer it shows.
 
 ```smallcpp
 #include <gtk>

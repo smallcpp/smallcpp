@@ -28,6 +28,28 @@ extern void g_object_set_data(
 extern void *g_object_get_data(
         void *object,
         const char *key);
+extern void gtk_widget_add_controller(
+        void *widget,
+        void *controller);
+extern void gtk_event_controller_set_propagation_phase(
+        void *controller,
+        int phase);
+extern void *gtk_shortcut_controller_new(void);
+extern void gtk_shortcut_controller_set_scope(
+        void *controller,
+        int scope);
+extern void *gtk_shortcut_trigger_parse_string(
+        const char *accel);
+extern void *gtk_callback_action_new(
+        void *callback,
+        void *data,
+        void *destroy);
+extern void *gtk_shortcut_new(
+        void *trigger,
+        void *action);
+extern void gtk_shortcut_controller_add_shortcut(
+        void *controller,
+        void *shortcut);
 extern unsigned long g_signal_connect_data(
         void *instance,
         const char *signal,
@@ -360,6 +382,10 @@ extern void gtk_text_buffer_get_iter_at_mark(
         void *iter,
         void *mark);
 extern void *gtk_text_buffer_get_insert(void *buffer);
+extern void *gtk_text_buffer_get_mark(
+        void *buffer,
+        const char *name);
+extern int gtk_text_buffer_get_line_count(void *buffer);
 extern void *gtk_text_buffer_create_mark(
         void *buffer,
         const char *name,
@@ -410,5 +436,31 @@ extern int gtk_text_view_scroll_to_iter(
         int use_align,
         double xalign,
         double yalign);
+extern void gtk_text_view_scroll_to_mark(
+        void *view,
+        void *mark,
+        double margin,
+        int use_align,
+        double xalign,
+        double yalign);
+extern void gtk_text_view_set_gutter(
+        void *view,
+        int window,
+        void *widget);
+extern void *gtk_scrollable_get_vadjustment(void *widget);
+extern void gtk_text_view_get_visible_rect(
+        void *view,
+        void *rect);
+extern int gtk_text_view_get_line_at_y(
+        void *view,
+        void *iter,
+        int y,
+        int *lineTop);
+extern int gtk_widget_get_mapped(void *widget);
+extern void gtk_text_view_get_line_yrange(
+        void *view,
+        void *iter,
+        int *y,
+        int *height);
 
 #endif

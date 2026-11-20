@@ -4,6 +4,7 @@
 #include <exceptions>
 #include "gtk-native"
 #include "gtk-globals"
+#include "key.shpp"
 
 namespace Gtk {
 
@@ -354,6 +355,76 @@ void ScrolledWindow::set_policy(
             native,
             horizontal,
             vertical);
+}
+
+enum { GTK_PHASE_CAPTURE = 1 };
+enum { GTK_SHORTCUT_MANAGED = 1 };
+
+static int key_run(void *widget, void *args, void *data) {
+    KeyHook *hook;
+    void (*action)(void *);
+
+    (void)widget;
+    (void)args;
+    hook = (KeyHook *)data;
+    if (hook == nullptr || hook->action == nullptr)
+        return 0;
+    action = hook->action;
+    action(hook->data);
+    return 1;
+}
+
+void Widget::add_shortcut(
+        const char *accel,
+        void (*action)(void *),
+        void *data) {
+    void *controller;
+    void *trigger;
+    void *callback;
+    void *shortcut;
+    KeyHook *hook;
+    int (*typed)(void *, void *, void *);
+
+    gtk_use(this);
+    gtk_check_text(accel);
+    if (action == nullptr)
+        gtk_fail("null");
+    controller = g_object_get_data(native, "smallcpp-keys");
+    if (controller == nullptr) {
+        controller = gtk_shortcut_controller_new();
+        if (controller == nullptr)
+            gtk_fail("gtk");
+        gtk_event_controller_set_propagation_phase(
+                controller,
+                GTK_PHASE_CAPTURE);
+        gtk_shortcut_controller_set_scope(
+                controller,
+                GTK_SHORTCUT_MANAGED);
+        gtk_widget_add_controller(native, controller);
+        g_object_set_data(
+                native,
+                "smallcpp-keys",
+                controller);
+    }
+    trigger = gtk_shortcut_trigger_parse_string(accel);
+    if (trigger == nullptr)
+        gtk_fail("range");
+    hook = new KeyHook();
+    hook->action = action;
+    hook->data = data;
+    typed = key_run;
+    callback = gtk_callback_action_new(
+            (void *)typed,
+            (void *)hook,
+            nullptr);
+    if (callback == nullptr)
+        gtk_fail("gtk");
+    shortcut = gtk_shortcut_new(trigger, callback);
+    if (shortcut == nullptr)
+        gtk_fail("gtk");
+    gtk_shortcut_controller_add_shortcut(
+            controller,
+            shortcut);
 }
 
 }
