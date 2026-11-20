@@ -3,7 +3,7 @@
 The standard library is a set of headers in `include/`, the same directory
 as `<exceptions>`. The preprocessor searches that directory for
 `#include <name>` before `/usr/local/include` and `/usr/include`. A header
-name has no suffix.
+name has no suffix. A class those headers define is in the file of the same name ending in `.shpp`, and the extensionless header includes that file. A method written outside the class is compiled from a `.scpp` file. `Array`, `String`, `StringVec`, and the `Cli` classes are in `libsmallcpp_runtime.a`. `LIST`, `VECTOR`, `HASH`, and `TREE` write the method bodies inside the class.
 
 ```smallcpp
 #include <math>

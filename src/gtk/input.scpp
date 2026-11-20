@@ -1,4 +1,5 @@
 /* Choices, pictures, dialogs, and progress. */
+#include <gtk.shpp>
 #include <exceptions>
 #include "gtk-native"
 #include "gtk-globals"

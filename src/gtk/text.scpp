@@ -1,6 +1,7 @@
 /* Text buffer, marks, and the text view.
  * TextIter is a line and a character offset.
  * It is not a live GTK iterator. */
+#include <gtk.shpp>
 #include <exceptions>
 #include "gtk-native"
 #include "gtk-globals"

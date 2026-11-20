@@ -1,23 +1,4 @@
-#ifdef LEDGER_AS_HEADER
-#define LEDGER_MONEY_HEADER
-#undef LEDGER_AS_HEADER
-#endif
-
-#ifndef LEDGER_MONEY
-#define LEDGER_MONEY
-
-class Amount {
-    int units;
-public:
-    Amount(int value);
-    int read(void);
-    void add(int value);
-    void take(int value);
-};
-
-#endif
-
-#ifndef LEDGER_MONEY_HEADER
+#include "money.shpp"
 
 Amount::Amount(int value) : units(value) {
 }
@@ -33,5 +14,3 @@ void Amount::add(int value) {
 void Amount::take(int value) {
     units = units - value;
 }
-
-#endif

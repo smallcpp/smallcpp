@@ -1,20 +1,4 @@
-#ifdef LEDGER_AS_HEADER
-#define LEDGER_REPORT_HEADER
-#undef LEDGER_AS_HEADER
-#endif
-
-#define LEDGER_AS_HEADER
-#include "book.scpp"
-#undef LEDGER_AS_HEADER
-
-#ifndef LEDGER_REPORT
-#define LEDGER_REPORT
-
-void report(Book *book);
-
-#endif
-
-#ifndef LEDGER_REPORT_HEADER
+#include "report.shpp"
 
 void report(Book *book) {
     int tally;
@@ -29,5 +13,3 @@ void report(Book *book) {
     }
     print("cash {}\n", tally);
 }
-
-#endif

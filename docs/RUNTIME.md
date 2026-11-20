@@ -6,7 +6,7 @@ A running example prints one line. CTest checks that line and an exit status of 
 
 ## Compiler config
 
-`cmake --install` writes `~/.config/smallcpp/config.ini` for the user who runs the install, and creates the directory when it is missing. Header search reads `include`. The link reads `library` as its default `-L`, after any `-L` on the command line. It links `runtime`, which is `libsmallcpp_runtime.a`, and then each system library path. `libm` is the absolute path of `libm.a`. An explicit `-l` for one of those libraries is linked first, and the recorded path is not added again. When the file is missing, the compiler uses the prefix that contains its `bin/` directory, then the configured prefix, and the compile still runs.
+`cmake --install` writes `~/.config/smallcpp/config.ini` for the user who runs the install, and creates the directory when it is missing. Header search reads `include`. The link reads `library` as its default `-L`, after any `-L` on the command line. It links `runtime`, which is `libsmallcpp_runtime.a`, and then each system library path. That archive also contains `Array`, `String`, `StringVec`, and the `Cli` classes. `libm` is the absolute path of `libm.a`. An explicit `-l` for one of those libraries is linked first, and the recorded path is not added again. When the file is missing, the compiler uses the prefix that contains its `bin/` directory, then the configured prefix, and the compile still runs.
 
 ```ini
 include=/home/ada/opt/smallcpp/include

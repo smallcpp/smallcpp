@@ -1,0 +1,136 @@
+#ifndef SMALLCPP_CLI
+#define SMALLCPP_CLI
+
+/* Command-line parser. Include this header as <cli>.
+ * The classes are Option, Positional, and CommandLine,
+ * in namespace Cli. parse copies the argument text it
+ * keeps. A usage error throws Exception with message
+ * usage. CLI_HELP and CLI_VERSION stop before the
+ * required checks. */
+
+#include <exceptions>
+#include <stdlib>
+
+namespace Cli {
+
+enum {
+    CLI_FLAG,
+    CLI_COUNTER,
+    CLI_STRING,
+    CLI_NUMBER
+};
+
+enum {
+    CLI_NONE,
+    CLI_HELP,
+    CLI_VERSION
+};
+
+class Option {
+public:
+    const char *short_name;
+    const char *long_name;
+    const char *name;
+    int value_type;
+    bool is_list;
+    char list_separator;
+    int action;
+    Option();
+};
+
+class Positional {
+public:
+    const char *name;
+    bool required;
+    bool is_list;
+    Positional();
+};
+
+class CommandLine {
+public:
+    CommandLine(const char *program, const char *summary,
+        const char *version);
+    ~CommandLine();
+    void set_capture_remainder(bool enabled);
+    void add_option(Option *option);
+    void add_positional(Positional *positional);
+    void parse(int argc, char **argv);
+    bool was_provided(const char *name);
+    bool switch_value(const char *name);
+    int count(const char *name);
+    bool has_value(const char *name);
+    const char *value(const char *name);
+    int value_count(const char *name);
+    const char *value_at(const char *name, int index);
+    bool contains_item(const char *name, const char *item);
+    int positional_count();
+    const char *positional_at(int index);
+    int remainder_count();
+    const char *remainder_at(int index);
+    int current_action();
+    const char *help_text();
+    const char *version_text();
+private:
+    const char *program;
+    const char *summary;
+    const char *version;
+    bool capture;
+    int action;
+    Option **options;
+    long optionCount;
+    long optionRoom;
+    Positional **positionals;
+    long positionalCount;
+    long positionalRoom;
+    long *got;
+    long filled;
+    char **owned;
+    long ownedCount;
+    long ownedRoom;
+    char ***items;
+    long *itemCount;
+    int *seen;
+    int *counts;
+    long slotCount;
+    char **positions;
+    long positionCount;
+    char **remainders;
+    long remainderCount;
+    char *built;
+    long builtUsed;
+    long builtRoom;
+    void fail(void);
+    long length(const char *text);
+    int same(const char *left, const char *right);
+    int number_text(const char *text);
+    void keep(char *text);
+    char *slice(const char *text, long from, long to);
+    char *copy_text(const char *text);
+    void clear_parse(void);
+    void prepare(void);
+    Option *find_name(const char *name);
+    Option *find_long(const char *name);
+    Option *find_short(char name);
+    long option_index(Option *option);
+    long find_slot(const char *name);
+    void mark(Option *option);
+    void bump(Option *option);
+    void add_item(long index, char *copy);
+    void add_piece(long index, const char *text, long from,
+        long to);
+    void record(Option *option, const char *text);
+    void add_positional_value(const char *text);
+    void add_remainder(const char *text);
+    void apply(Option *option, int has, char *attached,
+        int *index, int argc, char **argv, int *stop);
+    void parse_long(char *arg, int *index, int argc,
+        char **argv, int *stop);
+    void parse_short(char *arg, int *index, int argc,
+        char **argv, int *stop);
+    void check_required(void);
+    void reset_built(void);
+    void append_text(const char *text);
+    void finish_built(void);
+};
+}
+#endif

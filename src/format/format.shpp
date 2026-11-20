@@ -1,0 +1,125 @@
+#ifndef SMALLCPP_FORMAT
+#define SMALLCPP_FORMAT
+#include <stdio>
+#include <string>
+
+struct Tok {
+    int kind;
+    char *text;
+    int line;
+    int column;
+    int blanks;
+    int solo;
+};
+
+struct Frame {
+    int kind;
+    int broken;
+    int expr;
+    int param;
+    int is_for;
+    int opener;
+    int brace_kind;
+    int ternary;
+};
+
+class TokenList {
+public:
+    TokenList();
+    void add(
+            int kind,
+            const char *text,
+            long n,
+            int line,
+            int column,
+            int blanks,
+            int solo);
+    long size(void);
+    int kind_at(long index);
+    const char *text_at(long index);
+    int blanks_at(long index);
+    int solo_at(long index);
+    void release(void);
+private:
+    struct Tok *items;
+    long count;
+    long room;
+    void grow(void);
+};
+
+class Lexer {
+public:
+    Lexer();
+    int load(File *in);
+    int tokenize(TokenList *out);
+    int failed(void);
+    int fail_line(void);
+    int fail_column(void);
+    const char *fail_message(void);
+    const char *source(void);
+    long source_length(void);
+private:
+    char *buf;
+    long length;
+    int bad;
+    int badLine;
+    int badColumn;
+    const char *badMessage;
+    void mark(int line, int column, const char *message);
+    void splice(void);
+};
+
+class Printer {
+public:
+    Printer();
+    String *run(TokenList * list);
+private:
+    TokenList *tokens;
+    String *out;
+    struct Frame *frames;
+    int top;
+    int column;
+    int at_bol;
+    int stmt_expr;
+    int stmt_decl;
+    int in_case;
+    int prev_mode;
+    int prev_op;
+    long next_code(long index);
+    long prev_code(long index);
+    int is_op(long index, const char *text);
+    int is_word(long index, const char *text);
+    long match_close(long index);
+    long match_open(long index);
+    int current_expr(void);
+    int paren_depth(void);
+    int top_is_for(void);
+    int innermost_brace(void);
+    int indent_of(int mode);
+    void push_frame(int kind);
+    void pop_frame(void);
+    void newline(void);
+    void write_spaces(int n);
+    void write_text(const char *text);
+    void ensure(int mode);
+    int op_mode(long index);
+    int gap_before(long index, int mode);
+    int indent_mode(long index);
+    void prepare(long index, int mode);
+    void note_expr(long index);
+    int flat_width(long from, long to);
+    int paren_is_cast(long index);
+    int param_list(long index);
+    void write_comment(const char *text, int solo);
+    void emit_comment(long index);
+    void emit_hash(long index);
+    void emit_open(long index);
+    void emit_close(long index);
+    void emit_brace(long index);
+    void emit_close_brace(long index);
+    void emit_comma(long index);
+    void emit_semi(long index);
+    void emit_normal(long index);
+    void finish_body(long index);
+};
+#endif

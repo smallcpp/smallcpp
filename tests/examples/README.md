@@ -1,6 +1,6 @@
 # examples
 
-Inputs for `parse_test`. Source files use the `.scpp` extension.
+Inputs for `parse_test`. These inputs are `.scpp` files.
 
 - `accept.scpp` parses. It uses `class`, `namespace`, `try`, `catch`, `throw`, and `new`. The test fails if those syntax-tree nodes are missing.
 - `namespace.scpp` parses a namespace. The test fails if the namespace node is missing.

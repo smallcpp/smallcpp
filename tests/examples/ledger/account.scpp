@@ -1,43 +1,4 @@
-#ifdef LEDGER_AS_HEADER
-#define LEDGER_ACCOUNT_HEADER
-#undef LEDGER_AS_HEADER
-#endif
-
-#define LEDGER_AS_HEADER
-#include "money.scpp"
-#undef LEDGER_AS_HEADER
-
-#ifndef LEDGER_ACCOUNT
-#define LEDGER_ACCOUNT
-
-class Account {
-    Amount cash;
-public:
-    Account(int value);
-    virtual int balance(void);
-    virtual void deposit(int value);
-    virtual void withdraw(int value);
-};
-
-class Checking : public Account {
-public:
-    Checking(int value);
-    virtual int balance(void);
-    virtual void deposit(int value);
-    virtual void withdraw(int value);
-};
-
-class Savings : public Account {
-public:
-    Savings(int value);
-    virtual int balance(void);
-    virtual void deposit(int value);
-    virtual void withdraw(int value);
-};
-
-#endif
-
-#ifndef LEDGER_ACCOUNT_HEADER
+#include "account.shpp"
 
 Account::Account(int value) : cash(value) {
 }
@@ -83,5 +44,3 @@ void Savings::deposit(int value) {
 void Savings::withdraw(int value) {
     Account::withdraw(value);
 }
-
-#endif

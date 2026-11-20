@@ -1,0 +1,121 @@
+#ifndef SMALLCPP_SQLITE
+#define SMALLCPP_SQLITE
+
+/* Database classes. Include this header as <sqlite>.
+ * The classes are Value, Database, Connection,
+ * Statement, and Transaction, in namespace Sqlite.
+ * Database is the virtual interface. Callers hold a
+ * Database *. Connection is the implementation of that
+ * interface. This header does not name the C library.
+ * The implementation calls that library with extern.
+ * Link with -l smallcpp_sqlite and the database
+ * library. A subclass of Database overrides the
+ * virtual methods for another server. state is the
+ * implementation slot. SQL_NULL through SQL_BLOB are
+ * 0 through 4. Value() is SQL NULL. A null text
+ * pointer throws Exception with message value. A null
+ * blob pointer throws unless the size is 0. Accessors
+ * throw value when the kind differs. Connection(path)
+ * opens a read/write database. Check is_open. An empty
+ * path is temporary. ":memory:" is in memory. prepare
+ * returns one statement. A second statement returns
+ * nullptr. begin_transaction starts with BEGIN
+ * IMMEDIATE. Close each statement and transaction
+ * before the connection. close returns false when one
+ * is still live. The destructor is the fallback.
+ * prepare builds a Statement. begin_transaction builds
+ * a Transaction. */
+
+namespace Sqlite {
+
+enum {
+    SQL_NULL,
+    SQL_INTEGER,
+    SQL_REAL,
+    SQL_TEXT,
+    SQL_BLOB
+};
+
+class Database;
+class Connection;
+class Statement;
+class Transaction;
+
+class Value {
+public:
+    Value();
+    Value(long number);
+    Value(double number);
+    Value(const char *text);
+    Value(const void *bytes, long size);
+    int kind() const;
+    bool is_null() const;
+    long as_integer() const;
+    double as_real() const;
+    const char *as_text() const;
+    const void *as_blob() const;
+    long blob_size() const;
+private:
+    int kindValue;
+    long integerValue;
+    double realValue;
+    char *textValue;
+    void *blobValue;
+    long blobBytes;
+};
+
+class Database {
+public:
+    virtual ~Database();
+    virtual bool is_open() const = 0;
+    virtual const char *error() const = 0;
+    virtual bool execute(const char *sql) = 0;
+    virtual Statement *prepare(const char *sql) = 0;
+    virtual bool set_busy_timeout(long milliseconds) = 0;
+    virtual Transaction *begin_transaction() = 0;
+    virtual bool close() = 0;
+};
+
+class Connection : public Database {
+public:
+    void *state;
+    Connection(const char *path);
+    virtual ~Connection();
+    virtual bool is_open() const;
+    virtual const char *error() const;
+    virtual bool execute(const char *sql);
+    virtual Statement *prepare(const char *sql);
+    virtual bool set_busy_timeout(long milliseconds);
+    virtual Transaction *begin_transaction();
+    virtual bool close();
+};
+
+class Statement {
+public:
+    void *state;
+    Statement(Connection *owner, void *handle);
+    ~Statement();
+    const char *error() const;
+    bool bind(int index, Value *value);
+    bool step();
+    bool has_row() const;
+    bool is_done() const;
+    bool failed() const;
+    Value *value(int column) const;
+    bool close();
+};
+
+class Transaction {
+public:
+    void *state;
+    Transaction(Connection *owner);
+    ~Transaction();
+    bool is_active() const;
+    bool commit();
+    bool rollback();
+    bool close();
+};
+
+}
+
+#endif

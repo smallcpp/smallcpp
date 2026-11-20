@@ -1,28 +1,4 @@
-#ifdef LEDGER_AS_HEADER
-#define LEDGER_BOOK_HEADER
-#undef LEDGER_AS_HEADER
-#endif
-
-#define LEDGER_AS_HEADER
-#include "account.scpp"
-#undef LEDGER_AS_HEADER
-
-#ifndef LEDGER_BOOK
-#define LEDGER_BOOK
-
-class Book {
-    Account *held[4];
-    int held_count;
-public:
-    Book();
-    void add(Account *account);
-    Account *at(int slot);
-    int size(void);
-};
-
-#endif
-
-#ifndef LEDGER_BOOK_HEADER
+#include "book.shpp"
 
 Book::Book() {
     held[0] = nullptr;
@@ -46,5 +22,3 @@ Account *Book::at(int slot) {
 int Book::size(void) {
     return held_count;
 }
-
-#endif

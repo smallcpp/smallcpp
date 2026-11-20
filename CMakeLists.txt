@@ -74,6 +74,73 @@ add_library(smallcpp_runtime STATIC
 target_include_directories(smallcpp_runtime PUBLIC src/runtime)
 target_link_libraries(smallcpp_runtime PUBLIC ${CMAKE_DL_LIBS})
 
+set(SMALLCPP_RUNTIME_SCPP_DIR "${CMAKE_BINARY_DIR}/runtime-scpp")
+set(SMALLCPP_RUNTIME_SCPP_STAMP "${SMALLCPP_RUNTIME_SCPP_DIR}/stamp")
+set(SMALLCPP_RUNTIME_ARRAY_O "${SMALLCPP_RUNTIME_SCPP_DIR}/array.o")
+set(SMALLCPP_RUNTIME_STRING_O "${SMALLCPP_RUNTIME_SCPP_DIR}/string.o")
+set(SMALLCPP_RUNTIME_CLI_O "${SMALLCPP_RUNTIME_SCPP_DIR}/cli.o")
+add_custom_command(
+    OUTPUT "${SMALLCPP_RUNTIME_ARRAY_O}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${SMALLCPP_RUNTIME_SCPP_DIR}"
+    COMMAND "$<TARGET_FILE:scpp>" -I "${CMAKE_SOURCE_DIR}/include"
+            -c -o "${SMALLCPP_RUNTIME_ARRAY_O}"
+            "${CMAKE_SOURCE_DIR}/src/runtime/array.scpp"
+    DEPENDS scpp
+            "${CMAKE_SOURCE_DIR}/src/runtime/array.scpp"
+            "${CMAKE_SOURCE_DIR}/include/array.shpp"
+            "${CMAKE_SOURCE_DIR}/include/exceptions.shpp"
+    VERBATIM)
+add_custom_command(
+    OUTPUT "${SMALLCPP_RUNTIME_STRING_O}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${SMALLCPP_RUNTIME_SCPP_DIR}"
+    COMMAND "$<TARGET_FILE:scpp>" -I "${CMAKE_SOURCE_DIR}/include"
+            -c -o "${SMALLCPP_RUNTIME_STRING_O}"
+            "${CMAKE_SOURCE_DIR}/src/runtime/string.scpp"
+    DEPENDS scpp
+            "${CMAKE_SOURCE_DIR}/src/runtime/string.scpp"
+            "${CMAKE_SOURCE_DIR}/include/string.shpp"
+            "${CMAKE_SOURCE_DIR}/include/array.shpp"
+            "${CMAKE_SOURCE_DIR}/include/exceptions.shpp"
+            "${CMAKE_SOURCE_DIR}/include/vector.shpp"
+    VERBATIM)
+add_custom_command(
+    OUTPUT "${SMALLCPP_RUNTIME_CLI_O}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${SMALLCPP_RUNTIME_SCPP_DIR}"
+    COMMAND "$<TARGET_FILE:scpp>" -I "${CMAKE_SOURCE_DIR}/include"
+            -c -o "${SMALLCPP_RUNTIME_CLI_O}"
+            "${CMAKE_SOURCE_DIR}/src/runtime/cli.scpp"
+    DEPENDS scpp
+            "${CMAKE_SOURCE_DIR}/src/runtime/cli.scpp"
+            "${CMAKE_SOURCE_DIR}/include/cli.shpp"
+            "${CMAKE_SOURCE_DIR}/include/exceptions.shpp"
+    VERBATIM)
+add_custom_command(
+    OUTPUT "${SMALLCPP_RUNTIME_SCPP_STAMP}"
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${SMALLCPP_RUNTIME_SCPP_DIR}/c"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${SMALLCPP_RUNTIME_SCPP_DIR}/c"
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:smallcpp_runtime>"
+            "${SMALLCPP_RUNTIME_SCPP_DIR}/c-only.a"
+    COMMAND "${CMAKE_COMMAND}" -E chdir "${SMALLCPP_RUNTIME_SCPP_DIR}/c"
+            "${CMAKE_AR}" x "${SMALLCPP_RUNTIME_SCPP_DIR}/c-only.a"
+    COMMAND "${CMAKE_COMMAND}" -E rm -f "$<TARGET_FILE:smallcpp_runtime>"
+    COMMAND "${CMAKE_COMMAND}"
+            -DARCHIVE=$<TARGET_FILE:smallcpp_runtime>
+            -DSTAGE=${SMALLCPP_RUNTIME_SCPP_DIR}/c
+            -DAR=${CMAKE_AR}
+            -DCLI=${SMALLCPP_RUNTIME_CLI_O}
+            -DSTRING=${SMALLCPP_RUNTIME_STRING_O}
+            -DARRAY=${SMALLCPP_RUNTIME_ARRAY_O}
+            -P "${CMAKE_SOURCE_DIR}/cmake/JoinRuntime.cmake"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${SMALLCPP_RUNTIME_SCPP_STAMP}"
+    DEPENDS smallcpp_runtime
+            "${SMALLCPP_RUNTIME_CLI_O}"
+            "${SMALLCPP_RUNTIME_STRING_O}"
+            "${SMALLCPP_RUNTIME_ARRAY_O}"
+            "${CMAKE_SOURCE_DIR}/cmake/JoinRuntime.cmake"
+    VERBATIM)
+add_custom_target(smallcpp_runtime_scpp ALL DEPENDS "${SMALLCPP_RUNTIME_SCPP_STAMP}")
+
+
 find_program(SMALLCPP_CLANGXX NAMES clang++ HINTS /usr/lib/llvm-22/bin)
 if(NOT SMALLCPP_CLANGXX)
     message(FATAL_ERROR "clang++ is required to link an executable")
@@ -137,25 +204,40 @@ target_compile_definitions(scpp PRIVATE
 add_dependencies(scpp preproc scpp_cc smallcpp_runtime)
 
 set(SMALLCPP_FORMAT_BIN "${CMAKE_SOURCE_DIR}/bin/scpp-format")
+# scpp names a link's objects from each source base name in the working
+# directory. format and the language server both compile main.scpp.
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/format-link")
 add_custom_command(
     OUTPUT "${SMALLCPP_FORMAT_BIN}"
-    COMMAND "$<TARGET_FILE:scpp>" -o "${SMALLCPP_FORMAT_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E env
+            "SMALLCPP_RUNTIME=$<TARGET_FILE:smallcpp_runtime>"
+            "$<TARGET_FILE:scpp>" -I "${CMAKE_SOURCE_DIR}/include"
+            -o "${SMALLCPP_FORMAT_BIN}"
             "${CMAKE_SOURCE_DIR}/src/format/main.scpp"
-    DEPENDS scpp
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/format-link"
+    DEPENDS scpp smallcpp_runtime_scpp
             "${CMAKE_SOURCE_DIR}/src/format/main.scpp"
+            "${CMAKE_SOURCE_DIR}/src/format/format.shpp"
+            "${SMALLCPP_RUNTIME_SCPP_STAMP}"
     VERBATIM)
 add_custom_target(scpp_format ALL DEPENDS "${SMALLCPP_FORMAT_BIN}")
 
-set(SMALLCPP_SQLITE_OBJECT "${CMAKE_BINARY_DIR}/sqlite.o")
+set(SMALLCPP_SQLITE_OBJECT "${CMAKE_BINARY_DIR}/sqlite-obj/sqlite.o")
 set(SMALLCPP_SQLITE_ARCHIVE "${CMAKE_SOURCE_DIR}/lib/libsmallcpp_sqlite.a")
 add_custom_command(
     OUTPUT "${SMALLCPP_SQLITE_OBJECT}"
-    COMMAND "$<TARGET_FILE:scpp>" -c -o "${SMALLCPP_SQLITE_OBJECT}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/sqlite-obj"
+    COMMAND "$<TARGET_FILE:scpp>" -I "${CMAKE_SOURCE_DIR}/include"
+            -c -o "${SMALLCPP_SQLITE_OBJECT}"
             "${CMAKE_SOURCE_DIR}/src/sqlite/sqlite.scpp"
     DEPENDS scpp
             "${CMAKE_SOURCE_DIR}/src/sqlite/sqlite.scpp"
             "${CMAKE_SOURCE_DIR}/include/sqlite"
+            "${CMAKE_SOURCE_DIR}/include/sqlite.shpp"
+            "${CMAKE_SOURCE_DIR}/src/sqlite/state.shpp"
             "${CMAKE_SOURCE_DIR}/include/exceptions"
+            "${CMAKE_SOURCE_DIR}/include/exceptions.shpp"
+            "${SMALLCPP_RUNTIME_SCPP_STAMP}"
     VERBATIM)
 add_custom_command(
     OUTPUT "${SMALLCPP_SQLITE_ARCHIVE}"
@@ -168,11 +250,13 @@ add_custom_target(smallcpp_sqlite ALL DEPENDS "${SMALLCPP_SQLITE_ARCHIVE}")
 
 set(SMALLCPP_GTK_OBJECTS "")
 foreach(name state basic layout input text)
-    set(object "${CMAKE_BINARY_DIR}/gtk-${name}.o")
+    set(object "${CMAKE_BINARY_DIR}/gtk-obj/gtk-${name}.o")
     list(APPEND SMALLCPP_GTK_OBJECTS "${object}")
     add_custom_command(
         OUTPUT "${object}"
-        COMMAND "$<TARGET_FILE:scpp>" -c -o "${object}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/gtk-obj"
+        COMMAND "$<TARGET_FILE:scpp>" -I "${CMAKE_SOURCE_DIR}/include"
+                -c -o "${object}"
                 "${CMAKE_SOURCE_DIR}/src/gtk/${name}.scpp"
         DEPENDS scpp
                 "${CMAKE_SOURCE_DIR}/src/gtk/${name}.scpp"
@@ -180,7 +264,12 @@ foreach(name state basic layout input text)
                 "${CMAKE_SOURCE_DIR}/src/gtk/gtk-support"
                 "${CMAKE_SOURCE_DIR}/src/gtk/gtk-globals"
                 "${CMAKE_SOURCE_DIR}/include/gtk"
+                "${CMAKE_SOURCE_DIR}/include/gtk.shpp"
+                "${CMAKE_SOURCE_DIR}/src/gtk/layout.shpp"
+                "${CMAKE_SOURCE_DIR}/src/gtk/state.shpp"
                 "${CMAKE_SOURCE_DIR}/include/exceptions"
+                "${CMAKE_SOURCE_DIR}/include/exceptions.shpp"
+                "${SMALLCPP_RUNTIME_SCPP_STAMP}"
         VERBATIM)
 endforeach()
 set(SMALLCPP_GTK_ARCHIVE "${CMAKE_SOURCE_DIR}/lib/libsmallcpp_gtk.a")
@@ -222,21 +311,31 @@ install(SCRIPT "${CMAKE_BINARY_DIR}/cmake/InstallConfig.cmake")
 
 set(SMALLCPP_LSP_DIR "${CMAKE_SOURCE_DIR}/src/lsp")
 set(SMALLCPP_LSP_BIN "${CMAKE_SOURCE_DIR}/bin/scpp-lsp")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/lsp-link")
 add_custom_command(
     OUTPUT "${SMALLCPP_LSP_BIN}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_SOURCE_DIR}/bin"
-    COMMAND "$<TARGET_FILE:scpp>"
+    COMMAND "${CMAKE_COMMAND}" -E env
+        "SMALLCPP_RUNTIME=$<TARGET_FILE:smallcpp_runtime>"
+        "$<TARGET_FILE:scpp>"
         -o "${SMALLCPP_LSP_BIN}"
+        -I "${CMAKE_SOURCE_DIR}/include"
         -I "${SMALLCPP_LSP_DIR}"
         -L "${CMAKE_SOURCE_DIR}/lib"
         -l smallcpp_parse
-        "${SMALLCPP_LSP_DIR}/main.scpp"
-    DEPENDS scpp smallcpp_parse
-        "${SMALLCPP_LSP_DIR}/lsp"
         "${SMALLCPP_LSP_DIR}/json.scpp"
         "${SMALLCPP_LSP_DIR}/check.scpp"
         "${SMALLCPP_LSP_DIR}/protocol.scpp"
         "${SMALLCPP_LSP_DIR}/main.scpp"
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/lsp-link"
+    DEPENDS scpp smallcpp_parse smallcpp_runtime_scpp
+        "${SMALLCPP_LSP_DIR}/lsp"
+        "${SMALLCPP_LSP_DIR}/lsp.shpp"
+        "${SMALLCPP_LSP_DIR}/json.scpp"
+        "${SMALLCPP_LSP_DIR}/check.scpp"
+        "${SMALLCPP_LSP_DIR}/protocol.scpp"
+        "${SMALLCPP_LSP_DIR}/main.scpp"
+        "${SMALLCPP_RUNTIME_SCPP_STAMP}"
     VERBATIM)
 add_custom_target(scpp_lsp ALL DEPENDS "${SMALLCPP_LSP_BIN}")
 set_source_files_properties("${SMALLCPP_LSP_BIN}" PROPERTIES GENERATED TRUE)
