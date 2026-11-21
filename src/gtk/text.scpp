@@ -596,6 +596,7 @@ bool TextView::monospace() const {
 }
 
 static int char_pixels(void *widget);
+static int line_box(void *widget);
 
 enum { GTK_TEXT_WINDOW_LEFT = 3 };
 enum { GTK_NUMBER_CAP = 80 };
@@ -695,6 +696,9 @@ static void place_numbers(TextView *view, void *cr, int width) {
     int height;
     int guard;
     int pixels;
+    int lineHeight;
+    int placed;
+    int nextTop;
 
     if (view == nullptr || view->showNumbers == 0)
         return;
@@ -708,6 +712,9 @@ static void place_numbers(TextView *view, void *cr, int width) {
     pixels = char_pixels(view->native);
     if (pixels < 1)
         pixels = 8;
+    lineHeight = line_box(view->native);
+    placed = 0;
+    nextTop = 0;
     if (view->numberArea != nullptr) {
         int request;
 
@@ -756,6 +763,11 @@ static void place_numbers(TextView *view, void *cr, int width) {
                 (void *)words,
                 &top,
                 &height);
+        if (height < 1) {
+            height = lineHeight;
+            if (placed != 0 && top < nextTop)
+                top = nextTop;
+        }
         line = gtk_text_iter_get_line((void *)words);
         drawY = top - rect[1];
         if (drawY > rect[3])
@@ -801,6 +813,8 @@ static void place_numbers(TextView *view, void *cr, int width) {
                 }
             }
         }
+        nextTop = top + height;
+        placed = 1;
         if (gtk_text_iter_forward_line((void *)words) == 0)
             break;
         guard = guard + 1;
@@ -1143,6 +1157,23 @@ static void split_font(
         copy_span(family, room, "Monospace", 0, 9);
     else
         copy_span(family, room, desc, 0, cut);
+}
+
+static int line_box(void *widget) {
+    void *layout;
+    int width;
+    int height;
+
+    width = 0;
+    height = 0;
+    layout = gtk_widget_create_pango_layout(widget, "0");
+    if (layout == nullptr)
+        return 16;
+    pango_layout_get_pixel_size(layout, &width, &height);
+    g_object_unref(layout);
+    if (height < 1)
+        return 16;
+    return height;
 }
 
 static int char_pixels(void *widget) {

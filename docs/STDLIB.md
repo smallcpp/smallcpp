@@ -1324,7 +1324,7 @@ not link those libraries.
 
 The classes are in namespace `Gtk`. `Widget` is the base of `Window`,
 `Box`, `Label`, `Button`, `Entry`, `CheckButton`, `ScrolledWindow`,
-`HeaderBar`, `MenuButton`, `Popover`, `Paned`, `Notebook`,
+`HeaderBar`, `MenuButton`, `MenuBar`, `Popover`, `Paned`, `Notebook`,
 `ColumnView`, `Dialog`, `DropDown`, `SpinButton`, `Picture`,
 `ProgressBar`, `Spinner`, and `TextView`. `AlertDialog`, `FileDialog`,
 `TextBuffer`, `TextMark`, and `TextIter` are not widgets. Enumerators
@@ -1448,6 +1448,15 @@ public:
     const char *label() const;
     void set_menu(const char **labels, long count,
         void (*action)(void *, const char *), void *data);
+};
+
+class MenuBar : public Widget {
+public:
+    MenuBar();
+    long add_menu(const char *title, const char **labels,
+        long count, void (*action)(void *, const char *),
+        void *data);
+    void set_menu(long index, const char **labels, long count);
 };
 
 class Popover : public Widget {
@@ -1653,9 +1662,12 @@ every label. That action receives the chosen label. `Notebook`
 `on_switch_page` and `ColumnView` `on_activate` pass an index.
 `Dialog` `on_response` passes the response id. `AlertDialog::present`
 calls its confirm function when the button choice is 0.
-`FileDialog::open` and `save` call their function with the chosen path,
-or with null when the chooser is cancelled. The path stays reachable from
-the dialog until the next open or save finishes. `TextView`
+`FileDialog::open` calls its function once for each selected path, in
+order. Cancel, or a selection with no path, calls it once with null.
+`save` calls once with the chosen path, or with null when cancelled.
+Each path stays reachable from the dialog until the next open or save
+finishes. `MenuBar::add_menu` appends a submenu. `set_menu` replaces
+that submenu's labels. A count of zero leaves it empty. `TextView`
 `on_move_cursor` runs after the cursor moves and passes the new line and
 character offset.
 

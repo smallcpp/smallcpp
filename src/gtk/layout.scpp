@@ -343,6 +343,231 @@ void MenuButton::set_menu(
     gtk_menu_button_set_menu_model(native, model);
 }
 
+MenuSlot::MenuSlot() {
+    submenu = nullptr;
+    action = nullptr;
+    data = nullptr;
+    labels = nullptr;
+    picks = nullptr;
+    count = 0;
+}
+
+static void write_slot(char *buf, long menu, long item) {
+    buf[0] = 'm';
+    buf[1] = (char)('0' + (int)menu);
+    buf[2] = 'i';
+    if (item < 10) {
+        buf[3] = (char)('0' + (int)item);
+        buf[4] = 0;
+        return;
+    }
+    buf[3] = (char)('0' + (int)(item / 10));
+    buf[4] = (char)('0' + (int)(item % 10));
+    buf[5] = 0;
+}
+
+static void write_bar_detailed(
+        char *buf,
+        long menu,
+        long item) {
+    char name[8];
+    long i;
+
+    write_slot(name, menu, item);
+    buf[0] = 'm';
+    buf[1] = 'e';
+    buf[2] = 'n';
+    buf[3] = 'u';
+    buf[4] = '.';
+    i = 0;
+    while (name[i] != 0) {
+        buf[5 + i] = name[i];
+        i = i + 1;
+    }
+    buf[5 + i] = 0;
+}
+
+static void bar_activate(
+        void *action,
+        void *parameter,
+        void *data) {
+    BarPick *pick;
+
+    (void)action;
+    (void)parameter;
+    pick = (BarPick *)data;
+    if (pick == nullptr || pick->action == nullptr)
+        return;
+    pick->action(pick->data, pick->label);
+}
+
+static void clear_slot(MenuBar *bar, long index) {
+    MenuSlot *slot;
+    long i;
+
+    slot = bar->slots[index];
+    if (slot == nullptr)
+        return;
+    i = 0;
+    while (i < slot->count) {
+        char name[8];
+
+        write_slot(name, index, i);
+        g_action_map_remove_action(bar->group, name);
+        if (slot->labels != nullptr
+                && slot->labels[i] != nullptr)
+            free((void *)slot->labels[i]);
+        i = i + 1;
+    }
+    if (slot->submenu != nullptr)
+        g_menu_remove_all(slot->submenu);
+    slot->labels = nullptr;
+    slot->picks = nullptr;
+    slot->count = 0;
+}
+
+static void fill_slot(
+        MenuBar *bar,
+        long index,
+        const char **labels,
+        long count) {
+    MenuSlot *slot;
+    long i;
+    void (*typed)(void *, void *, void *);
+
+    slot = bar->slots[index];
+    clear_slot(bar, index);
+    if (count == 0)
+        return;
+    slot->labels = new char *[count];
+    slot->picks = new void *[count];
+    slot->count = count;
+    typed = bar_activate;
+    i = 0;
+    while (i < count) {
+        BarPick *pick;
+        char name[8];
+        char detailed[24];
+        char shown[192];
+        void *simple;
+        unsigned long id;
+
+        gtk_check_text(labels[i]);
+        slot->labels[i] = gtk_copy(labels[i]);
+        pick = new BarPick();
+        pick->action = slot->action;
+        pick->data = slot->data;
+        pick->label = slot->labels[i];
+        slot->picks[i] = (void *)pick;
+        write_slot(name, index, i);
+        write_bar_detailed(detailed, index, i);
+        simple = g_simple_action_new(name, nullptr);
+        if (simple == nullptr)
+            gtk_fail("gtk");
+        id = g_signal_connect_data(
+                simple,
+                "activate",
+                (void *)typed,
+                (void *)pick,
+                nullptr,
+                0);
+        if (id == 0)
+            gtk_fail("gtk");
+        g_action_map_add_action(bar->group, simple);
+        g_object_unref(simple);
+        show_mnemonic(shown, 192, labels[i]);
+        g_menu_append(slot->submenu, shown, detailed);
+        i = i + 1;
+    }
+}
+
+static void bar_cleanup(Widget *widget) {
+    MenuBar *bar;
+
+    bar = (MenuBar *)widget;
+    if (bar->model != nullptr) {
+        g_object_unref(bar->model);
+        bar->model = nullptr;
+    }
+    if (bar->group != nullptr) {
+        g_object_unref(bar->group);
+        bar->group = nullptr;
+    }
+}
+
+MenuBar::MenuBar() : Widget() {
+    long i;
+    void (*fn)(Widget *);
+
+    model = g_menu_new();
+    group = g_simple_action_group_new();
+    if (model == nullptr || group == nullptr)
+        gtk_fail("gtk");
+    native = gtk_sink(
+            gtk_popover_menu_bar_new_from_model(model));
+    gtk_widget_insert_action_group(native, "menu", group);
+    menuCount = 0;
+    i = 0;
+    while (i < 8) {
+        slots[i] = nullptr;
+        i = i + 1;
+    }
+    fn = bar_cleanup;
+    cleanup = fn;
+}
+
+long MenuBar::add_menu(
+        const char *title,
+        const char **labels,
+        long count,
+        void (*action)(void *, const char *),
+        void *data) {
+    MenuSlot *slot;
+    long index;
+    char shown[192];
+
+    gtk_use((Widget *)this);
+    gtk_check_text(title);
+    if (action == nullptr)
+        gtk_fail("null");
+    if (menuCount >= 8)
+        gtk_fail("range");
+    if (count < 0 || count > 64)
+        gtk_fail("range");
+    if (count > 0 && labels == nullptr)
+        gtk_fail("null");
+    index = menuCount;
+    slot = new MenuSlot();
+    slot->submenu = g_menu_new();
+    if (slot->submenu == nullptr)
+        gtk_fail("gtk");
+    slot->action = action;
+    slot->data = data;
+    slot->labels = nullptr;
+    slot->picks = nullptr;
+    slot->count = 0;
+    slots[index] = slot;
+    menuCount = index + 1;
+    show_mnemonic(shown, 192, title);
+    g_menu_append_submenu(model, shown, slot->submenu);
+    fill_slot(this, index, labels, count);
+    return index;
+}
+
+void MenuBar::set_menu(
+        long index,
+        const char **labels,
+        long count) {
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= menuCount)
+        gtk_fail("range");
+    if (count < 0 || count > 64)
+        gtk_fail("range");
+    if (count > 0 && labels == nullptr)
+        gtk_fail("null");
+    fill_slot(this, index, labels, count);
+}
+
 Popover::Popover() : Widget() {
     kind = GTK_KIND_POPOVER;
     native = gtk_sink(gtk_popover_new());

@@ -59,6 +59,55 @@ static void alert_done(
         dialog->confirmAction(dialog->confirmData);
 }
 
+static void deliver_path(
+        FileDialog *dialog,
+        const char *path) {
+    const char *owned;
+
+    owned = nullptr;
+    if (path != nullptr) {
+        owned = gtk_copy(path);
+        dialog->picked = (char *)owned;
+    } else
+        dialog->picked = nullptr;
+    if (dialog->pick != nullptr)
+        dialog->pick(dialog->pickData, owned);
+}
+
+static void deliver_many(FileDialog *dialog, void *model) {
+    unsigned n;
+    unsigned i;
+    int delivered;
+
+    if (model == nullptr) {
+        deliver_path(dialog, nullptr);
+        return;
+    }
+    n = g_list_model_get_n_items(model);
+    delivered = 0;
+    i = 0;
+    while (i < n) {
+        void *item;
+        char *path;
+
+        item = g_list_model_get_item(model, i);
+        path = nullptr;
+        if (item != nullptr) {
+            path = g_file_get_path(item);
+            g_object_unref(item);
+        }
+        if (path != nullptr) {
+            deliver_path(dialog, path);
+            g_free((void *)path);
+            delivered = delivered + 1;
+        }
+        i = i + 1;
+    }
+    g_object_unref(model);
+    if (delivered == 0)
+        deliver_path(dialog, nullptr);
+}
+
 static void file_done(
         void *source,
         void *result,
@@ -67,40 +116,37 @@ static void file_done(
     void *file;
     void *error;
     char *path;
-    const char *owned;
 
     (void)source;
     dialog = (FileDialog *)data;
     if (dialog == nullptr || dialog->native == nullptr)
         return;
     error = nullptr;
-    if (dialog->saving != 0)
+    dialog->pending = 0;
+    if (dialog->saving != 0) {
         file = gtk_file_dialog_save_finish(
                 dialog->native,
                 result,
                 &error);
-    else
-        file = gtk_file_dialog_open_finish(
-                dialog->native,
-                result,
-                &error);
-    path = nullptr;
-    if (file != nullptr) {
-        path = g_file_get_path(file);
-        g_object_unref(file);
+        path = nullptr;
+        if (file != nullptr) {
+            path = g_file_get_path(file);
+            g_object_unref(file);
+        }
+        if (error != nullptr)
+            g_error_free(error);
+        deliver_path(dialog, path);
+        if (path != nullptr)
+            g_free((void *)path);
+        return;
     }
+    file = gtk_file_dialog_open_multiple_finish(
+            dialog->native,
+            result,
+            &error);
     if (error != nullptr)
         g_error_free(error);
-    dialog->pending = 0;
-    owned = nullptr;
-    if (path != nullptr) {
-        owned = gtk_copy(path);
-        g_free((void *)path);
-        dialog->picked = (char *)owned;
-    } else
-        dialog->picked = nullptr;
-    if (dialog->pick != nullptr)
-        dialog->pick(dialog->pickData, owned);
+    deliver_many(dialog, file);
 }
 
 static void use_file(FileDialog *dialog) {
@@ -144,7 +190,7 @@ static void file_begin(
                 handler,
                 self);
     else
-        gtk_file_dialog_open(
+        gtk_file_dialog_open_multiple(
                 dialog->native,
                 dialog->parentWindow,
                 nullptr,
