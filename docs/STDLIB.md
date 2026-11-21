@@ -1365,6 +1365,11 @@ public:
         void (*action)(void *), void *data);
     void clear_shortcuts(void);
     int shortcut_ok(const char *accel);
+    int normalize_accel(const char *accel, char *buf,
+        long room);
+    SignalConnection on_key(
+        int (*action)(void *, const char *, int),
+        void *data);
 };
 
 class Window : public Widget {
@@ -1438,6 +1443,7 @@ public:
     void set_child(Widget *child);
     void remove(Widget *child);
     void set_policy(int horizontal, int vertical);
+    void set_min_content(long width, long height);
 };
 
 class HeaderBar : public Widget {
@@ -1527,6 +1533,7 @@ public:
     SignalConnection on_response(
         void (*action)(void *, int), void *data);
     void present();
+    void set_default_size(long width, long height);
 };
 
 class AlertDialog {
@@ -1694,7 +1701,13 @@ separator appears there. `Grid::attach` places a child in one
 cell, and `set_spacing` sets the gaps. `Notebook::set_tabs_left`
 moves the tabs to the left edge. `Widget::clear_shortcuts` removes every
 shortcut added with `add_shortcut`. `shortcut_ok` is 1 when the
-accelerator parses. `FontDialog::choose` keeps the dialog from
+accelerator parses. `on_key` calls its function with the
+accelerator and 1 when Escape is pressed alone. The function
+returns 1 to keep the key. `normalize_accel` writes the
+canonical name into the caller buffer. `Dialog::set_default_size`
+sets the opening width and height. `ScrolledWindow::set_min_content`
+sets the smallest width and height of that area.
+`FontDialog::choose` keeps the dialog from
 the parent window until the chooser finishes. `TextView`
 `on_move_cursor` runs after the cursor moves and passes the new line and
 character offset.

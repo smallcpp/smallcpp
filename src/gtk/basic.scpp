@@ -379,6 +379,20 @@ void ScrolledWindow::remove(Widget *child) {
     gtk_note_remove((Widget *)this, child);
 }
 
+void ScrolledWindow::set_min_content(
+        long width,
+        long height) {
+    gtk_use((Widget *)this);
+    if (width < 0 || height < 0)
+        gtk_fail("range");
+    gtk_scrolled_window_set_min_content_width(
+            native,
+            (int)width);
+    gtk_scrolled_window_set_min_content_height(
+            native,
+            (int)height);
+}
+
 void ScrolledWindow::set_policy(
         int horizontal,
         int vertical) {
@@ -502,6 +516,138 @@ void Widget::clear_shortcuts(void) {
         return;
     gtk_widget_remove_controller(native, controller);
     g_object_set_data(native, "smallcpp-keys", nullptr);
+}
+
+static int copy_chars(
+        char *buf,
+        long room,
+        const char *text) {
+    long n;
+    long i;
+
+    n = 0;
+    while (text[n] != 0)
+        n = n + 1;
+    if (n + 1 > room)
+        return 0;
+    i = 0;
+    while (i < n) {
+        buf[i] = text[i];
+        i = i + 1;
+    }
+    buf[n] = 0;
+    return 1;
+}
+
+static int key_pressed(
+        void *controller,
+        unsigned key,
+        unsigned code,
+        unsigned state,
+        void *data) {
+    SignalConnection *slot;
+    int (*action)(void *, const char *, int);
+    unsigned mods;
+    unsigned mask;
+    char owned[128];
+    char *name;
+    int escape;
+    int used;
+
+    (void)controller;
+    (void)code;
+    slot = (SignalConnection *)data;
+    action = (int (*)(void *, const char *, int))slot->action;
+    if (slot->live == 0 || action == nullptr)
+        return 0;
+    mask = gtk_accelerator_get_default_mod_mask();
+    mods = state & mask;
+    escape = 0;
+    if (key == 0xff1b && mods == 0)
+        escape = 1;
+    if (escape == 0 && gtk_accelerator_valid(key, mods) == 0)
+        return 0;
+    owned[0] = 0;
+    if (escape == 0) {
+        name = gtk_accelerator_name(key, mods);
+        if (name == nullptr)
+            return 0;
+        if (copy_chars(owned, 128, name) == 0) {
+            g_free((void *)name);
+            return 0;
+        }
+        g_free((void *)name);
+    }
+    used = action(slot->data, owned, escape);
+    if (used == 0)
+        return 0;
+    return 1;
+}
+
+int Widget::normalize_accel(
+        const char *accel,
+        char *buf,
+        long room) {
+    unsigned key;
+    unsigned mods;
+    char *name;
+
+    gtk_use(this);
+    if (buf == nullptr || room < 2)
+        gtk_fail("range");
+    buf[0] = 0;
+    if (accel == nullptr || accel[0] == 0)
+        return 1;
+    key = 0;
+    mods = 0;
+    if (gtk_accelerator_parse(accel, &key, &mods) == 0)
+        return 0;
+    name = gtk_accelerator_name(key, mods);
+    if (name == nullptr)
+        return 0;
+    if (copy_chars(buf, room, name) == 0) {
+        g_free((void *)name);
+        buf[0] = 0;
+        return 0;
+    }
+    g_free((void *)name);
+    return 1;
+}
+
+SignalConnection Widget::on_key(
+        int (*action)(void *, const char *, int),
+        void *data) {
+    void *controller;
+    SignalConnection *slot;
+    int (*typed)(
+            void *,
+            unsigned,
+            unsigned,
+            unsigned,
+            void *);
+    void *handler;
+    void *userAction;
+
+    gtk_use(this);
+    if (action == nullptr)
+        gtk_fail("null");
+    controller = gtk_event_controller_key_new();
+    if (controller == nullptr)
+        gtk_fail("gtk");
+    gtk_event_controller_set_propagation_phase(controller, 1);
+    gtk_widget_add_controller(native, controller);
+    typed = key_pressed;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            controller,
+            "key-pressed",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep(this, slot);
+    return *slot;
 }
 
 int Widget::shortcut_ok(const char *accel) {

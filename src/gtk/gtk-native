@@ -53,6 +53,18 @@ extern void *gtk_shortcut_new(
 extern void gtk_shortcut_controller_add_shortcut(
         void *controller,
         void *shortcut);
+extern void *gtk_event_controller_key_new(void);
+extern int gtk_accelerator_parse(
+        const char *accel,
+        unsigned *key,
+        unsigned *mods);
+extern char *gtk_accelerator_name(
+        unsigned key,
+        unsigned mods);
+extern int gtk_accelerator_valid(
+        unsigned key,
+        unsigned mods);
+extern unsigned gtk_accelerator_get_default_mod_mask(void);
 extern unsigned long g_signal_connect_data(
         void *instance,
         const char *signal,
@@ -218,6 +230,12 @@ extern void *gtk_scrolled_window_new(void);
 extern void gtk_scrolled_window_set_child(
         void *window,
         void *child);
+extern void gtk_scrolled_window_set_min_content_width(
+        void *window,
+        int width);
+extern void gtk_scrolled_window_set_min_content_height(
+        void *window,
+        int height);
 extern void gtk_scrolled_window_set_policy(
         void *window,
         int horizontal,
