@@ -491,6 +491,10 @@ extern void pango_layout_set_width(
 extern void pango_layout_set_alignment(
         void *layout,
         int alignment);
+extern void smallcpp_text_line_shade(
+        void *view,
+        int on,
+        const char *color);
 extern void gtk_text_view_get_line_yrange(
         void *view,
         void *iter,
