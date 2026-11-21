@@ -655,6 +655,18 @@ extern int gtk_text_view_get_left_margin(void *view);
 extern void *gtk_widget_create_pango_layout(
         void *widget,
         const char *text);
+extern void *pango_tab_array_new(
+        int initial_size,
+        int positions_in_pixels);
+extern void pango_tab_array_set_tab(
+        void *array,
+        int index,
+        int alignment,
+        int location);
+extern void pango_tab_array_free(void *array);
+extern void gtk_text_view_set_tabs(
+        void *view,
+        void *tabs);
 extern void pango_layout_get_pixel_size(
         void *layout,
         int *width,

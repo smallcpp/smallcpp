@@ -569,6 +569,7 @@ public:
             int ends,
             int stops,
             int tabWidth);
+    void set_tab_width(int columns);
     SignalConnection on_move_cursor(
             void (*action)(void *, long, long),
             void *data);

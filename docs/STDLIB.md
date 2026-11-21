@@ -1666,6 +1666,7 @@ public:
         void (*action)(void *, long, long), void *data);
     void set_marks(int spaces, int ends, int stops,
         int tabWidth);
+    void set_tab_width(int columns);
 };
 ```
 
