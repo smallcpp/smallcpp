@@ -160,6 +160,37 @@ Box::Box(int orientation, int spacing) : Widget() {
     native = gtk_sink(gtk_box_new(orientation, spacing));
 }
 
+Grid::Grid() : Widget() {
+    native = gtk_sink(gtk_grid_new());
+}
+
+void Grid::attach(
+        Widget *child,
+        long column,
+        long row,
+        long width,
+        long height) {
+    gtk_check_child((Widget *)this, child);
+    if (column < 0 || row < 0 || width < 1 || height < 1)
+        gtk_fail("range");
+    gtk_grid_attach(
+            native,
+            child->native,
+            (int)column,
+            (int)row,
+            (int)width,
+            (int)height);
+    gtk_note_child((Widget *)this, child);
+}
+
+void Grid::set_spacing(int column, int row) {
+    gtk_use((Widget *)this);
+    if (column < 0 || row < 0)
+        gtk_fail("range");
+    gtk_grid_set_column_spacing(native, column);
+    gtk_grid_set_row_spacing(native, row);
+}
+
 void Box::append(Widget *child) {
     gtk_check_child((Widget *)this, child);
     gtk_box_append(native, child->native);

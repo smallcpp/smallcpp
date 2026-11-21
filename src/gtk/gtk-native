@@ -76,6 +76,10 @@ extern void g_menu_append_submenu(
         void *menu,
         const char *label,
         void *submenu);
+extern void g_menu_append_section(
+        void *menu,
+        const char *label,
+        void *section);
 extern void g_menu_remove_all(void *menu);
 extern void g_action_map_remove_action(
         void *map,
@@ -168,6 +172,20 @@ extern void gtk_widget_insert_action_group(
         const char *name,
         void *group);
 extern void *gtk_box_new(int orientation, int spacing);
+extern void *gtk_grid_new(void);
+extern void gtk_grid_attach(
+        void *grid,
+        void *child,
+        int column,
+        int row,
+        int width,
+        int height);
+extern void gtk_grid_set_column_spacing(
+        void *grid,
+        int spacing);
+extern void gtk_grid_set_row_spacing(
+        void *grid,
+        int spacing);
 extern void gtk_box_append(void *box, void *child);
 extern void gtk_box_remove(void *box, void *child);
 extern void *gtk_label_new(const char *text);
@@ -261,6 +279,9 @@ extern int gtk_notebook_get_current_page(void *notebook);
 extern void gtk_notebook_set_current_page(
         void *notebook,
         int index);
+extern void gtk_notebook_set_tab_pos(
+        void *notebook,
+        int pos);
 extern void *gtk_string_list_new(const char **strings);
 extern void gtk_string_list_append(
         void *list,
@@ -540,6 +561,12 @@ extern void smallcpp_text_line_shade(
         void *view,
         int on,
         const char *color);
+extern void smallcpp_text_marks(
+        void *view,
+        int spaces,
+        int ends,
+        int stops,
+        int tabWidth);
 extern void gtk_text_view_get_line_yrange(
         void *view,
         void *iter,
@@ -557,6 +584,11 @@ extern void gtk_css_provider_load_from_string(
         const char *css);
 extern void gtk_style_context_add_provider(
         void *context,
+        void *provider,
+        unsigned priority);
+extern void *gdk_display_get_default(void);
+extern void gtk_style_context_add_provider_for_display(
+        void *display,
         void *provider,
         unsigned priority);
 extern void *gtk_notebook_get_nth_page(

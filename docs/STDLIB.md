@@ -1388,6 +1388,14 @@ public:
     void remove(Widget *child);
 };
 
+class Grid : public Widget {
+public:
+    Grid();
+    void attach(Widget *child, int column, int row,
+        int width, int height);
+    void set_spacing(int column, int row);
+};
+
 class Label : public Widget {
 public:
     Label(const char *text);
@@ -1463,6 +1471,7 @@ public:
         const char *accel);
     void set_check(long index, long item, int on);
     int is_checked(long index, long item);
+    void set_separator(long index, long item);
 };
 
 class Popover : public Widget {
@@ -1492,6 +1501,7 @@ public:
     void set_current_page(long index);
     SignalConnection on_switch_page(
         void (*action)(void *, long), void *data);
+    void set_tabs_left(void);
 };
 
 class ColumnView : public Widget {
@@ -1635,6 +1645,8 @@ public:
     long line_number_origin(long line) const;
     SignalConnection on_move_cursor(
         void (*action)(void *, long, long), void *data);
+    void set_marks(int spaces, int ends, int stops,
+        int tabWidth);
 };
 ```
 
@@ -1676,7 +1688,11 @@ finishes. `MenuBar::add_menu` appends a submenu. `set_menu` replaces
 that submenu's labels. A count of zero leaves it empty.
 `set_shortcut` shows an accelerator beside one item. An empty
 accelerator clears it. `set_check` makes the item a check, and
-`is_checked` reads it. `Widget::clear_shortcuts` removes every
+`is_checked` reads it. The check is drawn as a box with a border.
+`set_separator` starts a new section before that item, so a
+separator appears there. `Grid::attach` places a child in one
+cell, and `set_spacing` sets the gaps. `Notebook::set_tabs_left`
+moves the tabs to the left edge. `Widget::clear_shortcuts` removes every
 shortcut added with `add_shortcut`. `shortcut_ok` is 1 when the
 accelerator parses. `FontDialog::choose` keeps the dialog from
 the parent window until the chooser finishes. `TextView`
@@ -1740,6 +1756,10 @@ line under the text, including a blank line.
 returns a line's y in the gutter, or -1 when that line is off
 screen. `set_font` applies a family and a size.
 `set_column_marker` draws a two-pixel line at a column.
+`set_marks` draws a dot for each space, a line for each tab, a
+small mark after each line, and a vertical line at each tab
+stop inside the leading indent. A zero flag leaves that mark
+off.
 `Widget::add_shortcut` parses an accelerator and runs the callback
 before a child handles that key. `add_css` loads CSS onto one
 widget. `Dialog::set_transient` sets the parent window.
