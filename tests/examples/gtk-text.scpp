@@ -96,6 +96,7 @@ int main(void) {
         view->set_column_marker(80, "#cccccc");
         view->set_column_marker(0, "#cccccc");
         buffer->set_tag_background("note", "#eeeeee");
+        buffer->set_tag_foreground("note", "blue");
         {
             Window *win;
             Dialog *ask;

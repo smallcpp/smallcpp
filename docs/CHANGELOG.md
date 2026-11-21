@@ -6,6 +6,8 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `TextBuffer::set_tag_foreground` sets a tag's foreground
+  color. It creates the tag when that name is missing.
 - `ColorDialog::choose` opens the color chooser for a parent window. The callback receives `#rrggbb`, or null when the chooser is cancelled. The dialog does not ask for alpha. The parent window keeps the dialog until the chooser finishes.
 - `TextView::set_tab_width` sets how many character places one tab occupies.
 - `Window::on_active` reports when the window gains or loses focus. `Entry::set_width_chars` and `SpinButton::set_width_chars` set how many characters wide the field is.
