@@ -344,12 +344,20 @@ void MenuButton::set_menu(
 }
 
 MenuSlot::MenuSlot() {
+    long i;
+
     submenu = nullptr;
     action = nullptr;
     data = nullptr;
     labels = nullptr;
     picks = nullptr;
     count = 0;
+    i = 0;
+    while (i < 64) {
+        accelText[i] = nullptr;
+        checkOn[i] = 0;
+        i = i + 1;
+    }
 }
 
 static void write_slot(char *buf, long menu, long item) {
@@ -401,6 +409,31 @@ static void bar_activate(
     pick->action(pick->data, pick->label);
 }
 
+static void bar_state(void *action, void *value, void *data) {
+    BarPick *pick;
+    MenuSlot *slot;
+    int on;
+
+    pick = (BarPick *)data;
+    if (pick == nullptr || pick->bar == nullptr)
+        return;
+    on = 0;
+    if (value != nullptr && g_variant_get_boolean(value) != 0)
+        on = 1;
+    pick->on = on;
+    slot = pick->bar->slots[pick->menu];
+    if (slot != nullptr && pick->item >= 0 && pick->item < 64) {
+        if (on == 0)
+            slot->checkOn[pick->item] = 1;
+        else
+            slot->checkOn[pick->item] = 2;
+    }
+    if (action != nullptr && value != nullptr)
+        g_simple_action_set_state(action, value);
+    if (pick->action != nullptr)
+        pick->action(pick->data, pick->label);
+}
+
 static void clear_slot(MenuBar *bar, long index) {
     MenuSlot *slot;
     long i;
@@ -450,7 +483,10 @@ static void fill_slot(
         char detailed[24];
         char shown[192];
         void *simple;
+        void *item;
         unsigned long id;
+        const char *signal;
+        int flagged;
 
         gtk_check_text(labels[i]);
         slot->labels[i] = gtk_copy(labels[i]);
@@ -458,15 +494,42 @@ static void fill_slot(
         pick->action = slot->action;
         pick->data = slot->data;
         pick->label = slot->labels[i];
+        pick->bar = bar;
+        pick->menu = index;
+        pick->item = i;
         slot->picks[i] = (void *)pick;
         write_slot(name, index, i);
         write_bar_detailed(detailed, index, i);
-        simple = g_simple_action_new(name, nullptr);
+        flagged = 0;
+        if (i < 64)
+            flagged = slot->checkOn[i];
+        signal = "activate";
+        if (flagged != 0) {
+            void *state;
+            int on;
+            void (*stateFn)(void *, void *, void *);
+
+            on = 0;
+            if (flagged == 2)
+                on = 1;
+            pick->on = on;
+            state = g_variant_new_boolean(on);
+            simple = g_simple_action_new_stateful(
+                    name,
+                    nullptr,
+                    state);
+            signal = "change-state";
+            stateFn = bar_state;
+            typed = stateFn;
+        } else {
+            simple = g_simple_action_new(name, nullptr);
+            typed = bar_activate;
+        }
         if (simple == nullptr)
             gtk_fail("gtk");
         id = g_signal_connect_data(
                 simple,
-                "activate",
+                signal,
                 (void *)typed,
                 (void *)pick,
                 nullptr,
@@ -476,7 +539,50 @@ static void fill_slot(
         g_action_map_add_action(bar->group, simple);
         g_object_unref(simple);
         show_mnemonic(shown, 192, labels[i]);
-        g_menu_append(slot->submenu, shown, detailed);
+        item = g_menu_item_new(shown, detailed);
+        if (item == nullptr)
+            gtk_fail("gtk");
+        if (i < 64
+                && slot->accelText[i] != nullptr
+                && slot->accelText[i][0] != 0) {
+            void *accelValue;
+
+            accelValue = g_variant_new_string(
+                    slot->accelText[i]);
+            g_menu_item_set_attribute_value(
+                    item,
+                    "accel",
+                    accelValue);
+        }
+        g_menu_append_item(slot->submenu, item);
+        g_object_unref(item);
+        i = i + 1;
+    }
+}
+
+static void refill_slot(MenuBar *bar, long index) {
+    MenuSlot *slot;
+    const char *saved[64];
+    long n;
+    long i;
+
+    slot = bar->slots[index];
+    n = slot->count;
+    if (n < 0)
+        n = 0;
+    if (n > 64)
+        n = 64;
+    i = 0;
+    while (i < n) {
+        saved[i] = slot->labels[i];
+        slot->labels[i] = nullptr;
+        i = i + 1;
+    }
+    fill_slot(bar, index, saved, n);
+    i = 0;
+    while (i < n) {
+        if (saved[i] != nullptr)
+            free((void *)saved[i]);
         i = i + 1;
     }
 }
@@ -566,6 +672,59 @@ void MenuBar::set_menu(
     if (count > 0 && labels == nullptr)
         gtk_fail("null");
     fill_slot(this, index, labels, count);
+}
+
+void MenuBar::set_shortcut(
+        long index,
+        long item,
+        const char *accel) {
+    MenuSlot *slot;
+
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= menuCount)
+        gtk_fail("range");
+    if (item < 0 || item >= 64)
+        gtk_fail("range");
+    slot = slots[index];
+    if (slot->accelText[item] != nullptr)
+        free((void *)slot->accelText[item]);
+    slot->accelText[item] = nullptr;
+    if (accel != nullptr && accel[0] != 0) {
+        gtk_check_text(accel);
+        slot->accelText[item] = gtk_copy(accel);
+    }
+    if (item < slot->count)
+        refill_slot(this, index);
+}
+
+void MenuBar::set_check(long index, long item, int on) {
+    MenuSlot *slot;
+
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= menuCount)
+        gtk_fail("range");
+    slot = slots[index];
+    if (item < 0 || item >= slot->count)
+        gtk_fail("range");
+    if (on == 0)
+        slot->checkOn[item] = 1;
+    else
+        slot->checkOn[item] = 2;
+    refill_slot(this, index);
+}
+
+int MenuBar::is_checked(long index, long item) {
+    MenuSlot *slot;
+
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= menuCount)
+        return 0;
+    slot = slots[index];
+    if (slot == nullptr || item < 0 || item >= 64)
+        return 0;
+    if (slot->checkOn[item] == 2)
+        return 1;
+    return 0;
 }
 
 Popover::Popover() : Widget() {

@@ -1363,6 +1363,8 @@ public:
     void set_tooltip(const char *text);
     void add_shortcut(const char *accel,
         void (*action)(void *), void *data);
+    void clear_shortcuts(void);
+    int shortcut_ok(const char *accel);
 };
 
 class Window : public Widget {
@@ -1457,6 +1459,10 @@ public:
         long count, void (*action)(void *, const char *),
         void *data);
     void set_menu(long index, const char **labels, long count);
+    void set_shortcut(long index, long item,
+        const char *accel);
+    void set_check(long index, long item, int on);
+    int is_checked(long index, long item);
 };
 
 class Popover : public Widget {
@@ -1667,7 +1673,13 @@ order. Cancel, or a selection with no path, calls it once with null.
 `save` calls once with the chosen path, or with null when cancelled.
 Each path stays reachable from the dialog until the next open or save
 finishes. `MenuBar::add_menu` appends a submenu. `set_menu` replaces
-that submenu's labels. A count of zero leaves it empty. `TextView`
+that submenu's labels. A count of zero leaves it empty.
+`set_shortcut` shows an accelerator beside one item. An empty
+accelerator clears it. `set_check` makes the item a check, and
+`is_checked` reads it. `Widget::clear_shortcuts` removes every
+shortcut added with `add_shortcut`. `shortcut_ok` is 1 when the
+accelerator parses. `FontDialog::choose` keeps the dialog from
+the parent window until the chooser finishes. `TextView`
 `on_move_cursor` runs after the cursor moves and passes the new line and
 character offset.
 
@@ -1732,7 +1744,9 @@ screen. `set_font` applies a family and a size.
 before a child handles that key. `add_css` loads CSS onto one
 widget. `Dialog::set_transient` sets the parent window.
 `FileDialog::set_parent` does that for the file chooser.
-`FontDialog::choose` reports the chosen description.
+`FontDialog::choose` reports the chosen description. The parent
+window keeps that dialog, so the collector does not free it
+while the chooser is open.
 `Notebook::set_tab_label` and `set_tab` change a tab.
 `Window::destroy` and `Application::quit` close the window and
 leave `run`. `TextView` is constructed with the buffer it shows.

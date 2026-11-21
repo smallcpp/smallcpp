@@ -675,6 +675,13 @@ void FontDialog::choose(
         void (*action)(void *, const char *),
         void *data) {
     void (*typed)(void *, void *, void *);
+    void *dialogNative;
+    void *parentNative;
+    void *initial;
+    void *cancel;
+    void *handler;
+    void *self;
+    SignalConnection *kept;
 
     gtk_check_thread();
     if (native == nullptr)
@@ -689,12 +696,30 @@ void FontDialog::choose(
     pickData = data;
     pending = 1;
     typed = font_done;
+    /* choose_font takes an initial description before
+     * the cancellable. A function pointer passed only
+     * as an argument can be dropped, so the callback
+     * and this dialog go through locals. GTK holds
+     * this dialog, and the collector does not scan
+     * GTK, so the parent window keeps it. */
+    dialogNative = native;
+    parentNative = parent->native;
+    initial = nullptr;
+    cancel = nullptr;
+    handler = (void *)typed;
+    self = (void *)this;
+    kept = new SignalConnection();
+    kept->data = self;
+    kept->action = handler;
+    kept->live = 1;
+    gtk_keep((Widget *)parent, kept);
     gtk_font_dialog_choose_font(
-            native,
-            parent->native,
-            nullptr,
-            (void *)typed,
-            (void *)this);
+            dialogNative,
+            parentNative,
+            initial,
+            cancel,
+            handler,
+            self);
 }
 
 }

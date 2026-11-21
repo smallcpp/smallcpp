@@ -31,10 +31,18 @@ public:
         action = nullptr;
         data = nullptr;
         label = nullptr;
+        bar = nullptr;
+        menu = 0;
+        item = 0;
+        on = 0;
     }
     void (*action)(void *, const char *);
     void *data;
     const char *label;
+    MenuBar *bar;
+    long menu;
+    long item;
+    int on;
 };
 
 }

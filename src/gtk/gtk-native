@@ -31,6 +31,9 @@ extern void *g_object_get_data(
 extern void gtk_widget_add_controller(
         void *widget,
         void *controller);
+extern void gtk_widget_remove_controller(
+        void *widget,
+        void *controller);
 extern void gtk_event_controller_set_propagation_phase(
         void *controller,
         int phase);
@@ -85,6 +88,24 @@ extern void *g_simple_action_group_new(void);
 extern void *g_simple_action_new(
         const char *name,
         void *parameter);
+extern void *g_simple_action_new_stateful(
+        const char *name,
+        void *parameterType,
+        void *state);
+extern void g_simple_action_set_state(
+        void *action,
+        void *state);
+extern void *g_variant_new_boolean(int value);
+extern int g_variant_get_boolean(void *value);
+extern void *g_variant_new_string(const char *string);
+extern void *g_menu_item_new(
+        const char *label,
+        const char *detailed);
+extern void g_menu_item_set_attribute_value(
+        void *item,
+        const char *attribute,
+        void *value);
+extern void g_menu_append_item(void *menu, void *item);
 extern void g_action_map_add_action(
         void *map,
         void *action);
@@ -582,6 +603,7 @@ extern void *gtk_font_dialog_new(void);
 extern void gtk_font_dialog_choose_font(
         void *dialog,
         void *parent,
+        void *initial,
         void *cancellable,
         void *callback,
         void *data);
