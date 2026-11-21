@@ -163,6 +163,9 @@ extern void gtk_widget_set_sensitive(
         void *widget,
         int value);
 extern void gtk_widget_set_hexpand(void *widget, int value);
+extern int gtk_widget_get_width(void *widget);
+extern int gtk_widget_get_height(void *widget);
+extern void *gtk_native_get_surface(void *widget);
 extern void gtk_widget_set_vexpand(void *widget, int value);
 extern void gtk_widget_set_size_request(
         void *widget,
@@ -297,6 +300,9 @@ extern int gtk_notebook_get_current_page(void *notebook);
 extern void gtk_notebook_set_current_page(
         void *notebook,
         int index);
+extern void gtk_notebook_set_scrollable(
+        void *notebook,
+        int scrollable);
 extern void gtk_notebook_set_tab_pos(
         void *notebook,
         int pos);

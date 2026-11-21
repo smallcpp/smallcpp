@@ -86,12 +86,95 @@ const char *Window::title() const {
     return gtk_text_or_empty(gtk_window_get_title(native));
 }
 
+static void surface_layout(
+        void *surface,
+        int width,
+        int height,
+        void *data) {
+    SignalConnection *slot;
+    void (*action)(void *, long, long);
+
+    (void)surface;
+    slot = (SignalConnection *)data;
+    if (slot == nullptr || slot->live == 0)
+        return;
+    action = (void (*)(void *, long, long))slot->action;
+    if (action == nullptr)
+        return;
+    action(slot->data, (long)width, (long)height);
+}
+
+static void bind_layout(void *widget, SignalConnection *slot) {
+    void *surface;
+    void (*typed)(void *, int, int, void *);
+    unsigned long id;
+
+    if (widget == nullptr || slot == nullptr)
+        return;
+    surface = gtk_native_get_surface(widget);
+    if (surface == nullptr)
+        return;
+    if (g_object_get_data(surface, "smallcpp-layout") != nullptr)
+        return;
+    typed = surface_layout;
+    id = g_signal_connect_data(
+            surface,
+            "layout",
+            (void *)typed,
+            (void *)slot,
+            nullptr,
+            0);
+    if (id == 0)
+        return;
+    g_object_set_data(surface, "smallcpp-layout", (void *)slot);
+}
+
+static void window_realized(void *widget, void *data) {
+    bind_layout(widget, (SignalConnection *)data);
+}
+
 void Window::set_default_size(long width, long height) {
     gtk_use((Widget *)this);
     gtk_window_set_default_size(
             native,
             gtk_int(width),
             gtk_int(height));
+}
+
+long Window::width() const {
+    gtk_use((Widget *)this);
+    return (long)gtk_widget_get_width(native);
+}
+
+long Window::height() const {
+    gtk_use((Widget *)this);
+    return (long)gtk_widget_get_height(native);
+}
+
+SignalConnection Window::on_resize(
+        void (*action)(void *, long, long),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *);
+    void *handler;
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = window_realized;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            native,
+            "realize",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
+    bind_layout(native, slot);
+    return *slot;
 }
 
 void Window::set_child(Widget *child) {

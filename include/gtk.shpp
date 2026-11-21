@@ -129,6 +129,11 @@ public:
     void set_title(const char *title);
     const char *title() const;
     void set_default_size(long width, long height);
+    long width() const;
+    long height() const;
+    SignalConnection on_resize(
+            void (*action)(void *, long, long),
+            void *data);
     void set_child(Widget *child);
     void remove(Widget *child);
     void present();
@@ -249,6 +254,13 @@ public:
     char *accelText[64];
     int checkOn[64];
     int splitBefore[64];
+    long nestItem;
+    void *nestMenu;
+    void (*nestAction)(void *, const char *);
+    void *nestData;
+    char **nestLabels;
+    void **nestPicks;
+    long nestCount;
 };
 
 class MenuBar : public Widget {
@@ -271,6 +283,13 @@ public:
     void set_check(long index, long item, int on);
     int is_checked(long index, long item);
     void set_separator(long index, long item);
+    void set_submenu(
+            long index,
+            long item,
+            const char **labels,
+            long count,
+            void (*action)(void *, const char *),
+            void *data);
     void *model;
     void *group;
     MenuSlot *slots[8];
@@ -308,6 +327,7 @@ public:
     void set_tab_label(long index, const char *title);
     void set_tab(long index, Widget *tab);
     void set_tabs_left(void);
+    void set_scrollable(bool value);
     SignalConnection on_switch_page(
             void (*action)(void *, long),
             void *data);
