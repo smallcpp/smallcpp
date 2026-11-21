@@ -1616,7 +1616,8 @@ public:
     void scroll_to(long line, long offset);
     void set_line_numbers(bool value);
     bool line_numbers() const;
-    const char *line_number_text() const;
+    const char *line_number_text();
+    long line_number_origin(long line) const;
     SignalConnection on_move_cursor(
         void (*action)(void *, long, long), void *data);
 };
@@ -1699,16 +1700,28 @@ created with `create_mark`. `move` places it, and `line()` and
 `offset()` read it. The mark keeps its place in the text when the
 buffer changes. An insertion at the mark leaves the mark after the new
 text. `TextBuffer` edits UTF-8. `delete_range` removes a half-open
-range. `create_tag` names a tag and a foreground color. `apply_tag` and
-`remove_tag` use that name. `undo` and `redo` walk the buffer's own
-history. Scrolling is `TextView::scroll_to`, not a buffer method.
+range. `create_tag` names a tag and a foreground color.
+`set_tag_background` sets a paragraph background on that name and
+creates the tag when it is missing. `apply_tag` and `remove_tag`
+use that name. `undo` and `redo` walk the buffer's own history.
+Scrolling is `TextView::scroll_to`, not a buffer method.
 `scroll_to` moves a mark and scrolls that mark on screen after the
 layout is ready, so a replacement of the buffer does not leave the
 caret at the top. `set_line_numbers` places a monospace gutter on
-the left. `line_number_text` is the visible numbers.
+the left and draws one number at each buffer line, so the numbers
+scroll with the text. An empty buffer shows line 1.
+`line_number_text` is the visible numbers. `line_number_origin`
+returns a line's y in the gutter, or -1 when that line is off
+screen. `set_font` applies a family and a size.
+`set_column_marker` draws a line at a column.
 `Widget::add_shortcut` parses an accelerator and runs the callback
-before a child handles that key. `TextView` is constructed with the
-buffer it shows.
+before a child handles that key. `add_css` loads CSS onto one
+widget. `Dialog::set_transient` sets the parent window.
+`FileDialog::set_parent` does that for the file chooser.
+`FontDialog::choose` reports the chosen description.
+`Notebook::set_tab_label` and `set_tab` change a tab.
+`Window::destroy` and `Application::quit` close the window and
+leave `run`. `TextView` is constructed with the buffer it shows.
 
 ```smallcpp
 #include <gtk>

@@ -139,14 +139,14 @@ static void file_begin(
     if (saving != 0)
         gtk_file_dialog_save(
                 dialog->native,
-                nullptr,
+                dialog->parentWindow,
                 nullptr,
                 handler,
                 self);
     else
         gtk_file_dialog_open(
                 dialog->native,
-                nullptr,
+                dialog->parentWindow,
                 nullptr,
                 handler,
                 self);
@@ -158,6 +158,7 @@ Dialog::Dialog(const char *title) : Widget() {
     native = gtk_sink(gtk_dialog_new());
     gtk_window_set_title(native, title);
     content = nullptr;
+    transientParent = nullptr;
 }
 
 void Dialog::set_title(const char *title) {
@@ -220,9 +221,23 @@ SignalConnection Dialog::on_response(
     return *slot;
 }
 
+void Dialog::set_transient(Window *parent) {
+    void *owner;
+
+    gtk_use((Widget *)this);
+    transientParent = parent;
+    owner = nullptr;
+    if (parent != nullptr)
+        owner = parent->native;
+    gtk_window_set_transient_for(native, owner);
+}
+
 void Dialog::present() {
     gtk_use((Widget *)this);
-    gtk_present_window(native);
+    if (transientParent != nullptr)
+        gtk_window_present(native);
+    else
+        gtk_present_window(native);
 }
 
 AlertDialog::AlertDialog(
@@ -298,6 +313,7 @@ FileDialog::FileDialog() {
     if (native == nullptr)
         gtk_fail("gtk");
     titleText = nullptr;
+    parentWindow = nullptr;
     pick = nullptr;
     pickData = nullptr;
     pending = 0;
@@ -324,6 +340,13 @@ const char *FileDialog::title() const {
     if (titleText == nullptr)
         return "";
     return titleText;
+}
+
+void FileDialog::set_parent(Window *parent) {
+    use_file(this);
+    parentWindow = nullptr;
+    if (parent != nullptr)
+        parentWindow = parent->native;
 }
 
 void FileDialog::open(
@@ -542,6 +565,90 @@ void Spinner::stop() {
 bool Spinner::spinning() const {
     gtk_use((Widget *)this);
     return gtk_spinner_get_spinning(native) != 0;
+}
+
+static void font_done(
+        void *source,
+        void *result,
+        void *data) {
+    FontDialog *dialog;
+    void *error;
+    void *desc;
+    char *text;
+    const char *owned;
+
+    (void)source;
+    dialog = (FontDialog *)data;
+    if (dialog == nullptr || dialog->native == nullptr)
+        return;
+    error = nullptr;
+    desc = gtk_font_dialog_choose_font_finish(
+            dialog->native,
+            result,
+            &error);
+    if (error != nullptr)
+        g_error_free(error);
+    text = nullptr;
+    if (desc != nullptr) {
+        text = pango_font_description_to_string(desc);
+        pango_font_description_free(desc);
+    }
+    dialog->pending = 0;
+    owned = nullptr;
+    if (text != nullptr) {
+        owned = gtk_copy(text);
+        g_free((void *)text);
+        dialog->picked = (char *)owned;
+    } else
+        dialog->picked = nullptr;
+    if (dialog->pick != nullptr)
+        dialog->pick(dialog->pickData, owned);
+}
+
+FontDialog::FontDialog() {
+    gtk_check_thread();
+    gtk_ensure();
+    native = gtk_font_dialog_new();
+    if (native == nullptr)
+        gtk_fail("gtk");
+    pick = nullptr;
+    pickData = nullptr;
+    pending = 0;
+    picked = nullptr;
+}
+
+FontDialog::~FontDialog() {
+    if (native != nullptr) {
+        g_object_unref(native);
+        native = nullptr;
+    }
+}
+
+void FontDialog::choose(
+        Window *parent,
+        void (*action)(void *, const char *),
+        void *data) {
+    void (*typed)(void *, void *, void *);
+
+    gtk_check_thread();
+    if (native == nullptr)
+        gtk_fail("disposed");
+    if (parent == nullptr || parent->native == nullptr)
+        gtk_fail("null");
+    if (action == nullptr)
+        gtk_fail("null");
+    if (pending != 0)
+        gtk_fail("gtk");
+    pick = action;
+    pickData = data;
+    pending = 1;
+    typed = font_done;
+    gtk_font_dialog_choose_font(
+            native,
+            parent->native,
+            nullptr,
+            (void *)typed,
+            (void *)this);
 }
 
 }

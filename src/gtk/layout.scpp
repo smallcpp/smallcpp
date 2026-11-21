@@ -418,6 +418,39 @@ long Notebook::append_page(
     return index;
 }
 
+void Notebook::set_tab_label(
+        long index,
+        const char *title) {
+    void *page;
+
+    gtk_use((Widget *)this);
+    gtk_check_text(title);
+    if (index < 0 || index >= childCount)
+        gtk_fail("range");
+    page = gtk_notebook_get_nth_page(
+            native,
+            gtk_int(index));
+    if (page == nullptr)
+        gtk_fail("range");
+    gtk_notebook_set_tab_label_text(native, page, title);
+}
+
+void Notebook::set_tab(long index, Widget *tab) {
+    void *page;
+
+    gtk_use((Widget *)this);
+    if (tab == nullptr)
+        gtk_fail("null");
+    if (index < 0 || index >= childCount)
+        gtk_fail("range");
+    page = gtk_notebook_get_nth_page(
+            native,
+            gtk_int(index));
+    if (page == nullptr)
+        gtk_fail("range");
+    gtk_notebook_set_tab_label(native, page, tab->native);
+}
+
 void Notebook::remove_page(long index) {
     Widget *child;
 

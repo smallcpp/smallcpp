@@ -782,6 +782,13 @@ int Application::run() {
     return code;
 }
 
+void Application::quit() {
+    gtk_check_thread();
+    if (native == nullptr)
+        return;
+    g_application_quit(native);
+}
+
 long Application::post(
         void (*action)(void *),
         void *data) {

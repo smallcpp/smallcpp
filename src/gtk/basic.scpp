@@ -121,6 +121,13 @@ void Window::close() {
     gtk_window_close(native);
 }
 
+void Window::destroy() {
+    gtk_use((Widget *)this);
+    gtk_window_destroy(native);
+    native = nullptr;
+    gone = 1;
+}
+
 SignalConnection Window::on_close_request(
         bool (*action)(void *),
         void *data) {
@@ -374,6 +381,26 @@ static int key_run(void *widget, void *args, void *data) {
     return 1;
 }
 
+void Widget::add_css(const char *css) {
+    void *provider;
+    void *context;
+
+    gtk_use(this);
+    gtk_check_text(css);
+    provider = gtk_css_provider_new();
+    if (provider == nullptr)
+        gtk_fail("gtk");
+    gtk_css_provider_load_from_string(provider, css);
+    context = gtk_widget_get_style_context(native);
+    if (context == nullptr)
+        gtk_fail("gtk");
+    gtk_style_context_add_provider(
+            context,
+            provider,
+            600);
+    g_object_unref(provider);
+}
+
 void Widget::add_shortcut(
         const char *accel,
         void (*action)(void *),
@@ -383,6 +410,7 @@ void Widget::add_shortcut(
     void *callback;
     void *shortcut;
     KeyHook *hook;
+    SignalConnection *kept;
     int (*typed)(void *, void *, void *);
 
     gtk_use(this);
@@ -412,6 +440,13 @@ void Widget::add_shortcut(
     hook = new KeyHook();
     hook->action = action;
     hook->data = data;
+    /* GTK holds the hook, and the collector does not
+     * scan GTK. A slot on this widget keeps the hook
+     * alive after add_shortcut returns. */
+    kept = new SignalConnection();
+    kept->data = (void *)hook;
+    kept->live = 1;
+    gtk_keep(this, kept);
     typed = key_run;
     callback = gtk_callback_action_new(
             (void *)typed,
