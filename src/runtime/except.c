@@ -7,6 +7,8 @@
  * throw is not caught, the terminate handler prints the message and a
  * call stack, then aborts.
  */
+#include "internal.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,6 +90,7 @@ static void uncaught(void)
 void smallcpp_uncaught_init(void)
 {
     install_terminate(uncaught);
+    smallcpp_fatal_init();
 }
 
 void smallcpp_note_throw(void *object)

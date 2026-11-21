@@ -2,6 +2,13 @@ add_executable(command_line_test EXCLUDE_FROM_ALL command_line_test.cpp)
 target_link_libraries(command_line_test PRIVATE smallcpp_cli)
 add_test(NAME command_line COMMAND command_line_test)
 
+add_executable(fatal_signal_test EXCLUDE_FROM_ALL fatal_signal_test.c)
+target_link_libraries(fatal_signal_test PRIVATE smallcpp_runtime)
+target_compile_options(fatal_signal_test PRIVATE -fno-omit-frame-pointer)
+add_dependencies(fatal_signal_test smallcpp_runtime_scpp)
+add_test(NAME fatal_signal COMMAND fatal_signal_test)
+set_tests_properties(fatal_signal PROPERTIES TIMEOUT 20)
+
 add_executable(prefix_test EXCLUDE_FROM_ALL
     prefix_test.cpp
     ${CMAKE_SOURCE_DIR}/src/prefix.cpp)
@@ -428,6 +435,15 @@ add_test(
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/uncaught-exception.scpp
         -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/uncaught-exception
         -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectUncaught.cmake)
+add_test(
+    NAME fatal_signal_name
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPILER=$<TARGET_FILE:scpp>
+        -DRUNTIME=$<TARGET_FILE:smallcpp_runtime>
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/examples/fatal-signal.scpp
+        -DPROGRAM=${CMAKE_CURRENT_BINARY_DIR}/fatal-signal
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/ExpectFatal.cmake)
+set_tests_properties(fatal_signal_name PROPERTIES TIMEOUT 60)
 
 add_test(
     NAME debug_answer

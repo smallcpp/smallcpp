@@ -7,6 +7,8 @@
  */
 #define _GNU_SOURCE
 
+#include "internal.h"
+
 #include <elf.h>
 #include <link.h>
 #include <stdint.h>
@@ -238,6 +240,17 @@ static int scpp_file(const char *name)
     return n >= 5 && strcmp(name + n - 5, ".scpp") == 0;
 }
 
+static void (*keep_row)(uint64_t address, const char *file, unsigned line);
+
+static void keep(struct Row row)
+{
+    if (keep_row == NULL || row.file == NULL || row.line == 0)
+        return;
+    if (!scpp_file(row.file))
+        return;
+    keep_row(row.address, row.file, row.line);
+}
+
 static void consider(struct Row *best, int *found, struct Row row, uint64_t target)
 {
     if (row.file == NULL || !scpp_file(row.file) || row.line == 0)
@@ -357,6 +370,7 @@ static void parse_unit(struct Cur *c, size_t unit_end, uint64_t target, struct R
                 row.address = address;
                 row.line = line > 0 ? (unsigned)line : 0;
                 row.file = file < nfiles ? files[file] : NULL;
+                keep(row);
                 if (!skip) {
                     if (address <= target) {
                         cover = row;
@@ -399,6 +413,7 @@ static void parse_unit(struct Cur *c, size_t unit_end, uint64_t target, struct R
             row.address = address;
             row.line = line > 0 ? (unsigned)line : 0;
             row.file = name;
+            keep(row);
             if (!skip) {
                 if (address <= target) {
                     cover = row;
@@ -534,4 +549,117 @@ void smallcpp_print_stack(FILE *out)
             fprintf(out, "%s:%u\n", file, line);
     }
     free(image.bytes);
+}
+
+struct Gather {
+    struct SmallcppLine *rows;
+    int count;
+    int cap;
+};
+
+static struct Gather gather;
+static int lines_done;
+
+static int cmp_line(const void *left, const void *right)
+{
+    const struct SmallcppLine *a = left;
+    const struct SmallcppLine *b = right;
+
+    if (a->addr < b->addr)
+        return -1;
+    if (a->addr > b->addr)
+        return 1;
+    return 0;
+}
+
+static void gather_row(uint64_t address, const char *file, unsigned line)
+{
+    struct SmallcppLine *grown;
+    size_t length;
+    char *copy;
+    int cap;
+
+    if (address == 0 || file == NULL || line == 0)
+        return;
+    length = strlen(file);
+    if (length == 0 || length >= NameCap)
+        return;
+    if (gather.count == gather.cap) {
+        cap = gather.cap == 0 ? 64 : gather.cap * 2;
+        grown = realloc(gather.rows, (size_t)cap * sizeof *grown);
+        if (grown == NULL)
+            return;
+        gather.rows = grown;
+        gather.cap = cap;
+    }
+    copy = malloc(length + 1);
+    if (copy == NULL)
+        return;
+    memcpy(copy, file, length + 1);
+    gather.rows[gather.count].addr = address;
+    gather.rows[gather.count].line = line;
+    gather.rows[gather.count].file = copy;
+    gather.count++;
+}
+
+int smallcpp_collect_lines(struct SmallcppLine **rows, int *count)
+{
+    struct Image image;
+    const Elf64_Shdr *sec;
+    struct Cur cur;
+
+    if (rows == NULL || count == NULL)
+        return 0;
+    if (lines_done) {
+        *rows = gather.rows;
+        *count = gather.count;
+        return gather.count > 0;
+    }
+    lines_done = 1;
+    *rows = NULL;
+    *count = 0;
+    gather.rows = NULL;
+    gather.count = 0;
+    gather.cap = 0;
+    if (!slurp(&image))
+        return 0;
+    sec = section_named(&image, ".debug_line");
+    if (sec == NULL || !range(&image, sec->sh_offset, sec->sh_size)) {
+        free(image.bytes);
+        return 0;
+    }
+    cur.p = image.bytes + sec->sh_offset;
+    cur.n = (size_t)sec->sh_size;
+    cur.i = 0;
+    cur.bad = 0;
+    keep_row = gather_row;
+    while (!cur.bad && cur.i + 4 <= cur.n) {
+        uint32_t length = (uint32_t)take_n(&cur, 4);
+        size_t unit_end;
+        struct Row best;
+        int found = 0;
+
+        if (length == 0xffffffffu) {
+            uint64_t long_len = take_n(&cur, 8);
+            if (cur.bad || long_len > cur.n - cur.i)
+                break;
+            cur.i += (size_t)long_len;
+            continue;
+        }
+        if (length > cur.n - cur.i)
+            break;
+        unit_end = cur.i + length;
+        memset(&best, 0, sizeof best);
+        parse_unit(&cur, unit_end, 0, &best, &found);
+        cur.i = unit_end;
+        cur.bad = 0;
+    }
+    keep_row = NULL;
+    free(image.bytes);
+    if (gather.count > 1)
+        qsort(gather.rows, (size_t)gather.count, sizeof *gather.rows,
+              cmp_line);
+    *rows = gather.rows;
+    *count = gather.count;
+    return gather.count > 0;
 }
