@@ -462,4 +462,27 @@ void Widget::add_shortcut(
             shortcut);
 }
 
+void Widget::clear_shortcuts(void) {
+    void *controller;
+
+    gtk_use(this);
+    controller = g_object_get_data(native, "smallcpp-keys");
+    if (controller == nullptr)
+        return;
+    gtk_widget_remove_controller(native, controller);
+    g_object_set_data(native, "smallcpp-keys", nullptr);
+}
+
+int Widget::shortcut_ok(const char *accel) {
+    void *trigger;
+
+    if (accel == nullptr || accel[0] == 0)
+        return 0;
+    trigger = gtk_shortcut_trigger_parse_string(accel);
+    if (trigger == nullptr)
+        return 0;
+    g_object_unref(trigger);
+    return 1;
+}
+
 }

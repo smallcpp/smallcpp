@@ -100,6 +100,8 @@ public:
             const char *accel,
             void (*action)(void *),
             void *data);
+    void clear_shortcuts(void);
+    int shortcut_ok(const char *accel);
     void *native;
     int gone;
     int kind;
@@ -224,6 +226,8 @@ public:
     char **labels;
     void **picks;
     long count;
+    char *accelText[64];
+    int checkOn[64];
 };
 
 class MenuBar : public Widget {
@@ -239,6 +243,12 @@ public:
             long index,
             const char **labels,
             long count);
+    void set_shortcut(
+            long index,
+            long item,
+            const char *accel);
+    void set_check(long index, long item, int on);
+    int is_checked(long index, long item);
     void *model;
     void *group;
     MenuSlot *slots[8];
