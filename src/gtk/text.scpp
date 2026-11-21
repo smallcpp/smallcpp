@@ -1248,6 +1248,20 @@ void TextView::set_line_shade(int on, const char *color) {
     smallcpp_text_line_shade(native, on, color);
 }
 
+void TextView::set_marks(
+        int spaces,
+        int ends,
+        int stops,
+        int tabWidth) {
+    gtk_use((Widget *)this);
+    smallcpp_text_marks(
+            native,
+            spaces,
+            ends,
+            stops,
+            tabWidth);
+}
+
 void TextView::set_column_marker(
         long column,
         const char *color) {

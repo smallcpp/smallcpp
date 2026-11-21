@@ -139,6 +139,18 @@ public:
     void remove(Widget *child);
 };
 
+class Grid : public Widget {
+public:
+    Grid();
+    void attach(
+            Widget *child,
+            long column,
+            long row,
+            long width,
+            long height);
+    void set_spacing(int column, int row);
+};
+
 class Label : public Widget {
 public:
     Label(const char *text);
@@ -228,6 +240,7 @@ public:
     long count;
     char *accelText[64];
     int checkOn[64];
+    int splitBefore[64];
 };
 
 class MenuBar : public Widget {
@@ -249,6 +262,7 @@ public:
             const char *accel);
     void set_check(long index, long item, int on);
     int is_checked(long index, long item);
+    void set_separator(long index, long item);
     void *model;
     void *group;
     MenuSlot *slots[8];
@@ -285,6 +299,7 @@ public:
     void set_current_page(long index);
     void set_tab_label(long index, const char *title);
     void set_tab(long index, Widget *tab);
+    void set_tabs_left(void);
     SignalConnection on_switch_page(
             void (*action)(void *, long),
             void *data);
@@ -515,6 +530,11 @@ public:
     void set_font(const char *description);
     void set_column_marker(long column, const char *color);
     void set_line_shade(int on, const char *color);
+    void set_marks(
+            int spaces,
+            int ends,
+            int stops,
+            int tabWidth);
     SignalConnection on_move_cursor(
             void (*action)(void *, long, long),
             void *data);

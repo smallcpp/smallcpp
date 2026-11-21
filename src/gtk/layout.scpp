@@ -8,6 +8,41 @@
 
 namespace Gtk {
 
+static int menuChecksDone;
+
+static void add_menu_css(const char *css) {
+    void *provider;
+    void *display;
+
+    provider = gtk_css_provider_new();
+    if (provider == nullptr)
+        return;
+    gtk_css_provider_load_from_string(provider, css);
+    display = gdk_display_get_default();
+    if (display != nullptr)
+        gtk_style_context_add_provider_for_display(
+                display,
+                provider,
+                800);
+    g_object_unref(provider);
+}
+
+static void install_menu_checks(void) {
+    if (menuChecksDone != 0)
+        return;
+    menuChecksDone = 1;
+    add_menu_css(
+            "modelbutton check { border: 1px solid #222222; }");
+    add_menu_css(
+            "modelbutton check { background-color: #ffffff; }");
+    add_menu_css(
+            "modelbutton check { min-width: 14px; }");
+    add_menu_css(
+            "modelbutton check { min-height: 14px; }");
+    add_menu_css(
+            "modelbutton check { border-radius: 2px; }");
+}
+
 static void write_index(char *buf, long index) {
     char digits[24];
     long n;
@@ -356,6 +391,7 @@ MenuSlot::MenuSlot() {
     while (i < 64) {
         accelText[i] = nullptr;
         checkOn[i] = 0;
+        splitBefore[i] = 0;
         i = i + 1;
     }
 }
@@ -467,6 +503,7 @@ static void fill_slot(
     MenuSlot *slot;
     long i;
     void (*typed)(void *, void *, void *);
+    void *section;
 
     slot = bar->slots[index];
     clear_slot(bar, index);
@@ -476,6 +513,9 @@ static void fill_slot(
     slot->picks = new void *[count];
     slot->count = count;
     typed = bar_activate;
+    section = g_menu_new();
+    if (section == nullptr)
+        gtk_fail("gtk");
     i = 0;
     while (i < count) {
         BarPick *pick;
@@ -489,6 +529,16 @@ static void fill_slot(
         int flagged;
 
         gtk_check_text(labels[i]);
+        if (i > 0 && i < 64 && slot->splitBefore[i] != 0) {
+            g_menu_append_section(
+                    slot->submenu,
+                    nullptr,
+                    section);
+            g_object_unref(section);
+            section = g_menu_new();
+            if (section == nullptr)
+                gtk_fail("gtk");
+        }
         slot->labels[i] = gtk_copy(labels[i]);
         pick = new BarPick();
         pick->action = slot->action;
@@ -554,10 +604,12 @@ static void fill_slot(
                     "accel",
                     accelValue);
         }
-        g_menu_append_item(slot->submenu, item);
+        g_menu_append_item(section, item);
         g_object_unref(item);
         i = i + 1;
     }
+    g_menu_append_section(slot->submenu, nullptr, section);
+    g_object_unref(section);
 }
 
 static void refill_slot(MenuBar *bar, long index) {
@@ -620,6 +672,7 @@ MenuBar::MenuBar() : Widget() {
     }
     fn = bar_cleanup;
     cleanup = fn;
+    install_menu_checks();
 }
 
 long MenuBar::add_menu(
@@ -727,6 +780,20 @@ int MenuBar::is_checked(long index, long item) {
     return 0;
 }
 
+void MenuBar::set_separator(long index, long item) {
+    MenuSlot *slot;
+
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= menuCount)
+        gtk_fail("range");
+    if (item <= 0 || item >= 64)
+        gtk_fail("range");
+    slot = slots[index];
+    slot->splitBefore[item] = 1;
+    if (slot->count > 0)
+        refill_slot(this, index);
+}
+
 Popover::Popover() : Widget() {
     kind = GTK_KIND_POPOVER;
     native = gtk_sink(gtk_popover_new());
@@ -810,6 +877,11 @@ long Paned::position() const {
 Notebook::Notebook() : Widget() {
     kind = GTK_KIND_NOTEBOOK;
     native = gtk_sink(gtk_notebook_new());
+}
+
+void Notebook::set_tabs_left(void) {
+    gtk_use((Widget *)this);
+    gtk_notebook_set_tab_pos(native, 0);
 }
 
 long Notebook::append_page(
