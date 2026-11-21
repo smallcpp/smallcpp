@@ -1382,6 +1382,8 @@ public:
     long height() const;
     SignalConnection on_resize(
         void (*action)(void *, long, long), void *data);
+    SignalConnection on_active(
+        void (*action)(void *, int), void *data);
     void set_child(Widget *child);
     void remove(Widget *child);
     void present();
@@ -1425,6 +1427,7 @@ class Entry : public Widget {
 public:
     Entry(const char *text);
     void set_text(const char *text);
+    void set_width_chars(int count);
     const char *text() const;
     SignalConnection on_changed(void (*action)(void *),
         void *data);
@@ -1581,6 +1584,7 @@ public:
     double max() const;
     double value() const;
     void set_value(double value);
+    void set_width_chars(int count);
     SignalConnection on_changed(void (*action)(void *),
         void *data);
 };

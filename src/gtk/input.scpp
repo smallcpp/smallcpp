@@ -541,6 +541,13 @@ double SpinButton::value() const {
     return gtk_spin_button_get_value(native);
 }
 
+void SpinButton::set_width_chars(int count) {
+    gtk_use((Widget *)this);
+    if (count < 1)
+        gtk_fail("range");
+    gtk_editable_set_width_chars(native, count);
+}
+
 void SpinButton::set_value(double value) {
     gtk_use((Widget *)this);
     gtk_spin_button_set_value(native, value);
