@@ -133,6 +133,27 @@ static void window_realized(void *widget, void *data) {
     bind_layout(widget, (SignalConnection *)data);
 }
 
+static void window_active(
+        void *window,
+        void *spec,
+        void *data) {
+    SignalConnection *slot;
+    void (*action)(void *, int);
+    int active;
+
+    (void)spec;
+    slot = (SignalConnection *)data;
+    if (slot == nullptr || slot->live == 0)
+        return;
+    action = (void (*)(void *, int))slot->action;
+    if (action == nullptr)
+        return;
+    active = 0;
+    if (gtk_window_is_active(window) != 0)
+        active = 1;
+    action(slot->data, active);
+}
+
 void Window::set_default_size(long width, long height) {
     gtk_use((Widget *)this);
     gtk_window_set_default_size(
@@ -174,6 +195,31 @@ SignalConnection Window::on_resize(
             0);
     gtk_keep((Widget *)this, slot);
     bind_layout(native, slot);
+    return *slot;
+}
+
+SignalConnection Window::on_active(
+        void (*action)(void *, int),
+        void *data) {
+    SignalConnection *slot;
+    void (*typed)(void *, void *, void *);
+    void *handler;
+    void *userAction;
+
+    gtk_use((Widget *)this);
+    if (action == nullptr)
+        gtk_fail("null");
+    typed = window_active;
+    handler = (void *)typed;
+    userAction = (void *)action;
+    slot = gtk_bind(
+            native,
+            "notify::is-active",
+            handler,
+            userAction,
+            data,
+            0);
+    gtk_keep((Widget *)this, slot);
     return *slot;
 }
 
@@ -349,6 +395,13 @@ Entry::Entry(const char *text) : Widget() {
     gtk_check_text(text);
     native = gtk_sink(gtk_entry_new());
     gtk_editable_set_text(native, text);
+}
+
+void Entry::set_width_chars(int count) {
+    gtk_use((Widget *)this);
+    if (count < 1)
+        gtk_fail("range");
+    gtk_editable_set_width_chars(native, count);
 }
 
 void Entry::set_text(const char *text) {

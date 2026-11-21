@@ -144,6 +144,7 @@ extern void gtk_application_add_window(
         void *application,
         void *window);
 extern void *gtk_window_new(void);
+extern int gtk_window_is_active(void *window);
 extern void gtk_window_set_title(
         void *window,
         const char *title);
@@ -214,6 +215,9 @@ extern void gtk_button_set_label(
         const char *label);
 extern const char *gtk_button_get_label(void *button);
 extern void *gtk_entry_new(void);
+extern void gtk_editable_set_width_chars(
+        void *editable,
+        int n_chars);
 extern void gtk_editable_set_text(
         void *editable,
         const char *text);

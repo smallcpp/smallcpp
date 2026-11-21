@@ -6,6 +6,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `Window::on_active` reports when the window gains or loses focus. `Entry::set_width_chars` and `SpinButton::set_width_chars` set how many characters wide the field is.
 - `Notebook::set_scrollable` keeps the tab strip from forcing the window wider and shows buttons that scroll it. `Window::width` and `height` read the current size. `on_resize` reports a new size. `MenuBar::set_submenu` turns one item into a nested menu.
 - `Widget::on_key` reports the next key as an accelerator. Escape alone is a cancel. `normalize_accel` writes the canonical accelerator. `Dialog::set_default_size` sets the window size. `ScrolledWindow::set_min_content` sets how small the scrolled area may become.
 - `MenuBar::set_separator` starts a new section before one item, so the menu draws a separator there. A check item draws a bordered box around the check. `Grid` places children in rows and columns. `Notebook::set_tabs_left` moves the tabs to the left edge. `TextView::set_marks` draws space dots, tab lines, a mark after each line, and a line at each tab stop in the leading indent.

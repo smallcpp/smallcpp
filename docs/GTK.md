@@ -14,7 +14,7 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 
 ## Window
 
-`Window` takes a title. `set_title` and `title` read it. `set_default_size` sets the size. `set_child` places one child. `remove` takes it back. `present` shows the window and returns. `close` closes it and returns. `on_close_request` runs when the window is asked to close. The callback returns true to keep the window. [`docs/examples/gtk-window.scpp`](examples/gtk-window.scpp) prints `gtk-window 1`.
+`Window` takes a title. `set_title` and `title` read it. `set_default_size` sets the size. `set_child` places one child. `remove` takes it back. `present` shows the window and returns. `close` closes it and returns. `on_close_request` runs when the window is asked to close. The callback returns true to keep the window. `on_active` runs when the window gains or loses focus, and passes 1 while it is active. [`docs/examples/gtk-window.scpp`](examples/gtk-window.scpp) prints `gtk-window 1`.
 
 ## Box, label, and scrolled window
 
@@ -28,7 +28,7 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 
 `Button` shows a label. `set_label` and `label` read it. `on_clicked` runs when the button is clicked. [`docs/examples/gtk-button.scpp`](examples/gtk-button.scpp) prints `gtk-button 1`.
 
-`Entry` edits one line. `set_text` and `text` read it. `on_changed` runs when the text changes, including a call to `set_text`. [`docs/examples/gtk-entry.scpp`](examples/gtk-entry.scpp) prints `gtk-entry 1`.
+`Entry` edits one line. `set_text` and `text` read it. `set_width_chars` sets the width in characters. `on_changed` runs when the text changes, including a call to `set_text`. [`docs/examples/gtk-entry.scpp`](examples/gtk-entry.scpp) prints `gtk-entry 1`.
 
 `CheckButton` is a checkbox. `set_label` and `label` read the label. `set_active` and `active` read the check. `on_toggled` runs when the check changes. [`docs/examples/gtk-check.scpp`](examples/gtk-check.scpp) prints `gtk-check 1`.
 
@@ -60,7 +60,7 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 
 `DropDown` lists strings. `set_items` replaces the items. `set_selected` and `selected` read the index. `selected_string` is the text. `on_changed` runs when the selection changes. [`docs/examples/gtk-dropdown.scpp`](examples/gtk-dropdown.scpp) prints `gtk-dropdown 1`.
 
-`SpinButton` takes a minimum, a maximum, and a value. `min`, `max`, and `value` read them. `set_value` writes the value and runs `on_changed`. [`docs/examples/gtk-spin.scpp`](examples/gtk-spin.scpp) prints `gtk-spin 1`.
+`SpinButton` takes a minimum, a maximum, and a value. `min`, `max`, and `value` read them. `set_value` writes the value and runs `on_changed`. `set_width_chars` sets the width in characters. [`docs/examples/gtk-spin.scpp`](examples/gtk-spin.scpp) prints `gtk-spin 1`.
 
 `Picture` shows a file. `set_file` and `file` read the path. [`docs/examples/gtk-picture.scpp`](examples/gtk-picture.scpp) prints `gtk-picture 1`.
 
