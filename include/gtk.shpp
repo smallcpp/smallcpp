@@ -215,6 +215,36 @@ public:
     void **menuPicks;
 };
 
+class MenuSlot {
+public:
+    MenuSlot();
+    void *submenu;
+    void (*action)(void *, const char *);
+    void *data;
+    char **labels;
+    void **picks;
+    long count;
+};
+
+class MenuBar : public Widget {
+public:
+    MenuBar();
+    long add_menu(
+            const char *title,
+            const char **labels,
+            long count,
+            void (*action)(void *, const char *),
+            void *data);
+    void set_menu(
+            long index,
+            const char **labels,
+            long count);
+    void *model;
+    void *group;
+    MenuSlot *slots[8];
+    long menuCount;
+};
+
 class Popover : public Widget {
 public:
     Popover();

@@ -4,6 +4,10 @@ All notable changes to smallcpp are recorded in this file.
 
 ## Unreleased
 
+### Added
+
+- `MenuBar` is a menu bar. `add_menu` appends a submenu and returns its index. `set_menu` replaces that submenu's labels. A count of zero leaves the submenu empty. The callback is `(void *, const char *)` and receives the original label. `FileDialog::open` calls its callback once for each selected path, in order, and once with null when the chooser is cancelled or nothing was chosen. `save` still calls once. A gutter number is drawn for a line that has no characters, including a line Enter just inserted.
+
 ### Changed
 
 - A class definition is a `.shpp` header. Method bodies that are written outside the class are a `.scpp` file, and that file is compiled and linked. Nothing includes a `.scpp` file. A method written inside the class stays in the `.shpp`. Programs still include `<string>`, `<list>`, `<array>`, `<vector>`, `<hash>`, `<tree>`, `<exceptions>`, `<typeinfo>`, `<cli>`, `<sqlite>`, and `<gtk>`. Each of those files is a one-line include of the matching `.shpp`, and install copies the `.shpp` with the other headers. `Array`, `String`, `StringVec`, and the `Cli` classes are linked into `libsmallcpp_runtime.a`. `LIST`, `VECTOR`, `HASH`, and `TREE` keep the method bodies in the header, written inside the class, because the macro expands in one translation unit. The ledger sources include `.shpp` headers and compile each `.scpp`. `scpp-format` includes `format.shpp`. `scpp-lsp` compiles `json.scpp`, `check.scpp`, `protocol.scpp`, and `main.scpp` and links them. GTK helper classes and the Sqlite state classes are `.shpp` headers included by the implementation.

@@ -69,6 +69,18 @@ extern void g_menu_append(
         void *menu,
         const char *label,
         const char *action);
+extern void g_menu_append_submenu(
+        void *menu,
+        const char *label,
+        void *submenu);
+extern void g_menu_remove_all(void *menu);
+extern void g_action_map_remove_action(
+        void *map,
+        const char *name);
+extern unsigned g_list_model_get_n_items(void *model);
+extern void *g_list_model_get_item(
+        void *model,
+        unsigned position);
 extern void *g_simple_action_group_new(void);
 extern void *g_simple_action_new(
         const char *name,
@@ -195,6 +207,8 @@ extern const char *gtk_menu_button_get_label(void *button);
 extern void gtk_menu_button_set_menu_model(
         void *button,
         void *model);
+extern void *gtk_popover_menu_bar_new_from_model(
+        void *model);
 extern void *gtk_popover_new(void);
 extern void gtk_popover_set_child(
         void *popover,
@@ -289,6 +303,16 @@ extern void gtk_file_dialog_open(
         void *cancellable,
         void *callback,
         void *data);
+extern void gtk_file_dialog_open_multiple(
+        void *dialog,
+        void *parent,
+        void *cancellable,
+        void *callback,
+        void *data);
+extern void *gtk_file_dialog_open_multiple_finish(
+        void *dialog,
+        void *result,
+        void **error);
 extern void *gtk_file_dialog_open_finish(
         void *dialog,
         void *result,

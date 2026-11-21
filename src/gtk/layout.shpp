@@ -25,6 +25,18 @@ public:
     const char *label;
 };
 
+class BarPick {
+public:
+    BarPick() {
+        action = nullptr;
+        data = nullptr;
+        label = nullptr;
+    }
+    void (*action)(void *, const char *);
+    void *data;
+    const char *label;
+};
+
 }
 
 #endif
