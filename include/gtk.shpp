@@ -470,7 +470,8 @@ public:
     void scroll_to(long line, long offset);
     void set_line_numbers(bool value);
     bool line_numbers() const;
-    const char *line_number_text() const;
+    const char *line_number_text();
+    long line_number_origin(long line) const;
     void set_font(const char *description);
     void set_column_marker(long column, const char *color);
     SignalConnection on_move_cursor(
@@ -478,9 +479,11 @@ public:
             void *data);
     TextBuffer *buffer;
     int showNumbers;
-    Label *numberLabel;
     int numberHook;
     Widget *columnMark;
+    void *numberArea;
+    void *numberAdjust;
+    char numberChars[512];
 };
 
 }

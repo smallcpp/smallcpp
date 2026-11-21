@@ -410,6 +410,7 @@ void Widget::add_shortcut(
     void *callback;
     void *shortcut;
     KeyHook *hook;
+    SignalConnection *kept;
     int (*typed)(void *, void *, void *);
 
     gtk_use(this);
@@ -439,6 +440,13 @@ void Widget::add_shortcut(
     hook = new KeyHook();
     hook->action = action;
     hook->data = data;
+    /* GTK holds the hook, and the collector does not
+     * scan GTK. A slot on this widget keeps the hook
+     * alive after add_shortcut returns. */
+    kept = new SignalConnection();
+    kept->data = (void *)hook;
+    kept->live = 1;
+    gtk_keep(this, kept);
     typed = key_run;
     callback = gtk_callback_action_new(
             (void *)typed,

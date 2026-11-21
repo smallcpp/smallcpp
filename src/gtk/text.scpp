@@ -566,9 +566,11 @@ TextView::TextView(TextBuffer *buffer) : Widget() {
         gtk_fail("disposed");
     this->buffer = buffer;
     showNumbers = 0;
-    numberLabel = nullptr;
     numberHook = 0;
     columnMark = nullptr;
+    numberArea = nullptr;
+    numberAdjust = nullptr;
+    numberChars[0] = 0;
     native = gtk_sink(
             gtk_text_view_new_with_buffer(buffer->native));
 }
@@ -593,26 +595,107 @@ bool TextView::monospace() const {
     return gtk_text_view_get_monospace(native) != 0;
 }
 
+static int char_pixels(void *widget);
+
 enum { GTK_TEXT_WINDOW_LEFT = 3 };
 enum { GTK_NUMBER_CAP = 80 };
+enum { PANGO_ALIGN_RIGHT = 2 };
+enum { PANGO_SCALE = 1024 };
 
-static void paint_numbers(TextView *view) {
-    int rect[4];
-    int top;
-    int height;
-    long words[12];
-    long lines;
+static void append_number(
+        char *text,
+        long cap,
+        long *used,
+        long num) {
+    char digits[8];
+    long n;
+    long value;
+
+    n = 0;
+    value = num;
+    if (value <= 0) {
+        digits[0] = '0';
+        n = 1;
+    }
+    while (value > 0 && n < 8) {
+        digits[n] = (char)('0' + (int)(value % 10));
+        n = n + 1;
+        value = value / 10;
+    }
+    while (n > 0) {
+        n = n - 1;
+        if (*used + 1 >= cap)
+            return;
+        text[*used] = digits[n];
+        *used = *used + 1;
+    }
+    if (*used + 1 >= cap)
+        return;
+    text[*used] = '\n';
+    *used = *used + 1;
+}
+
+static void write_number(
+        char *dest,
+        long cap,
+        long num) {
+    long used;
+
+    used = 0;
+    dest[0] = 0;
+    append_number(dest, cap, &used, num);
+    if (used > 0 && dest[used - 1] == '\n')
+        used = used - 1;
+    dest[used] = 0;
+}
+
+static int digit_width(long lines) {
     long width;
     long probe;
-    long first;
+
+    width = 1;
+    probe = 9;
+    while (probe < lines && width < 6) {
+        width = width + 1;
+        probe = probe * 10 + 9;
+    }
+    return (int)width;
+}
+
+static void fill_unmapped(TextView *view, long lines) {
     long count;
     long i;
     long used;
-    char text[GTK_NUMBER_CAP * 10];
+
+    count = lines;
+    if (count > GTK_NUMBER_CAP)
+        count = GTK_NUMBER_CAP;
+    if (count < 1)
+        count = 1;
+    used = 0;
+    view->numberChars[0] = 0;
+    i = 0;
+    while (i < count) {
+        append_number(
+                view->numberChars,
+                512,
+                &used,
+                i + 1);
+        i = i + 1;
+    }
+    view->numberChars[used] = 0;
+}
+
+static void place_numbers(TextView *view, void *cr, int width) {
+    int rect[4];
+    long words[12];
+    long lines;
+    long used;
+    int top;
+    int height;
+    int guard;
 
     if (view == nullptr || view->showNumbers == 0)
-        return;
-    if (view->numberLabel == nullptr)
         return;
     if (view->buffer == nullptr
             || view->buffer->native == nullptr)
@@ -621,56 +704,19 @@ static void paint_numbers(TextView *view) {
             view->buffer->native);
     if (lines < 1)
         lines = 1;
-    width = 1;
-    probe = 9;
-    while (probe < lines && width < 6) {
-        width = width + 1;
-        probe = probe * 10 + 9;
-    }
-    gtk_widget_set_margin_top(
-            view->numberLabel->native,
-            0);
-    if (gtk_widget_get_mapped(view->native) == 0) {
-        first = 0;
-        count = lines;
-        if (count > GTK_NUMBER_CAP)
-            count = GTK_NUMBER_CAP;
-        used = 0;
-        i = 0;
-        while (i < count) {
-            long num;
-            long v;
-            long n;
-            long pad;
-            char digits[8];
+    if (view->numberArea != nullptr) {
+        int pixels;
+        int request;
 
-            num = i + 1;
-            n = 0;
-            v = num;
-            while (v > 0 && n < 8) {
-                digits[n] = (char)('0' + (int)(v % 10));
-                n = n + 1;
-                v = v / 10;
-            }
-            pad = width;
-            while (pad > n && used + 1 < 800) {
-                text[used] = ' ';
-                used = used + 1;
-                pad = pad - 1;
-            }
-            while (n > 0 && used + 1 < 800) {
-                n = n - 1;
-                text[used] = digits[n];
-                used = used + 1;
-            }
-            if (used + 1 >= 800)
-                break;
-            text[used] = '\n';
-            used = used + 1;
-            i = i + 1;
-        }
-        text[used] = 0;
-        view->numberLabel->set_text(text);
+        pixels = char_pixels(view->native);
+        request = pixels * (digit_width(lines) + 1) + 6;
+        gtk_widget_set_size_request(
+                view->numberArea,
+                request,
+                -1);
+    }
+    if (gtk_widget_get_mapped(view->native) == 0) {
+        fill_unmapped(view, lines);
         return;
     }
     rect[0] = 0;
@@ -680,92 +726,119 @@ static void paint_numbers(TextView *view) {
     gtk_text_view_get_visible_rect(
             view->native,
             (void *)rect);
+    if (rect[3] <= 0) {
+        fill_unmapped(view, lines);
+        return;
+    }
     gtk_clear_iter(words);
     gtk_text_view_get_line_at_y(
             view->native,
             (void *)words,
             rect[1],
             nullptr);
-    first = gtk_text_iter_get_line((void *)words);
-    if (first < 0)
-        first = 0;
-    if (first >= lines)
-        first = lines - 1;
-    top = 0;
-    height = 0;
-    gtk_text_view_get_line_yrange(
-            view->native,
-            (void *)words,
-            &top,
-            &height);
-    if (height > 0 && rect[3] > 0) {
-        int shift;
-
-        shift = top - rect[1];
-        if (shift < 0 && first + 1 < lines) {
-            first = first + 1;
-            shift = shift + height;
-        }
-        if (shift < 0)
-            shift = 0;
-        gtk_widget_set_margin_top(
-                view->numberLabel->native,
-                shift);
-        count = (rect[3] + height - 1) / height + 1;
-    } else
-        count = 1;
-    if (count < 1)
-        count = 1;
-    if (count > GTK_NUMBER_CAP)
-        count = GTK_NUMBER_CAP;
     used = 0;
-    i = 0;
-    while (i < count && first + i < lines) {
-        long num;
-        long v;
-        long n;
-        long pad;
-        char digits[8];
+    view->numberChars[0] = 0;
+    guard = 0;
+    while (guard < GTK_NUMBER_CAP) {
+        long line;
+        int drawY;
+        char label[16];
 
-        num = first + 1 + i;
-        n = 0;
-        v = num;
-        if (v <= 0) {
-            digits[0] = '0';
-            n = 1;
-        }
-        while (v > 0 && n < 8) {
-            digits[n] = (char)('0' + (int)(v % 10));
-            n = n + 1;
-            v = v / 10;
-        }
-        pad = width;
-        while (pad > n) {
-            if (used + 1 >= (long)sizeof(text))
-                break;
-            text[used] = ' ';
-            used = used + 1;
-            pad = pad - 1;
-        }
-        while (n > 0) {
-            n = n - 1;
-            if (used + 1 >= (long)sizeof(text))
-                break;
-            text[used] = digits[n];
-            used = used + 1;
-        }
-        if (used + 1 >= (long)sizeof(text))
+        top = 0;
+        height = 0;
+        gtk_text_view_get_line_yrange(
+                view->native,
+                (void *)words,
+                &top,
+                &height);
+        line = gtk_text_iter_get_line((void *)words);
+        drawY = top - rect[1];
+        if (drawY > rect[3])
             break;
-        text[used] = '\n';
-        used = used + 1;
-        i = i + 1;
+        if (drawY + height >= 0) {
+            append_number(
+                    view->numberChars,
+                    512,
+                    &used,
+                    line + 1);
+            if (cr != nullptr && width > 0) {
+                void *layout;
+                float color[4];
+
+                write_number(label, 16, line + 1);
+                layout = gtk_widget_create_pango_layout(
+                        view->numberArea,
+                        label);
+                if (layout != nullptr) {
+                    pango_layout_set_width(
+                            layout,
+                            (width - 4) * PANGO_SCALE);
+                    pango_layout_set_alignment(
+                            layout,
+                            PANGO_ALIGN_RIGHT);
+                    gtk_widget_get_color(
+                            view->numberArea,
+                            color);
+                    cairo_set_source_rgba(
+                            cr,
+                            (double)color[0],
+                            (double)color[1],
+                            (double)color[2],
+                            (double)color[3]);
+                    cairo_move_to(cr, 0, (double)drawY);
+                    pango_cairo_show_layout(cr, layout);
+                    g_object_unref(layout);
+                }
+            }
+        }
+        if (gtk_text_iter_forward_line((void *)words) == 0)
+            break;
+        guard = guard + 1;
     }
-    text[used] = 0;
-    view->numberLabel->set_text(text);
+    view->numberChars[used] = 0;
+}
+
+static void draw_numbers(
+        void *area,
+        void *cr,
+        int width,
+        int height,
+        void *data) {
+    (void)area;
+    (void)height;
+    place_numbers((TextView *)data, cr, width);
+}
+
+static void paint_numbers(TextView *view) {
+    place_numbers(view, nullptr, 0);
+    if (view != nullptr && view->numberArea != nullptr)
+        gtk_widget_queue_draw(view->numberArea);
 }
 
 static void numbers_changed(void *data) {
     paint_numbers((TextView *)data);
+}
+
+static void numbers_moved(void *adjust, void *data);
+
+static void watch_scroll(TextView *view) {
+    void *adjust;
+    void (*typed)(void *, void *);
+
+    if (view == nullptr)
+        return;
+    adjust = gtk_scrollable_get_vadjustment(view->native);
+    if (adjust == nullptr || adjust == view->numberAdjust)
+        return;
+    view->numberAdjust = adjust;
+    typed = numbers_moved;
+    g_signal_connect_data(
+            adjust,
+            "value-changed",
+            (void *)typed,
+            (void *)view,
+            nullptr,
+            0);
 }
 
 static void numbers_moved(void *adjust, void *data) {
@@ -773,8 +846,19 @@ static void numbers_moved(void *adjust, void *data) {
     paint_numbers((TextView *)data);
 }
 
+static void numbers_adjust(
+        void *widget,
+        void *pspec,
+        void *data) {
+    (void)widget;
+    (void)pspec;
+    watch_scroll((TextView *)data);
+    paint_numbers((TextView *)data);
+}
+
 static void numbers_mapped(void *widget, void *data) {
     (void)widget;
+    watch_scroll((TextView *)data);
     paint_numbers((TextView *)data);
 }
 
@@ -813,7 +897,6 @@ void TextView::scroll_to(long line, long offset) {
 }
 
 void TextView::set_line_numbers(bool value) {
-    void *adjust;
     void (*typed)(void *, void *);
 
     gtk_use((Widget *)this);
@@ -826,33 +909,36 @@ void TextView::set_line_numbers(bool value) {
         return;
     }
     showNumbers = 1;
-    if (numberLabel == nullptr) {
-        float top;
+    if (numberArea == nullptr) {
+        void (*draw)(void *, void *, int, int, void *);
 
-        numberLabel = new Label("");
-        numberLabel->add_css_class("monospace");
-        top = 0;
-        gtk_label_set_yalign(numberLabel->native, top);
-        gtk_widget_set_valign(numberLabel->native, 1);
-        gtk_widget_set_halign(numberLabel->native, 2);
-        gtk_widget_set_vexpand(numberLabel->native, 0);
+        numberArea = gtk_drawing_area_new();
+        if (numberArea == nullptr)
+            gtk_fail("gtk");
+        gtk_widget_add_css_class(numberArea, "monospace");
+        draw = draw_numbers;
+        gtk_drawing_area_set_draw_func(
+                numberArea,
+                (void *)draw,
+                (void *)this,
+                nullptr);
     }
     gtk_text_view_set_gutter(
             native,
             GTK_TEXT_WINDOW_LEFT,
-            numberLabel->native);
+            numberArea);
     if (numberHook == 0 && buffer != nullptr) {
+        void (*notify)(void *, void *, void *);
+
         buffer->on_changed(numbers_changed, (void *)this);
-        adjust = gtk_scrollable_get_vadjustment(native);
-        typed = numbers_moved;
-        if (adjust != nullptr)
-            g_signal_connect_data(
-                    adjust,
-                    "value-changed",
-                    (void *)typed,
-                    (void *)this,
-                    nullptr,
-                    0);
+        notify = numbers_adjust;
+        g_signal_connect_data(
+                native,
+                "notify::vadjustment",
+                (void *)notify,
+                (void *)this,
+                nullptr,
+                0);
         typed = numbers_mapped;
         g_signal_connect_data(
                 native,
@@ -861,6 +947,7 @@ void TextView::set_line_numbers(bool value) {
                 (void *)this,
                 nullptr,
                 0);
+        watch_scroll(this);
         numberHook = 1;
     }
     paint_numbers(this);
@@ -871,11 +958,53 @@ bool TextView::line_numbers() const {
     return showNumbers != 0;
 }
 
-const char *TextView::line_number_text() const {
+const char *TextView::line_number_text() {
     gtk_use((Widget *)this);
-    if (showNumbers == 0 || numberLabel == nullptr)
+    if (showNumbers == 0)
         return "";
-    return numberLabel->text();
+    place_numbers(this, nullptr, 0);
+    return numberChars;
+}
+
+long TextView::line_number_origin(long line) const {
+    int rect[4];
+    long words[12];
+    long lines;
+    int top;
+    int height;
+
+    gtk_use((Widget *)this);
+    if (showNumbers == 0 || buffer == nullptr)
+        return -1;
+    if (buffer->native == nullptr)
+        return -1;
+    if (gtk_widget_get_mapped(native) == 0)
+        return -1;
+    rect[0] = 0;
+    rect[1] = 0;
+    rect[2] = 0;
+    rect[3] = 0;
+    gtk_text_view_get_visible_rect(native, (void *)rect);
+    if (rect[3] <= 0)
+        return -1;
+    lines = gtk_text_buffer_get_line_count(buffer->native);
+    if (lines < 1)
+        lines = 1;
+    if (line < 0 || line >= lines)
+        return -1;
+    gtk_clear_iter(words);
+    gtk_text_buffer_get_iter_at_line(
+            buffer->native,
+            (void *)words,
+            (int)line);
+    top = 0;
+    height = 0;
+    gtk_text_view_get_line_yrange(
+            native,
+            (void *)words,
+            &top,
+            &height);
+    return (long)(top - rect[1]);
 }
 
 SignalConnection TextView::on_move_cursor(
@@ -1049,15 +1178,25 @@ void TextView::set_font(const char *description) {
     add_chars(css, 320, &used, size);
     add_chars(css, 320, &used, "pt; }");
     add_css(css);
-    if (numberLabel != nullptr) {
+    if (numberArea != nullptr) {
+        void *provider;
+        void *context;
+
         used = 0;
         css[0] = 0;
-        add_chars(css, 320, &used, "label { font-family: \"");
+        add_chars(css, 320, &used, "* { font-family: \"");
         add_chars(css, 320, &used, family);
         add_chars(css, 320, &used, "\"; font-size: ");
         add_chars(css, 320, &used, size);
         add_chars(css, 320, &used, "pt; }");
-        numberLabel->add_css(css);
+        provider = gtk_css_provider_new();
+        gtk_css_provider_load_from_string(provider, css);
+        context = gtk_widget_get_style_context(numberArea);
+        gtk_style_context_add_provider(
+                context,
+                provider,
+                600);
+        g_object_unref(provider);
     }
 }
 

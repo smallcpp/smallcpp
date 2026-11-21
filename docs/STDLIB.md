@@ -1616,7 +1616,8 @@ public:
     void scroll_to(long line, long offset);
     void set_line_numbers(bool value);
     bool line_numbers() const;
-    const char *line_number_text() const;
+    const char *line_number_text();
+    long line_number_origin(long line) const;
     SignalConnection on_move_cursor(
         void (*action)(void *, long, long), void *data);
 };
@@ -1707,9 +1708,12 @@ Scrolling is `TextView::scroll_to`, not a buffer method.
 `scroll_to` moves a mark and scrolls that mark on screen after the
 layout is ready, so a replacement of the buffer does not leave the
 caret at the top. `set_line_numbers` places a monospace gutter on
-the left, aligned with the text lines. An empty buffer shows line
-1. `line_number_text` is the visible numbers. `set_font` applies a
-family and a size. `set_column_marker` draws a line at a column.
+the left and draws one number at each buffer line, so the numbers
+scroll with the text. An empty buffer shows line 1.
+`line_number_text` is the visible numbers. `line_number_origin`
+returns a line's y in the gutter, or -1 when that line is off
+screen. `set_font` applies a family and a size.
+`set_column_marker` draws a line at a column.
 `Widget::add_shortcut` parses an accelerator and runs the callback
 before a child handles that key. `add_css` loads CSS onto one
 widget. `Dialog::set_transient` sets the parent window.

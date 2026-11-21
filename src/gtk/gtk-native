@@ -457,6 +457,40 @@ extern int gtk_text_view_get_line_at_y(
         int y,
         int *lineTop);
 extern int gtk_widget_get_mapped(void *widget);
+extern void *gtk_drawing_area_new(void);
+extern void gtk_drawing_area_set_draw_func(
+        void *area,
+        void *draw,
+        void *data,
+        void *destroy);
+extern void gtk_widget_queue_draw(void *widget);
+extern void gtk_widget_add_css_class(
+        void *widget,
+        const char *name);
+extern int gtk_text_iter_forward_line(void *iter);
+extern int gtk_text_buffer_get_iter_at_line(
+        void *buffer,
+        void *iter,
+        int line);
+extern void gtk_widget_get_color(
+        void *widget,
+        float *color);
+extern void cairo_set_source_rgba(
+        void *cr,
+        double red,
+        double green,
+        double blue,
+        double alpha);
+extern void cairo_move_to(void *cr, double x, double y);
+extern void pango_cairo_show_layout(
+        void *cr,
+        void *layout);
+extern void pango_layout_set_width(
+        void *layout,
+        int width);
+extern void pango_layout_set_alignment(
+        void *layout,
+        int alignment);
 extern void gtk_text_view_get_line_yrange(
         void *view,
         void *iter,
