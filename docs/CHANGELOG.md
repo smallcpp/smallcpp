@@ -6,6 +6,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `ColorDialog::choose` opens the color chooser for a parent window. The callback receives `#rrggbb`, or null when the chooser is cancelled. The dialog does not ask for alpha. The parent window keeps the dialog until the chooser finishes.
 - `TextView::set_tab_width` sets how many character places one tab occupies.
 - `Window::on_active` reports when the window gains or loses focus. `Entry::set_width_chars` and `SpinButton::set_width_chars` set how many characters wide the field is.
 - `Notebook::set_scrollable` keeps the tab strip from forcing the window wider and shows buttons that scroll it. `Window::width` and `height` read the current size. `on_resize` reports a new size. `MenuBar::set_submenu` turns one item into a nested menu.

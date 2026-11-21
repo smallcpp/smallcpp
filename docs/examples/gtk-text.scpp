@@ -102,6 +102,7 @@ int main(void) {
             Notebook *book;
             FileDialog *files;
             FontDialog *fonts;
+            ColorDialog *colors;
 
             win = new Window("w");
             ask = new Dialog("d");
@@ -112,7 +113,9 @@ int main(void) {
             files = new FileDialog();
             files->set_parent(win);
             fonts = new FontDialog();
+            colors = new ColorDialog();
             (void)fonts;
+            (void)colors;
         }
         slot = view->on_move_cursor(moved, nullptr);
         ok = 0;
