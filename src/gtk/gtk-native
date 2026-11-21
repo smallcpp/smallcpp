@@ -685,5 +685,25 @@ extern void *gtk_font_dialog_choose_font_finish(
         void **error);
 extern char *pango_font_description_to_string(void *desc);
 extern void pango_font_description_free(void *desc);
+extern void *gtk_color_dialog_new(void);
+extern void gtk_color_dialog_set_title(
+        void *dialog,
+        const char *title);
+extern void gtk_color_dialog_set_with_alpha(
+        void *dialog,
+        int withAlpha);
+extern int gdk_rgba_parse(float *color, const char *spec);
+extern void gtk_color_dialog_choose_rgba(
+        void *dialog,
+        void *parent,
+        float *initial,
+        void *cancellable,
+        void *callback,
+        void *data);
+extern float *gtk_color_dialog_choose_rgba_finish(
+        void *dialog,
+        void *result,
+        void **error);
+extern void gdk_rgba_free(void *color);
 
 #endif

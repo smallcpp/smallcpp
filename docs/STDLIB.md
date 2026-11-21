@@ -1792,7 +1792,9 @@ widget. `Dialog::set_transient` sets the parent window.
 `FileDialog::set_parent` does that for the file chooser.
 `FontDialog::choose` reports the chosen description. The parent
 window keeps that dialog, so the collector does not free it
-while the chooser is open.
+while the chooser is open. `ColorDialog::choose` reports
+`#rrggbb`. Cancel reports null. The parent window keeps that
+dialog the same way. The chooser does not ask for alpha.
 `Notebook::set_tab_label` and `set_tab` change a tab.
 `Window::destroy` and `Application::quit` close the window and
 leave `run`. `TextView` is constructed with the buffer it shows.

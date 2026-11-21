@@ -427,6 +427,22 @@ public:
     char *picked;
 };
 
+class ColorDialog {
+public:
+    ColorDialog();
+    ~ColorDialog();
+    void choose(
+            Window *parent,
+            const char *initial,
+            void (*action)(void *, const char *),
+            void *data);
+    void *native;
+    void (*pick)(void *, const char *);
+    void *pickData;
+    int pending;
+    char *picked;
+};
+
 class DropDown : public Widget {
 public:
     DropDown();
