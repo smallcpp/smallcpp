@@ -387,6 +387,13 @@ MenuSlot::MenuSlot() {
     labels = nullptr;
     picks = nullptr;
     count = 0;
+    nestItem = -1;
+    nestMenu = nullptr;
+    nestAction = nullptr;
+    nestData = nullptr;
+    nestLabels = nullptr;
+    nestPicks = nullptr;
+    nestCount = 0;
     i = 0;
     while (i < 64) {
         accelText[i] = nullptr;
@@ -482,7 +489,8 @@ static void clear_slot(MenuBar *bar, long index) {
         char name[8];
 
         write_slot(name, index, i);
-        g_action_map_remove_action(bar->group, name);
+        if (i != slot->nestItem)
+            g_action_map_remove_action(bar->group, name);
         if (slot->labels != nullptr
                 && slot->labels[i] != nullptr)
             free((void *)slot->labels[i]);
@@ -538,6 +546,17 @@ static void fill_slot(
             section = g_menu_new();
             if (section == nullptr)
                 gtk_fail("gtk");
+        }
+        if (i == slot->nestItem && slot->nestMenu != nullptr) {
+            slot->labels[i] = gtk_copy(labels[i]);
+            slot->picks[i] = nullptr;
+            show_mnemonic(shown, 192, labels[i]);
+            g_menu_append_submenu(
+                    section,
+                    shown,
+                    slot->nestMenu);
+            i = i + 1;
+            continue;
         }
         slot->labels[i] = gtk_copy(labels[i]);
         pick = new BarPick();
@@ -650,6 +669,21 @@ static void bar_cleanup(Widget *widget) {
     if (bar->group != nullptr) {
         g_object_unref(bar->group);
         bar->group = nullptr;
+    }
+    {
+        long i;
+
+        i = 0;
+        while (i < bar->menuCount) {
+            MenuSlot *slot;
+
+            slot = bar->slots[i];
+            if (slot != nullptr && slot->nestMenu != nullptr) {
+                g_object_unref(slot->nestMenu);
+                slot->nestMenu = nullptr;
+            }
+            i = i + 1;
+        }
     }
 }
 
@@ -877,6 +911,154 @@ long Paned::position() const {
 Notebook::Notebook() : Widget() {
     kind = GTK_KIND_NOTEBOOK;
     native = gtk_sink(gtk_notebook_new());
+}
+
+static void write_nest(char *buf, long item) {
+    buf[0] = 'z';
+    buf[1] = (char)('0' + (int)(item / 10));
+    buf[2] = (char)('0' + (int)(item % 10));
+    buf[3] = 0;
+}
+
+static void write_nest_detailed(char *buf, long item) {
+    char name[8];
+    long i;
+
+    write_nest(name, item);
+    buf[0] = 'm';
+    buf[1] = 'e';
+    buf[2] = 'n';
+    buf[3] = 'u';
+    buf[4] = '.';
+    i = 0;
+    while (name[i] != 0) {
+        buf[5 + i] = name[i];
+        i = i + 1;
+    }
+    buf[5 + i] = 0;
+}
+
+static void clear_nest(MenuBar *bar, MenuSlot *slot) {
+    long i;
+
+    if (slot == nullptr)
+        return;
+    i = 0;
+    while (i < slot->nestCount) {
+        char name[8];
+
+        write_nest(name, i);
+        g_action_map_remove_action(bar->group, name);
+        if (slot->nestLabels != nullptr
+                && slot->nestLabels[i] != nullptr)
+            free((void *)slot->nestLabels[i]);
+        i = i + 1;
+    }
+    slot->nestLabels = nullptr;
+    slot->nestPicks = nullptr;
+    slot->nestCount = 0;
+    if (slot->nestMenu != nullptr)
+        g_menu_remove_all(slot->nestMenu);
+}
+
+static void fill_nest(
+        MenuBar *bar,
+        long index,
+        const char **labels,
+        long count) {
+    MenuSlot *slot;
+    long i;
+    void (*typed)(void *, void *, void *);
+
+    slot = bar->slots[index];
+    clear_nest(bar, slot);
+    if (slot->nestMenu == nullptr) {
+        slot->nestMenu = g_menu_new();
+        if (slot->nestMenu == nullptr)
+            gtk_fail("gtk");
+    }
+    if (count == 0)
+        return;
+    slot->nestLabels = new char *[count];
+    slot->nestPicks = new void *[count];
+    slot->nestCount = count;
+    typed = bar_activate;
+    i = 0;
+    while (i < count) {
+        BarPick *pick;
+        char name[8];
+        char detailed[24];
+        char shown[192];
+        void *simple;
+        unsigned long id;
+
+        gtk_check_text(labels[i]);
+        slot->nestLabels[i] = gtk_copy(labels[i]);
+        pick = new BarPick();
+        pick->action = slot->nestAction;
+        pick->data = slot->nestData;
+        pick->label = slot->nestLabels[i];
+        pick->bar = bar;
+        pick->menu = index;
+        pick->item = i;
+        slot->nestPicks[i] = (void *)pick;
+        write_nest(name, i);
+        write_nest_detailed(detailed, i);
+        show_mnemonic(shown, 192, labels[i]);
+        simple = g_simple_action_new(name, nullptr);
+        if (simple == nullptr)
+            gtk_fail("gtk");
+        id = g_signal_connect_data(
+                simple,
+                "activate",
+                (void *)typed,
+                (void *)pick,
+                nullptr,
+                0);
+        if (id == 0)
+            gtk_fail("gtk");
+        g_action_map_add_action(bar->group, simple);
+        g_object_unref(simple);
+        g_menu_append(slot->nestMenu, shown, detailed);
+        i = i + 1;
+    }
+}
+
+void MenuBar::set_submenu(
+        long index,
+        long item,
+        const char **labels,
+        long count,
+        void (*action)(void *, const char *),
+        void *data) {
+    MenuSlot *slot;
+
+    gtk_use((Widget *)this);
+    if (index < 0 || index >= menuCount)
+        gtk_fail("range");
+    if (item < 0 || item >= 64)
+        gtk_fail("range");
+    if (count < 0 || count > 64)
+        gtk_fail("range");
+    if (count > 0 && labels == nullptr)
+        gtk_fail("null");
+    if (action == nullptr)
+        gtk_fail("null");
+    slot = slots[index];
+    slot->nestItem = item;
+    slot->nestAction = action;
+    slot->nestData = data;
+    fill_nest(this, index, labels, count);
+    if (slot->count > 0)
+        refill_slot(this, index);
+}
+
+void Notebook::set_scrollable(bool value) {
+    gtk_use((Widget *)this);
+    if (value == true)
+        gtk_notebook_set_scrollable(native, 1);
+    else
+        gtk_notebook_set_scrollable(native, 0);
 }
 
 void Notebook::set_tabs_left(void) {

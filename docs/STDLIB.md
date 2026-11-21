@@ -1378,6 +1378,10 @@ public:
     void set_title(const char *title);
     const char *title() const;
     void set_default_size(long width, long height);
+    long width() const;
+    long height() const;
+    SignalConnection on_resize(
+        void (*action)(void *, long, long), void *data);
     void set_child(Widget *child);
     void remove(Widget *child);
     void present();
@@ -1478,6 +1482,9 @@ public:
     void set_check(long index, long item, int on);
     int is_checked(long index, long item);
     void set_separator(long index, long item);
+    void set_submenu(long index, long item,
+        const char **labels, long count,
+        void (*action)(void *, const char *), void *data);
 };
 
 class Popover : public Widget {
@@ -1508,6 +1515,7 @@ public:
     SignalConnection on_switch_page(
         void (*action)(void *, long), void *data);
     void set_tabs_left(void);
+    void set_scrollable(bool value);
 };
 
 class ColumnView : public Widget {
