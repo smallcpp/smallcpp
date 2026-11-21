@@ -6,6 +6,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `TextView::set_tab_width` sets how many character places one tab occupies.
 - `Window::on_active` reports when the window gains or loses focus. `Entry::set_width_chars` and `SpinButton::set_width_chars` set how many characters wide the field is.
 - `Notebook::set_scrollable` keeps the tab strip from forcing the window wider and shows buttons that scroll it. `Window::width` and `height` read the current size. `on_resize` reports a new size. `MenuBar::set_submenu` turns one item into a nested menu.
 - `Widget::on_key` reports the next key as an accelerator. Escape alone is a cancel. `normalize_accel` writes the canonical accelerator. `Dialog::set_default_size` sets the window size. `ScrolledWindow::set_min_content` sets how small the scrolled area may become.

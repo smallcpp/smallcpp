@@ -1262,6 +1262,34 @@ void TextView::set_marks(
             tabWidth);
 }
 
+void TextView::set_tab_width(int columns) {
+    void *tabs;
+    int pixels;
+    int i;
+    int pos;
+
+    gtk_use((Widget *)this);
+    if (columns < 1)
+        columns = 1;
+    if (columns > 32)
+        columns = 32;
+    pixels = char_pixels(native);
+    if (pixels < 1)
+        pixels = 8;
+    tabs = pango_tab_array_new(32, 1);
+    if (tabs == nullptr)
+        gtk_fail("gtk");
+    i = 0;
+    pos = pixels * columns;
+    while (i < 32) {
+        pango_tab_array_set_tab(tabs, i, 0, pos);
+        i = i + 1;
+        pos = pos + pixels * columns;
+    }
+    gtk_text_view_set_tabs(native, tabs);
+    pango_tab_array_free(tabs);
+}
+
 void TextView::set_column_marker(
         long column,
         const char *color) {
