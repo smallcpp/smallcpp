@@ -102,6 +102,13 @@ public:
             void *data);
     void clear_shortcuts(void);
     int shortcut_ok(const char *accel);
+    int normalize_accel(
+            const char *accel,
+            char *buf,
+            long room);
+    SignalConnection on_key(
+            int (*action)(void *, const char *, int),
+            void *data);
     void *native;
     int gone;
     int kind;
@@ -196,6 +203,7 @@ public:
     void set_child(Widget *child);
     void remove(Widget *child);
     void set_policy(int horizontal, int vertical);
+    void set_min_content(long width, long height);
 };
 
 class HeaderBar : public Widget {
@@ -336,6 +344,7 @@ public:
             void (*action)(void *, int),
             void *data);
     void present();
+    void set_default_size(long width, long height);
     void set_transient(Window *parent);
     Widget *content;
     Window *transientParent;

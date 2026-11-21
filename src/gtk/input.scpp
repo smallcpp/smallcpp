@@ -278,6 +278,16 @@ void Dialog::set_transient(Window *parent) {
     gtk_window_set_transient_for(native, owner);
 }
 
+void Dialog::set_default_size(long width, long height) {
+    gtk_use((Widget *)this);
+    if (width < 1 || height < 1)
+        gtk_fail("range");
+    gtk_window_set_default_size(
+            native,
+            (int)width,
+            (int)height);
+}
+
 void Dialog::present() {
     gtk_use((Widget *)this);
     if (transientParent != nullptr)
