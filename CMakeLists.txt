@@ -70,7 +70,8 @@ add_library(smallcpp_runtime STATIC
     src/runtime/image.c
     src/runtime/io.c
     src/runtime/except.c
-    src/runtime/lines.c)
+    src/runtime/lines.c
+    src/runtime/signal.c)
 target_include_directories(smallcpp_runtime PUBLIC src/runtime)
 target_link_libraries(smallcpp_runtime PUBLIC ${CMAKE_DL_LIBS})
 
@@ -398,6 +399,7 @@ endfunction()
 
 attach_test_drivers(
     command_line_test
+    fatal_signal_test
     prefix_test
     parse_test
     verify_module

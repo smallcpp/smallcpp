@@ -6,6 +6,7 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- A fatal signal prints a stack on standard error and then dies with that signal. `SIGSEGV`, `SIGBUS`, `SIGFPE`, `SIGILL`, and `SIGABRT` are caught with `sigaction`, `SA_SIGINFO`, and `SA_ONSTACK`. The alternate stack is allocated once at startup, so a stack overflow can still be reported. The handler uses `write` and tables built before the crash. It walks saved frame pointers. A frame in a precise GC stack map is named from that map: the function, and `function at file.scpp:line` when the line table loaded at startup has a line. Any other frame is an address. The handler then restores the default disposition and raises the same signal again. `fatal_signal` is off the default build. It raises `SIGSEGV` and checks stderr for a stack and death by that signal. `fatal_signal_name` compiles `fatal-signal.scpp` and checks that `leaf` and `main` are named.
 - `MenuBar` is a menu bar. `add_menu` appends a submenu and returns its index. `set_menu` replaces that submenu's labels. A count of zero leaves the submenu empty. The callback is `(void *, const char *)` and receives the original label. `FileDialog::open` calls its callback once for each selected path, in order, and once with null when the chooser is cancelled or nothing was chosen. `save` still calls once. A gutter number is drawn for a line that has no characters, including a line Enter just inserted.
 
 ### Changed

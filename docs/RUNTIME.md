@@ -26,6 +26,8 @@ libc=/lib/x86_64-linux-gnu/libc.so
 
 `Exception` is the base exception class. Include it as `<exceptions>`. `message` is a `const char *` and is not copied. `Exception()` stores a null message. `Exception(const char *)` stores that C string. A program constructs it with `new` and throws the object. `catch (Exception error)` reads `error.message`. An exception that nothing catches aborts and prints the message. [`docs/examples/rt-exception.scpp`](examples/rt-exception.scpp) prints `rt-exception 1 1`.
 
+A fatal signal prints a stack on standard error and then ends the process with that signal. The signals are `SIGSEGV`, `SIGBUS`, `SIGFPE`, `SIGILL`, and `SIGABRT`. The handler runs on an alternate stack allocated at startup. A frame the precise collector's stack map covers is the function name, and `function at file.scpp:line` when the program was built with `-g` and that address has a line. A frame the map does not cover is an address.
+
 `throw`, `catch`, and `catch (...)` are language forms. [`docs/examples/lang-throw.scpp`](examples/lang-throw.scpp) prints `lang-throw missing`. [`docs/examples/lang-catch-all.scpp`](examples/lang-catch-all.scpp) prints `lang-catch-all 6`. [`docs/examples/lang-rethrow.scpp`](examples/lang-rethrow.scpp) prints `lang-rethrow 4`.
 
 ## typeinfo
