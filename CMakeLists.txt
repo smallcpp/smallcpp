@@ -273,6 +273,16 @@ foreach(name state basic layout input text)
                 "${SMALLCPP_RUNTIME_SCPP_STAMP}"
         VERBATIM)
 endforeach()
+set(SMALLCPP_GTK_SHADE "${CMAKE_BINARY_DIR}/gtk-obj/gtk-shade.o")
+list(APPEND SMALLCPP_GTK_OBJECTS "${SMALLCPP_GTK_SHADE}")
+add_custom_command(
+    OUTPUT "${SMALLCPP_GTK_SHADE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/gtk-obj"
+    COMMAND "${CMAKE_C_COMPILER}" ${GTK4_CFLAGS} -c
+            -o "${SMALLCPP_GTK_SHADE}"
+            "${CMAKE_SOURCE_DIR}/src/gtk/shade.c"
+    DEPENDS "${CMAKE_SOURCE_DIR}/src/gtk/shade.c"
+    VERBATIM)
 set(SMALLCPP_GTK_ARCHIVE "${CMAKE_SOURCE_DIR}/lib/libsmallcpp_gtk.a")
 add_custom_command(
     OUTPUT "${SMALLCPP_GTK_ARCHIVE}"

@@ -1709,11 +1709,13 @@ Scrolling is `TextView::scroll_to`, not a buffer method.
 layout is ready, so a replacement of the buffer does not leave the
 caret at the top. `set_line_numbers` places a monospace gutter on
 the left and draws one number at each buffer line, so the numbers
-scroll with the text. An empty buffer shows line 1.
+scroll with the text. The gutter fits four digits and one space.
+An empty buffer shows line 1. `set_line_shade` paints the cursor
+line under the text, including a blank line.
 `line_number_text` is the visible numbers. `line_number_origin`
 returns a line's y in the gutter, or -1 when that line is off
 screen. `set_font` applies a family and a size.
-`set_column_marker` draws a line at a column.
+`set_column_marker` draws a two-pixel line at a column.
 `Widget::add_shortcut` parses an accelerator and runs the callback
 before a child handles that key. `add_css` loads CSS onto one
 widget. `Dialog::set_transient` sets the parent window.

@@ -233,6 +233,30 @@ const char *MenuButton::label() const {
             gtk_menu_button_get_label(native));
 }
 
+static void show_mnemonic(
+        char *dest,
+        long cap,
+        const char *src) {
+    long i;
+    long j;
+
+    i = 0;
+    j = 0;
+    dest[0] = 0;
+    if (src == nullptr || cap < 2)
+        return;
+    while (src[i] != 0 && j + 2 < cap) {
+        dest[j] = src[i];
+        j = j + 1;
+        if (src[i] == '_') {
+            dest[j] = '_';
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    dest[j] = 0;
+}
+
 void MenuButton::set_menu(
         const char **labels,
         long count,
@@ -298,7 +322,12 @@ void MenuButton::set_menu(
             gtk_fail("gtk");
         g_action_map_add_action(group, simple);
         g_object_unref(simple);
-        g_menu_append(model, labels[i], detailed);
+        {
+            char shown[192];
+
+            show_mnemonic(shown, 192, labels[i]);
+            g_menu_append(model, shown, detailed);
+        }
         i = i + 1;
     }
     if (menuModel != nullptr)
