@@ -98,6 +98,8 @@ int main(void) {
         buffer->set_tag_background("note", "#eeeeee");
         buffer->set_tag_foreground("note", "blue");
         buffer->set_tag_text_background("note", "#fff4cc");
+        buffer->set_tag_bold("note", true);
+        buffer->set_tag_bold("note", false);
         {
             Window *win;
             Dialog *ask;

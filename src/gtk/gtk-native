@@ -130,6 +130,8 @@ extern void g_value_init(void *value, unsigned long type);
 extern void g_value_set_string(
         void *value,
         const char *text);
+extern void g_value_set_int(void *value, int number);
+extern void g_value_set_boolean(void *value, int flag);
 extern void g_value_unset(void *value);
 extern void g_object_set_property(
         void *object,

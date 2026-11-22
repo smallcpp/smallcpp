@@ -547,6 +547,7 @@ public:
     void set_tag_text_background(
             const char *name,
             const char *color);
+    void set_tag_bold(const char *name, bool heavy);
     void apply_tag(
             const char *name,
             TextIter *start,
