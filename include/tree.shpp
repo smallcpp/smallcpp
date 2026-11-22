@@ -150,7 +150,7 @@ class Name { \
     } \
     long span(Name##Node *node) { \
         if (node == nullptr) \
-            return 0; \
+            return (long)0; \
         return node->size; \
     } \
     Name##Node *graft(Name##Node *node, long index, \
@@ -316,7 +316,7 @@ public: \
         long out; \
         seen = 0; \
         if (locate(top, value, &seen, &out) == 0) \
-            return -1; \
+            return (long)-1; \
         return out; \
     } \
     void replace(long index, Type value) { \

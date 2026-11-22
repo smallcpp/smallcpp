@@ -53,7 +53,7 @@ public: \
                 return i; \
             i = i + 1; \
         } \
-        return -1; \
+        return (long)-1; \
     } \
     void replace(long index, Type value) { \
         Type *place; \

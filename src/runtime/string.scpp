@@ -202,13 +202,13 @@ long String::find(long index, char value) {
     if (index < 0)
         index = count + index;
     if (index < 0 || index >= count)
-        return -1;
+        return (long)-1;
     while (index < count) {
         if (bytes[index] == value)
             return index;
         index = index + 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 long String::find(char value) {
@@ -225,12 +225,12 @@ long String::find(long index, const char *text) {
     if (index < 0)
         index = count + index;
     if (index < 0 || index > count)
-        return -1;
+        return (long)-1;
     n = text_length(text);
     if (n == 0)
         return index;
     if (index >= count)
-        return -1;
+        return (long)-1;
     i = index;
     while (i + n <= count) {
         j = 0;
@@ -240,7 +240,7 @@ long String::find(long index, const char *text) {
             return i;
         i = i + 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 long String::find(const char *text) {
@@ -265,7 +265,7 @@ long String::rfind(long index, char value) {
     if (index < 0)
         index = count + index;
     if (index < 0 || count == 0)
-        return -1;
+        return (long)-1;
     if (index >= count)
         index = count - 1;
     while (index >= 0) {
@@ -273,12 +273,12 @@ long String::rfind(long index, char value) {
             return index;
         index = index - 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 long String::rfind(char value) {
     if (count == 0)
-        return -1;
+        return (long)-1;
     return rfind(count - 1, value);
 }
 
@@ -295,13 +295,13 @@ long String::rfind(long index, const char *text) {
     n = text_length(text);
     if (n == 0) {
         if (index < 0)
-            return -1;
+            return (long)-1;
         if (index > count)
             return count;
         return index;
     }
     if (index < 0 || count < n)
-        return -1;
+        return (long)-1;
     last = count - n;
     if (index < last)
         last = index;
@@ -316,7 +316,7 @@ long String::rfind(long index, const char *text) {
             break;
         i = i - 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 long String::rfind(const char *text) {
@@ -325,7 +325,7 @@ long String::rfind(const char *text) {
     if (text[0] == 0)
         return count;
     if (count == 0)
-        return -1;
+        return (long)-1;
     return rfind(count - 1, text);
 }
 
@@ -764,7 +764,7 @@ long StringVec::find(String * value) {
             return i;
         i = i + 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 void StringVec::replace(long index, String * value) {

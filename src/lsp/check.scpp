@@ -171,7 +171,7 @@ static String *capture(
 }
 
 static int digit(char ch) {
-    return ch >= '0' && ch <= '9';
+    return (int)(ch >= '0' && ch <= '9');
 }
 
 static int match_diag(

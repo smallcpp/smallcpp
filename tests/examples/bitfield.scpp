@@ -6,5 +6,5 @@ struct Flags {
 int main(void) {
     struct Flags f;
     f.code = 3;
-    return f.code;
+    return (int)f.code;
 }

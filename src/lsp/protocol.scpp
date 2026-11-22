@@ -209,10 +209,10 @@ static long field_number(Json *object, const char *key) {
     Json *member;
 
     if (object == nullptr)
-        return 0;
+        return (long)0;
     member = object->member(key);
     if (member == nullptr || member->kind != JSON_NUMBER)
-        return 0;
+        return (long)0;
     return member->number;
 }
 

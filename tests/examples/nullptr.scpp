@@ -3,5 +3,5 @@ int main(void) {
     int *q;
     p = nullptr;
     q = NULL;
-    return p == q;
+    return (int)(p == q);
 }

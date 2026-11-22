@@ -65,7 +65,7 @@ class Name : public Array { \
             i = i + 1; \
         } \
         if (room < 1) \
-            return 0; \
+            return (long)0; \
         return (long)(code % (unsigned long)room); \
     } \
     long text_code(const char *text) { \
@@ -82,7 +82,7 @@ class Name : public Array { \
             i = i + 1; \
         } \
         if (room < 1) \
-            return 0; \
+            return (long)0; \
         return (long)(code % (unsigned long)room); \
     } \
     void place(Key key, Value value) { \

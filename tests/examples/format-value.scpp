@@ -1,5 +1,5 @@
 int main(void) {
     const char *line;
     line = format("{0}", 4);
-    return line[1];
+    return (int)line[1];
 }

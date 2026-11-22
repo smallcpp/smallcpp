@@ -1,0 +1,27 @@
+int show(int n) {
+    if (n)
+        return n;
+    return 0;
+}
+
+int constant_path(void) {
+    if (1)
+        return 4;
+}
+
+int forever(void) {
+    while (1)
+        ;
+}
+
+int truncated(void) {
+    return (int)0.123;
+}
+
+int main(void) {
+    int shown;
+
+    shown = show(7);
+    print("return-ok {}\n", shown);
+    return 0;
+}

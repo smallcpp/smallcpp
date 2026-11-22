@@ -1144,23 +1144,23 @@ long TextView::line_number_origin(long line) const {
 
     gtk_use((Widget *)this);
     if (showNumbers == 0 || buffer == nullptr)
-        return -1;
+        return (long)-1;
     if (buffer->native == nullptr)
-        return -1;
+        return (long)-1;
     if (gtk_widget_get_mapped(native) == 0)
-        return -1;
+        return (long)-1;
     rect[0] = 0;
     rect[1] = 0;
     rect[2] = 0;
     rect[3] = 0;
     gtk_text_view_get_visible_rect(native, (void *)rect);
     if (rect[3] <= 0)
-        return -1;
+        return (long)-1;
     lines = gtk_text_buffer_get_line_count(buffer->native);
     if (lines < 1)
         lines = 1;
     if (line < 0 || line >= lines)
-        return -1;
+        return (long)-1;
     gtk_clear_iter(words);
     gtk_text_buffer_get_iter_at_line(
             buffer->native,

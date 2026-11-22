@@ -6,6 +6,11 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Fixed
 
+- A function with a return type must return a value of that
+  type on every path that can leave the function. `return`
+  does not convert the expression. A missing `return`,
+  including `main`, is an error. `return 0.123` from `int`
+  is an error. A matching `return` still compiles.
 - The line-number gutter draws the last line when that
   line has no characters. Stepping onto that line reports
   no move, so the gutter draws the number before it stops.
