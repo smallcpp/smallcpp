@@ -85,7 +85,9 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 `TextBuffer::set_tag_text_background` sets the background
 of the tagged characters and creates the tag when the
 name is missing. `set_tag_background` still paints the
-whole paragraph.
+whole paragraph. `TextBuffer::set_tag_bold` sets that
+tag's weight. True is bold and false is the normal
+weight. It creates the tag when the name is missing.
 
 [`docs/examples/gtk-text.scpp`](examples/gtk-text.scpp) builds a buffer, inserts and undoes, redoes, deletes a range, tags a selection, and reads the view. It prints `gtk-text 1`.
 

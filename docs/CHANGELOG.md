@@ -6,6 +6,10 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `TextBuffer::set_tag_bold` sets a tag's weight. A true
+  value uses a bold weight. A false value uses the normal
+  weight. It creates the tag when that name is missing.
+  `gtk-text` calls it and still prints `gtk-text 1`.
 - `TextBuffer::set_tag_text_background` sets a tag's
   character background. It creates the tag when that name
   is missing. This is the background of the tagged

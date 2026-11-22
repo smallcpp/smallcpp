@@ -1772,6 +1772,9 @@ creates the tag when it is missing. `set_tag_foreground` sets the
 foreground color and creates the tag when the name is missing.
 `set_tag_text_background` sets the background of those
 characters and creates the tag when the name is missing.
+`set_tag_bold` sets the weight. True is bold and false
+is the normal weight. It creates the tag when the name
+is missing.
 `apply_tag` and `remove_tag`
 use that name. `undo` and `redo` walk the buffer's own history.
 Scrolling is `TextView::scroll_to`, not a buffer method.
