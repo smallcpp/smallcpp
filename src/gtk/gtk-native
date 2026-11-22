@@ -597,6 +597,18 @@ extern void smallcpp_text_marks(
         int ends,
         int stops,
         int tabWidth);
+extern void smallcpp_text_record(void *view, int on);
+extern int smallcpp_text_recording(void *view);
+extern int smallcpp_text_recorded(void *view);
+extern const char *smallcpp_text_recorded_key(
+        void *view,
+        int index);
+extern void smallcpp_text_record_key(
+        void *view,
+        const char *accel);
+extern int smallcpp_text_play_key(
+        void *view,
+        const char *accel);
 extern int smallcpp_text_add_caret(
         void *view,
         long line,

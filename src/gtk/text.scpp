@@ -1407,6 +1407,40 @@ void TextView::set_marks(
             tabWidth);
 }
 
+void TextView::record(int on) {
+    gtk_use((Widget *)this);
+    smallcpp_text_record(native, on);
+}
+
+int TextView::recording(void) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_recording(native);
+}
+
+int TextView::recorded(void) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_recorded(native);
+}
+
+const char *TextView::recorded_key(int index) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_recorded_key(native, index);
+}
+
+void TextView::record_key(const char *accel) {
+    gtk_use((Widget *)this);
+    if (accel == nullptr)
+        return;
+    smallcpp_text_record_key(native, accel);
+}
+
+int TextView::play_key(const char *accel) {
+    gtk_use((Widget *)this);
+    if (accel == nullptr)
+        return 0;
+    return smallcpp_text_play_key(native, accel);
+}
+
 int TextView::add_caret(long line, long offset) {
     gtk_use((Widget *)this);
     return smallcpp_text_add_caret(native, line, offset);

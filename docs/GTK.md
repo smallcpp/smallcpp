@@ -78,6 +78,13 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 
 `TextView::set_tab_width` sets how many character places one tab occupies.
 
+`TextView::record` listens for keystrokes. `record_key`
+adds one name while recording is on. `recorded` and
+`recorded_key` read the list. `play_key` inserts text,
+deletes one character, or moves the cursor. Control and
+Alt keys are left untouched. GTK 4 cannot build a key
+event, so playback performs the key.
+
 `TextView::add_caret` stores another caret. GtkTextView
 itself has one cursor, so the extra is a mark drawn above
 the text. `clear_carets` removes those marks.

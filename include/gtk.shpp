@@ -592,6 +592,12 @@ public:
             int ends,
             int stops,
             int tabWidth);
+    void record(int on);
+    int recording(void);
+    int recorded(void);
+    const char *recorded_key(int index);
+    void record_key(const char *accel);
+    int play_key(const char *accel);
     int add_caret(long line, long offset);
     void clear_carets(void);
     int caret_count(void);

@@ -142,6 +142,40 @@ int main(void) {
         if (has_digit(view->line_number_text()) == 0)
             throw *new Exception("gtk");
         endAt = end->offset();
+        buffer->set_text("");
+        view->record(1);
+        view->record_key("a");
+        view->record_key("b");
+        view->record_key("BackSpace");
+        view->record_key("Left");
+        view->record(0);
+        if (view->recording() != 0)
+            throw *new Exception("gtk");
+        if (view->recorded() != 4)
+            throw *new Exception("gtk");
+        if (view->play_key("nope") != 0)
+            throw *new Exception("gtk");
+        {
+            int i;
+
+            i = 0;
+            while (i < view->recorded()) {
+                view->play_key(view->recorded_key(i));
+                i = i + 1;
+            }
+        }
+        if (same_text(buffer->get_text(), "a") == 0)
+            throw *new Exception("gtk");
+        view->record(1);
+        if (view->recorded() != 0)
+            throw *new Exception("gtk");
+        view->record_key("<Shift>q");
+        view->record(0);
+        buffer->set_text("");
+        if (view->play_key(view->recorded_key(0)) != 1)
+            throw *new Exception("gtk");
+        if (same_text(buffer->get_text(), "Q") == 0)
+            throw *new Exception("gtk");
         buffer->set_text("ab\ncd");
         at = new TextIter(0, 2);
         buffer->place_cursor(at);
