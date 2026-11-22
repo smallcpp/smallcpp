@@ -4,6 +4,12 @@ All notable changes to smallcpp are recorded in this file.
 
 ## Unreleased
 
+### Fixed
+
+- The line-number gutter draws the last line when that
+  line has no characters. Stepping onto that line reports
+  no move, so the gutter draws the number before it stops.
+
 ### Added
 
 - `TextBuffer::set_tag_bold` sets a tag's weight. A true
