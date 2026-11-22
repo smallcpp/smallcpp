@@ -2,6 +2,7 @@
  * cannot paint an empty line, and a range that reaches the
  * next line paints that line too. */
 #include <gtk/gtk.h>
+#include <string.h>
 
 typedef struct LineShade {
     int on;
@@ -326,15 +327,28 @@ static void draw_shade(
     gtk_snapshot_append_color(snapshot, &color, &rect);
 }
 
+static void (*saved_layer)(
+        GtkTextView *view,
+        GtkTextViewLayer layer,
+        GtkSnapshot *snapshot);
+
+static void draw_carets(
+        GtkTextView *view,
+        GtkSnapshot *snapshot);
+
 static void shade_layer(
         GtkTextView *view,
         GtkTextViewLayer layer,
         GtkSnapshot *snapshot) {
+    if (saved_layer != NULL && saved_layer != shade_layer)
+        saved_layer(view, layer, snapshot);
     if (layer == GTK_TEXT_VIEW_LAYER_BELOW_TEXT)
         draw_shade(view, snapshot);
     if (layer == GTK_TEXT_VIEW_LAYER_BELOW_TEXT
             || layer == GTK_TEXT_VIEW_LAYER_ABOVE_TEXT)
         draw_marks(view, layer, snapshot);
+    if (layer == GTK_TEXT_VIEW_LAYER_ABOVE_TEXT)
+        draw_carets(view, snapshot);
 }
 
 static void install_shade(void) {
@@ -348,6 +362,7 @@ static void install_shade(void) {
             gtk_text_view_get_type());
     if (klass == NULL)
         return;
+    saved_layer = klass->snapshot_layer;
     klass->snapshot_layer = shade_layer;
 }
 
@@ -401,4 +416,557 @@ void smallcpp_text_marks(
         tabWidth = 4;
     marks->tabWidth = tabWidth;
     gtk_widget_queue_draw(GTK_WIDGET(view));
+}
+
+#define TEXT_CARETS 16
+
+typedef struct CaretHook {
+    GtkTextMark *extra[TEXT_CARETS];
+    GtkTextBuffer *buffer;
+    char *saved;
+    int savedLen;
+    int count;
+    int busy;
+    int hold;
+    int hooked;
+    int pending;
+    int insertHere;
+    int wave;
+    int seen;
+    int defer;
+} CaretHook;
+
+static CaretHook *carets_of(GtkTextView *view) {
+    CaretHook *hook;
+
+    hook = g_object_get_data(G_OBJECT(view), "smallcpp-carets");
+    if (hook == NULL) {
+        hook = g_new0(CaretHook, 1);
+        g_object_set_data_full(
+                G_OBJECT(view),
+                "smallcpp-carets",
+                hook,
+                g_free);
+    }
+    return hook;
+}
+
+static void block_changed(GtkTextBuffer *buffer) {
+    g_signal_handlers_block_matched(
+            buffer,
+            G_SIGNAL_MATCH_ID,
+            g_signal_lookup("changed", GTK_TYPE_TEXT_BUFFER),
+            0,
+            NULL,
+            NULL,
+            NULL);
+}
+
+static void unblock_changed(GtkTextBuffer *buffer) {
+    g_signal_handlers_unblock_matched(
+            buffer,
+            G_SIGNAL_MATCH_ID,
+            g_signal_lookup("changed", GTK_TYPE_TEXT_BUFFER),
+            0,
+            NULL,
+            NULL,
+            NULL);
+}
+
+static void prune_carets(GtkTextView *view, CaretHook *hook) {
+    GtkTextBuffer *buffer;
+    GtkTextIter cursor;
+    int i;
+
+    buffer = gtk_text_view_get_buffer(view);
+    gtk_text_buffer_get_iter_at_mark(
+            buffer,
+            &cursor,
+            gtk_text_buffer_get_insert(buffer));
+    i = 0;
+    while (i < hook->count) {
+        GtkTextIter at;
+        int drop;
+        int j;
+
+        drop = 0;
+        if (hook->extra[i] == NULL)
+            drop = 1;
+        else {
+            gtk_text_buffer_get_iter_at_mark(
+                    buffer,
+                    &at,
+                    hook->extra[i]);
+            if (gtk_text_iter_equal(&at, &cursor))
+                drop = 1;
+            j = 0;
+            while (j < i && drop == 0) {
+                GtkTextIter other;
+
+                if (hook->extra[j] != NULL) {
+                    gtk_text_buffer_get_iter_at_mark(
+                            buffer,
+                            &other,
+                            hook->extra[j]);
+                    if (gtk_text_iter_equal(&at, &other))
+                        drop = 1;
+                }
+                j = j + 1;
+            }
+        }
+        if (drop != 0) {
+            if (hook->extra[i] != NULL)
+                gtk_text_buffer_delete_mark(
+                        buffer,
+                        hook->extra[i]);
+            j = i;
+            while (j + 1 < hook->count) {
+                hook->extra[j] = hook->extra[j + 1];
+                j = j + 1;
+            }
+            hook->count = hook->count - 1;
+        }
+        else
+            i = i + 1;
+    }
+}
+
+static void caret_insert_before(
+        GtkTextBuffer *buffer,
+        GtkTextIter *location,
+        const char *text,
+        int len,
+        gpointer data) {
+    CaretHook *hook;
+    GtkTextIter cursor;
+    int cur;
+    int at;
+
+    hook = carets_of(GTK_TEXT_VIEW(data));
+    if (hook->busy != 0 || hook->hold != 0 || hook->count == 0)
+        return;
+    if (text == NULL || len == 0)
+        return;
+    if (len < 0)
+        len = (int)strlen(text);
+    gtk_text_buffer_get_iter_at_mark(
+            buffer,
+            &cursor,
+            gtk_text_buffer_get_insert(buffer));
+    cur = gtk_text_iter_get_offset(&cursor);
+    at = gtk_text_iter_get_offset(location);
+    if (at != cur)
+        return;
+    if (hook->saved != NULL)
+        g_free(hook->saved);
+    hook->saved = g_malloc((gsize)len + 1);
+    if (hook->saved == NULL)
+        return;
+    memcpy(hook->saved, text, (size_t)len);
+    hook->saved[len] = 0;
+    hook->savedLen = len;
+    hook->insertHere = 1;
+    hook->wave = hook->wave + 1;
+    hook->defer = 1;
+}
+
+static void caret_insert_after(
+        GtkTextBuffer *buffer,
+        GtkTextIter *location,
+        const char *text,
+        int len,
+        gpointer data) {
+    CaretHook *hook;
+    GtkTextView *view;
+    char *copy;
+    int n;
+    int i;
+
+    (void)location;
+    (void)text;
+    (void)len;
+    view = GTK_TEXT_VIEW(data);
+    hook = carets_of(view);
+    if (hook->insertHere == 0)
+        return;
+    hook->insertHere = 0;
+    copy = hook->saved;
+    n = hook->savedLen;
+    hook->saved = NULL;
+    hook->savedLen = 0;
+    if (copy == NULL || n <= 0) {
+        hook->defer = 0;
+        return;
+    }
+    hook->busy = 1;
+    block_changed(buffer);
+    i = 0;
+    while (i < hook->count) {
+        GtkTextIter at;
+        GtkTextIter cursor;
+
+        if (hook->extra[i] != NULL) {
+            gtk_text_buffer_get_iter_at_mark(
+                    buffer,
+                    &at,
+                    hook->extra[i]);
+            gtk_text_buffer_get_iter_at_mark(
+                    buffer,
+                    &cursor,
+                    gtk_text_buffer_get_insert(buffer));
+            if (gtk_text_iter_equal(&at, &cursor) == FALSE)
+                gtk_text_buffer_insert(buffer, &at, copy, n);
+        }
+        i = i + 1;
+    }
+    unblock_changed(buffer);
+    g_free(copy);
+    prune_carets(view, hook);
+    hook->busy = 0;
+    hook->defer = 0;
+    g_signal_emit_by_name(buffer, "changed");
+    gtk_widget_queue_draw(GTK_WIDGET(view));
+}
+
+static void caret_delete_before(
+        GtkTextBuffer *buffer,
+        GtkTextIter *start,
+        GtkTextIter *end,
+        gpointer data) {
+    CaretHook *hook;
+    GtkTextIter cursor;
+    int startOff;
+    int endOff;
+    int cur;
+
+    hook = carets_of(GTK_TEXT_VIEW(data));
+    if (hook->busy != 0 || hook->hold != 0 || hook->count == 0)
+        return;
+    hook->pending = 0;
+    gtk_text_buffer_get_iter_at_mark(
+            buffer,
+            &cursor,
+            gtk_text_buffer_get_insert(buffer));
+    startOff = gtk_text_iter_get_offset(start);
+    endOff = gtk_text_iter_get_offset(end);
+    cur = gtk_text_iter_get_offset(&cursor);
+    if (endOff != startOff + 1)
+        return;
+    if (endOff == cur && startOff == cur - 1)
+        hook->pending = 1;
+    else if (startOff == cur && endOff == cur + 1)
+        hook->pending = 2;
+    if (hook->pending != 0) {
+        hook->wave = hook->wave + 1;
+        hook->defer = 1;
+    }
+}
+
+static void caret_delete_after(
+        GtkTextBuffer *buffer,
+        GtkTextIter *start,
+        GtkTextIter *end,
+        gpointer data) {
+    CaretHook *hook;
+    GtkTextView *view;
+    int dir;
+    int i;
+
+    (void)start;
+    (void)end;
+    view = GTK_TEXT_VIEW(data);
+    hook = carets_of(view);
+    dir = hook->pending;
+    hook->pending = 0;
+    if (dir == 0)
+        return;
+    hook->busy = 1;
+    block_changed(buffer);
+    i = hook->count - 1;
+    while (i >= 0) {
+        GtkTextIter at;
+        GtkTextIter bound;
+
+        if (hook->extra[i] != NULL) {
+            gtk_text_buffer_get_iter_at_mark(
+                    buffer,
+                    &at,
+                    hook->extra[i]);
+            bound = at;
+            if (dir == 1) {
+                if (gtk_text_iter_backward_char(&at))
+                    gtk_text_buffer_delete(buffer, &at, &bound);
+            }
+            else if (gtk_text_iter_forward_char(&bound))
+                gtk_text_buffer_delete(buffer, &at, &bound);
+        }
+        i = i - 1;
+    }
+    unblock_changed(buffer);
+    prune_carets(view, hook);
+    hook->busy = 0;
+    hook->defer = 0;
+    g_signal_emit_by_name(buffer, "changed");
+    gtk_widget_queue_draw(GTK_WIDGET(view));
+}
+
+static void ensure_hooks(GtkTextView *view, CaretHook *hook) {
+    GtkTextBuffer *buffer;
+
+    buffer = gtk_text_view_get_buffer(view);
+    if (hook->hooked != 0 && hook->buffer == buffer)
+        return;
+    if (hook->hooked != 0 && hook->buffer != NULL)
+        g_signal_handlers_disconnect_by_data(
+                hook->buffer,
+                view);
+    hook->buffer = buffer;
+    hook->hooked = 1;
+    g_signal_connect(
+            buffer,
+            "insert-text",
+            G_CALLBACK(caret_insert_before),
+            view);
+    g_signal_connect_after(
+            buffer,
+            "insert-text",
+            G_CALLBACK(caret_insert_after),
+            view);
+    g_signal_connect(
+            buffer,
+            "delete-range",
+            G_CALLBACK(caret_delete_before),
+            view);
+    g_signal_connect_after(
+            buffer,
+            "delete-range",
+            G_CALLBACK(caret_delete_after),
+            view);
+}
+
+static void draw_carets(
+        GtkTextView *view,
+        GtkSnapshot *snapshot) {
+    CaretHook *hook;
+    int i;
+
+    hook = g_object_get_data(G_OBJECT(view), "smallcpp-carets");
+    if (hook == NULL || hook->count == 0)
+        return;
+    i = 0;
+    while (i < hook->count) {
+        GtkTextIter at;
+        GdkRectangle where;
+        float tall;
+
+        if (hook->extra[i] != NULL) {
+            gtk_text_buffer_get_iter_at_mark(
+                    hook->buffer,
+                    &at,
+                    hook->extra[i]);
+            gtk_text_view_get_iter_location(view, &at, &where);
+            tall = (float)where.height;
+            if (tall < 1.0f)
+                tall = 14.0f;
+            paint_rect(
+                    snapshot,
+                    (float)where.x,
+                    (float)where.y,
+                    2.0f,
+                    tall,
+                    0.15f,
+                    0.15f,
+                    0.15f);
+        }
+        i = i + 1;
+    }
+}
+
+int smallcpp_text_add_caret(
+        void *view,
+        long line,
+        long offset) {
+    GtkTextView *text;
+    GtkTextBuffer *buffer;
+    CaretHook *hook;
+    GtkTextIter iter;
+    GtkTextIter cursor;
+    int i;
+
+    if (view == NULL || line < 0 || offset < 0)
+        return 0;
+    text = GTK_TEXT_VIEW(view);
+    install_shade();
+    hook = carets_of(text);
+    ensure_hooks(text, hook);
+    if (hook->count >= TEXT_CARETS)
+        return 0;
+    buffer = gtk_text_view_get_buffer(text);
+    if (gtk_text_buffer_get_iter_at_line_offset(
+                buffer,
+                &iter,
+                (int)line,
+                (int)offset) == FALSE)
+        return 0;
+    if (gtk_text_iter_get_line(&iter) != (int)line)
+        return 0;
+    if (gtk_text_iter_get_line_offset(&iter) != (int)offset)
+        return 0;
+    gtk_text_buffer_get_iter_at_mark(
+            buffer,
+            &cursor,
+            gtk_text_buffer_get_insert(buffer));
+    if (gtk_text_iter_equal(&iter, &cursor))
+        return 0;
+    i = 0;
+    while (i < hook->count) {
+        GtkTextIter at;
+
+        if (hook->extra[i] != NULL) {
+            gtk_text_buffer_get_iter_at_mark(
+                    buffer,
+                    &at,
+                    hook->extra[i]);
+            if (gtk_text_iter_equal(&iter, &at))
+                return 0;
+        }
+        i = i + 1;
+    }
+    hook->extra[hook->count] = gtk_text_buffer_create_mark(
+            buffer,
+            NULL,
+            &iter,
+            FALSE);
+    if (hook->extra[hook->count] == NULL)
+        return 0;
+    hook->count = hook->count + 1;
+    gtk_widget_queue_draw(GTK_WIDGET(text));
+    return 1;
+}
+
+void smallcpp_text_clear_carets(void *view) {
+    GtkTextView *text;
+    GtkTextBuffer *buffer;
+    CaretHook *hook;
+    int i;
+
+    if (view == NULL)
+        return;
+    text = GTK_TEXT_VIEW(view);
+    hook = g_object_get_data(G_OBJECT(text), "smallcpp-carets");
+    if (hook == NULL)
+        return;
+    buffer = gtk_text_view_get_buffer(text);
+    i = 0;
+    while (i < hook->count) {
+        if (hook->extra[i] != NULL)
+            gtk_text_buffer_delete_mark(buffer, hook->extra[i]);
+        hook->extra[i] = NULL;
+        i = i + 1;
+    }
+    hook->count = 0;
+    gtk_widget_queue_draw(GTK_WIDGET(text));
+}
+
+int smallcpp_text_caret_count(void *view) {
+    CaretHook *hook;
+
+    if (view == NULL)
+        return 0;
+    hook = g_object_get_data(
+            G_OBJECT(view),
+            "smallcpp-carets");
+    if (hook == NULL)
+        return 1;
+    return hook->count + 1;
+}
+
+int smallcpp_text_caret_at(
+        void *view,
+        int index,
+        long *line,
+        long *offset) {
+    GtkTextView *text;
+    GtkTextBuffer *buffer;
+    CaretHook *hook;
+    GtkTextIter at;
+
+    if (view == NULL || index < 0)
+        return 0;
+    text = GTK_TEXT_VIEW(view);
+    buffer = gtk_text_view_get_buffer(text);
+    if (index == 0) {
+        gtk_text_buffer_get_iter_at_mark(
+                buffer,
+                &at,
+                gtk_text_buffer_get_insert(buffer));
+    }
+    else {
+        hook = g_object_get_data(
+                G_OBJECT(text),
+                "smallcpp-carets");
+        if (hook == NULL || index - 1 >= hook->count)
+            return 0;
+        if (hook->extra[index - 1] == NULL)
+            return 0;
+        gtk_text_buffer_get_iter_at_mark(
+                buffer,
+                &at,
+                hook->extra[index - 1]);
+    }
+    if (line != NULL)
+        *line = gtk_text_iter_get_line(&at);
+    if (offset != NULL)
+        *offset = gtk_text_iter_get_line_offset(&at);
+    return 1;
+}
+
+int smallcpp_text_caret_deferred(void *view) {
+    CaretHook *hook;
+
+    if (view == NULL)
+        return 0;
+    hook = g_object_get_data(G_OBJECT(view), "smallcpp-carets");
+    if (hook == NULL)
+        return 0;
+    return hook->defer;
+}
+
+int smallcpp_text_edit_motion(void *view) {
+    CaretHook *hook;
+
+    if (view == NULL)
+        return 0;
+    hook = g_object_get_data(G_OBJECT(view), "smallcpp-carets");
+    if (hook == NULL)
+        return 0;
+    if (hook->wave != hook->seen)
+        return 1;
+    return 0;
+}
+
+void smallcpp_text_ack_edit(void *view) {
+    CaretHook *hook;
+
+    if (view == NULL)
+        return;
+    hook = g_object_get_data(G_OBJECT(view), "smallcpp-carets");
+    if (hook == NULL)
+        return;
+    hook->seen = hook->wave;
+}
+
+void smallcpp_text_hold_carets(void *view, int hold) {
+    GtkTextView *text;
+    CaretHook *hook;
+
+    if (view == NULL)
+        return;
+    text = GTK_TEXT_VIEW(view);
+    hook = carets_of(text);
+    ensure_hooks(text, hook);
+    if (hold == 0)
+        hook->hold = 0;
+    else
+        hook->hold = 1;
 }

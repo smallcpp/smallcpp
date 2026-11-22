@@ -592,6 +592,14 @@ public:
             int ends,
             int stops,
             int tabWidth);
+    int add_caret(long line, long offset);
+    void clear_carets(void);
+    int caret_count(void);
+    int caret_at(int index, long *line, long *offset);
+    void hold_carets(int hold);
+    int edit_motion(void);
+    void ack_edit(void);
+    int caret_deferred(void);
     void set_tab_width(int columns);
     SignalConnection on_move_cursor(
             void (*action)(void *, long, long),
