@@ -22,6 +22,21 @@ All notable changes to smallcpp are recorded in this file.
   constructor, so playback does the key's effect.
   `gtk-text` calls this and still prints
   `gtk-text aXb 2 ab 5 1 0`.
+- `TextView::add_caret` stores another caret at a line and
+  a character offset. The primary cursor stays where it
+  is. `clear_carets` removes the extras. `caret_count`
+  counts the primary cursor and the extras. `caret_at`
+  reads one of them, and index 0 is the primary cursor.
+  `hold_carets` stops the extras from repeating an edit.
+  An insert at the primary cursor is repeated at each
+  extra caret. A one-character Backspace or Delete at
+  the primary cursor is repeated too. A wider delete is
+  left alone. `caret_deferred` stays true until that
+  repeat is in the buffer. `edit_motion` is true when
+  the edit moved the cursor, and `ack_edit` clears it.
+  The extras are marks drawn above the text.
+  `gtk-text` calls this and still prints
+  `gtk-text aXb 2 ab 5 1 0`.
 - `TextBuffer::set_tag_bold` sets a tag's weight. A true
   value uses a bold weight. A false value uses the normal
   weight. It creates the tag when that name is missing.

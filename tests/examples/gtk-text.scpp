@@ -75,6 +75,7 @@ int main(void) {
     char inserted[8];
     char undone[8];
     long place;
+    long endAt;
 
     try {
         buffer = new TextBuffer();
@@ -140,6 +141,7 @@ int main(void) {
             throw *new Exception("gtk");
         if (has_digit(view->line_number_text()) == 0)
             throw *new Exception("gtk");
+        endAt = end->offset();
         buffer->set_text("");
         view->record(1);
         view->record_key("a");
@@ -174,11 +176,45 @@ int main(void) {
             throw *new Exception("gtk");
         if (same_text(buffer->get_text(), "Q") == 0)
             throw *new Exception("gtk");
+        buffer->set_text("ab\ncd");
+        at = new TextIter(0, 2);
+        buffer->place_cursor(at);
+        if (view->caret_count() != 1)
+            throw *new Exception("gtk");
+        if (view->add_caret(1, 2) == 0)
+            throw *new Exception("gtk");
+        if (view->caret_count() != 2)
+            throw *new Exception("gtk");
+        at = new TextIter(0, 2);
+        buffer->insert(at, "Q");
+        if (same_text(buffer->get_text(), "abQ\ncdQ") == 0)
+            throw *new Exception("gtk");
+        view->clear_carets();
+        buffer->set_text("ab\ncd");
+        at = new TextIter(0, 2);
+        buffer->place_cursor(at);
+        if (view->add_caret(1, 2) == 0)
+            throw *new Exception("gtk");
+        start = new TextIter(0, 1);
+        end = new TextIter(0, 2);
+        buffer->delete_range(start, end);
+        if (same_text(buffer->get_text(), "a\nc") == 0)
+            throw *new Exception("gtk");
+        view->hold_carets(1);
+        at = new TextIter(0, 1);
+        buffer->place_cursor(at);
+        buffer->insert(at, "Z");
+        if (same_text(buffer->get_text(), "aZ\nc") == 0)
+            throw *new Exception("gtk");
+        view->hold_carets(0);
+        view->clear_carets();
+        if (view->caret_count() != 1)
+            throw *new Exception("gtk");
         print("gtk-text {:s} {} {:s} {} {} {}\n",
                 inserted,
                 place,
                 undone,
-                end->offset(),
+                endAt,
                 (int)view->monospace(),
                 (int)view->editable());
         return 0;

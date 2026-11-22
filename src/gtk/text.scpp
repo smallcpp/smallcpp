@@ -1441,6 +1441,53 @@ int TextView::play_key(const char *accel) {
     return smallcpp_text_play_key(native, accel);
 }
 
+int TextView::add_caret(long line, long offset) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_add_caret(native, line, offset);
+}
+
+void TextView::clear_carets(void) {
+    gtk_use((Widget *)this);
+    smallcpp_text_clear_carets(native);
+}
+
+int TextView::caret_count(void) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_caret_count(native);
+}
+
+int TextView::caret_at(
+        int index,
+        long *line,
+        long *offset) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_caret_at(
+            native,
+            index,
+            line,
+            offset);
+}
+
+void TextView::hold_carets(int hold) {
+    gtk_use((Widget *)this);
+    smallcpp_text_hold_carets(native, hold);
+}
+
+int TextView::edit_motion(void) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_edit_motion(native);
+}
+
+void TextView::ack_edit(void) {
+    gtk_use((Widget *)this);
+    smallcpp_text_ack_edit(native);
+}
+
+int TextView::caret_deferred(void) {
+    gtk_use((Widget *)this);
+    return smallcpp_text_caret_deferred(native);
+}
+
 void TextView::set_tab_width(int columns) {
     void *tabs;
     int pixels;

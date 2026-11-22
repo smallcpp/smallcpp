@@ -609,6 +609,23 @@ extern void smallcpp_text_record_key(
 extern int smallcpp_text_play_key(
         void *view,
         const char *accel);
+extern int smallcpp_text_add_caret(
+        void *view,
+        long line,
+        long offset);
+extern void smallcpp_text_clear_carets(void *view);
+extern int smallcpp_text_caret_count(void *view);
+extern int smallcpp_text_caret_at(
+        void *view,
+        int index,
+        long *line,
+        long *offset);
+extern void smallcpp_text_hold_carets(
+        void *view,
+        int hold);
+extern int smallcpp_text_edit_motion(void *view);
+extern int smallcpp_text_caret_deferred(void *view);
+extern void smallcpp_text_ack_edit(void *view);
 extern void gtk_text_view_get_line_yrange(
         void *view,
         void *iter,

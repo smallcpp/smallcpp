@@ -85,6 +85,19 @@ deletes one character, or moves the cursor. Control and
 Alt keys are left untouched. GTK 4 cannot build a key
 event, so playback performs the key.
 
+`TextView::add_caret` stores another caret. GtkTextView
+itself has one cursor, so the extra is a mark drawn above
+the text. `clear_carets` removes those marks.
+`caret_count` includes the primary cursor, and `caret_at`
+reads one caret. Index 0 is the primary cursor. An insert
+at that cursor is repeated at each extra caret. So is a
+one-character delete next to it. `hold_carets` pauses
+that repeat while the program edits the buffer.
+`caret_deferred` is true until the repeated edit has
+been written, so a listener can ignore the earlier
+change. `edit_motion` is true when that edit moved the
+cursor. `ack_edit` clears it.
+
 `TextView` displays a buffer. `set_editable` and `editable` control editing. `set_monospace` and `monospace` control the font. `set_font` takes a description such as `Monospace 12` and sets the family and the size on the view and on its line-number gutter. `scroll_to` scrolls to a line and offset, and it keeps that place on screen after the buffer changes. `set_line_numbers` shows a gutter and draws one number at each buffer line, so the numbers scroll with the text. The gutter is wide enough for four digits and one space before the text. An empty buffer still shows line 1. A line with no characters, including one Enter just inserted, still has a number.
 A trailing empty last line is numbered too. `set_line_shade` paints the cursor line under the text. `line_numbers` reads that switch. `line_number_text` is the gutter text. `line_number_origin` returns a line's y in the gutter, or -1 when that line is off screen. `set_column_marker` draws a vertical line two pixels wide at a character column. A column below 1 removes it. `on_move_cursor` runs when the cursor moves. `Widget::add_shortcut` binds an accelerator such as `<Control>s`. The callback is `void (*)(void *)`. The shortcut runs in the capture phase, so it is handled before the text view's own keys. `Widget::add_css` adds a CSS string to that widget.
 
