@@ -43,6 +43,10 @@ A pointer holds an address. `*` reads the object. `&` takes the address. An arra
 ## Functions
 
 A function names its return type, its parameters, and its body. `()` means no parameters. A call passes the arguments in order. [`docs/examples/lang-call.scpp`](examples/lang-call.scpp) prints `lang-call 5`.
+A function that names a return type must return a value of
+that type on every path that can leave it. The expression is
+not converted. `main` is included. A `void` function may end
+without `return`.
 
 Two functions may share a name when their parameter lists differ. The call selects the function whose parameters match the arguments. [`docs/examples/lang-overload.scpp`](examples/lang-overload.scpp) prints `lang-overload 3 3`.
 

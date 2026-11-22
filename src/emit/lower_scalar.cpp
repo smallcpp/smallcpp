@@ -2791,6 +2791,95 @@ void Codegen::emit_continue()
     error("continue is outside a loop");
 }
 
+static int folded_condition(llvm::Value *cond)
+{
+    llvm::ConstantInt *iconst = llvm::dyn_cast<llvm::ConstantInt>(cond);
+    if (iconst != NULL)
+        return iconst->isZero() ? 0 : 1;
+    llvm::ICmpInst *icmp = llvm::dyn_cast<llvm::ICmpInst>(cond);
+    if (icmp == NULL)
+        return -1;
+    llvm::ConstantInt *left =
+        llvm::dyn_cast<llvm::ConstantInt>(icmp->getOperand(0));
+    llvm::ConstantInt *right =
+        llvm::dyn_cast<llvm::ConstantInt>(icmp->getOperand(1));
+    if (left == NULL || right == NULL)
+        return -1;
+    const llvm::APInt &lval = left->getValue();
+    const llvm::APInt &rval = right->getValue();
+    bool yes = false;
+    switch (icmp->getPredicate()) {
+    case llvm::ICmpInst::ICMP_EQ:
+        yes = lval.eq(rval);
+        break;
+    case llvm::ICmpInst::ICMP_NE:
+        yes = lval.ne(rval);
+        break;
+    case llvm::ICmpInst::ICMP_SLT:
+        yes = lval.slt(rval);
+        break;
+    case llvm::ICmpInst::ICMP_SLE:
+        yes = lval.sle(rval);
+        break;
+    case llvm::ICmpInst::ICMP_SGT:
+        yes = lval.sgt(rval);
+        break;
+    case llvm::ICmpInst::ICMP_SGE:
+        yes = lval.sge(rval);
+        break;
+    case llvm::ICmpInst::ICMP_ULT:
+        yes = lval.ult(rval);
+        break;
+    case llvm::ICmpInst::ICMP_ULE:
+        yes = lval.ule(rval);
+        break;
+    case llvm::ICmpInst::ICMP_UGT:
+        yes = lval.ugt(rval);
+        break;
+    case llvm::ICmpInst::ICMP_UGE:
+        yes = lval.uge(rval);
+        break;
+    default:
+        return -1;
+    }
+    return yes ? 1 : 0;
+}
+
+static bool control_can_leave(llvm::Function *function)
+{
+    std::set<llvm::BasicBlock *> seen;
+    std::vector<llvm::BasicBlock *> work;
+    if (function == NULL || function->empty())
+        return false;
+    work.push_back(&function->getEntryBlock());
+    while (!work.empty()) {
+        llvm::BasicBlock *block = work.back();
+        work.pop_back();
+        if (!seen.insert(block).second)
+            continue;
+        llvm::Instruction *term = block->getTerminator();
+        if (term == NULL)
+            return true;
+        llvm::BranchInst *branch = llvm::dyn_cast<llvm::BranchInst>(term);
+        if (branch != NULL) {
+            if (branch->isUnconditional()) {
+                work.push_back(branch->getSuccessor(0));
+                continue;
+            }
+            int taken = folded_condition(branch->getCondition());
+            if (taken < 0) {
+                work.push_back(branch->getSuccessor(0));
+                work.push_back(branch->getSuccessor(1));
+            } else
+                work.push_back(branch->getSuccessor(taken == 0 ? 1 : 0));
+            continue;
+        }
+        for (unsigned i = 0; i < term->getNumSuccessors(); i++)
+            work.push_back(term->getSuccessor(i));
+    }
+    return false;
+}
+
 void Codegen::emit_return(const AstNode *node)
 {
     if (ret_ty.is_void) {
@@ -2810,11 +2899,15 @@ void Codegen::emit_return(const AstNode *node)
         return;
     }
     const Ty *saved = expect;
-    expect = &ret_ty;
+    expect = nullptr;
     RValue value = emit_rvalue(node->a);
     expect = saved;
     if (failed)
         return;
+    if (!same_value_type(value.ty, ret_ty)) {
+        error("return type does not match");
+        return;
+    }
     value = cast_to(value, ret_ty);
     if (!failed && !terminated()) {
         close_open_catches();
@@ -3054,6 +3147,10 @@ void Codegen::emit_body(Func &fn)
                 break;
             }
         }
+    }
+    if (!failed && !ret_ty.is_void && control_can_leave(function)) {
+        set_focus(fn.body);
+        error("missing return");
     }
     if (!failed) {
         if (di != nullptr)

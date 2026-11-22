@@ -69,7 +69,7 @@ long text_length(const char *text) {
     long n;
 
     if (text == nullptr)
-        return 0;
+        return (long)0;
     n = 0;
     while (text[n] != 0)
         n = n + 1;
@@ -694,7 +694,7 @@ int Lexer::tokenize(TokenList *out) {
             line_code = 1;
         }
     }
-    return bad == 0;
+    return (int)(bad == 0);
 }
 
 
@@ -721,7 +721,7 @@ long Printer::next_code(long index) {
             return index;
         index = index + 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 long Printer::prev_code(long index) {
@@ -731,7 +731,7 @@ long Printer::prev_code(long index) {
             return index;
         index = index - 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 int Printer::is_op(long index, const char *text) {
@@ -774,7 +774,7 @@ long Printer::match_close(long index) {
         }
         i = i + 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 long Printer::match_open(long index) {
@@ -799,7 +799,7 @@ long Printer::match_open(long index) {
         }
         i = i - 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 int Printer::current_expr(void) {

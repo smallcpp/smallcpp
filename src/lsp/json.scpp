@@ -22,11 +22,11 @@ int text_eq(const char *left, const char *right) {
     long i;
 
     if (left == nullptr || right == nullptr)
-        return left == right;
+        return (int)(left == right);
     i = 0;
     while (left[i] != 0 && left[i] == right[i])
         i = i + 1;
-    return left[i] == right[i];
+    return (int)(left[i] == right[i]);
 }
 
 Json::Json() {

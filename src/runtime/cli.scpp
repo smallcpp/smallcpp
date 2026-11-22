@@ -61,7 +61,7 @@ long CommandLine::length(const char *text) {
     long n;
 
     if (text == nullptr)
-        return 0;
+        return (long)0;
     n = 0;
     while (text[n] != 0)
         n = n + 1;
@@ -291,7 +291,7 @@ long CommandLine::option_index(Option *option) {
             return i;
         i = i + 1;
     }
-    return -1;
+    return (long)-1;
 }
 
 long CommandLine::find_slot(const char *name) {
@@ -299,7 +299,7 @@ long CommandLine::find_slot(const char *name) {
 
     option = find_name(name);
     if (option == nullptr)
-        return -1;
+        return (long)-1;
     return option_index(option);
 }
 

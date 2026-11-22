@@ -1,0 +1,8 @@
+int show() {
+    print("howdy\n");
+    return 0.123;
+}
+
+int main(void) {
+    show();
+}

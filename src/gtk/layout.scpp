@@ -905,7 +905,7 @@ void Paned::set_position(long position) {
 
 long Paned::position() const {
     gtk_use((Widget *)this);
-    return gtk_paned_get_position(native);
+    return (long)gtk_paned_get_position(native);
 }
 
 Notebook::Notebook() : Widget() {
@@ -1082,7 +1082,7 @@ long Notebook::append_page(
     if (index < 0)
         gtk_fail("gtk");
     gtk_note_child((Widget *)this, child);
-    return index;
+    return (long)index;
 }
 
 void Notebook::set_tab_label(
@@ -1131,7 +1131,7 @@ void Notebook::remove_page(long index) {
 
 long Notebook::current_page() const {
     gtk_use((Widget *)this);
-    return gtk_notebook_get_current_page(native);
+    return (long)gtk_notebook_get_current_page(native);
 }
 
 void Notebook::set_current_page(long index) {

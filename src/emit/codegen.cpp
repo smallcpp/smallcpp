@@ -5,6 +5,9 @@
 #include "link.hpp"
 #include "lower.hpp"
 
+#include <algorithm>
+#include <vector>
+
 Codegen::Codegen(llvm::LLVMContext &context, llvm::Module &module)
     : context(context), module(module), builder(context)
 {
@@ -25,17 +28,24 @@ int Codegen::run(const AstNode *root)
         if (failed)
             return 1;
     }
+    std::vector<Func *> work;
     for (auto &group : overloads) {
-        for (Func &fn : group.second) {
-            if (fn.body == NULL) {
-                if (fn.is_pure)
-                    emit_pure_stub(fn);
-                continue;
-            }
-            emit_body(fn);
-            if (failed)
-                return 1;
+        for (Func &fn : group.second)
+            work.push_back(&fn);
+    }
+    std::stable_sort(work.begin(), work.end(),
+                     [](const Func *left, const Func *right) {
+                         return left->line < right->line;
+                     });
+    for (Func *fn : work) {
+        if (fn->body == NULL) {
+            if (fn->is_pure)
+                emit_pure_stub(*fn);
+            continue;
         }
+        emit_body(*fn);
+        if (failed)
+            return 1;
     }
     return 0;
 }
