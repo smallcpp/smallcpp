@@ -12,6 +12,16 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `TextView::record` stores keystrokes from the text view.
+  `record_key` adds one key while recording. `recorded`
+  and `recorded_key` read that list. `play_key` performs
+  a stored key: it inserts a character, a newline, or a
+  tab, deletes one character, or moves the cursor. A key
+  with Control or Alt is not performed, so the caller can
+  treat it as a command. GTK 4 has no key-event
+  constructor, so playback does the key's effect.
+  `gtk-text` calls this and still prints
+  `gtk-text aXb 2 ab 5 1 0`.
 - `TextBuffer::set_tag_bold` sets a tag's weight. A true
   value uses a bold weight. A false value uses the normal
   weight. It creates the tag when that name is missing.

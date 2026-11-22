@@ -592,6 +592,12 @@ public:
             int ends,
             int stops,
             int tabWidth);
+    void record(int on);
+    int recording(void);
+    int recorded(void);
+    const char *recorded_key(int index);
+    void record_key(const char *accel);
+    int play_key(const char *accel);
     void set_tab_width(int columns);
     SignalConnection on_move_cursor(
             void (*action)(void *, long, long),

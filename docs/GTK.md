@@ -78,6 +78,13 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 
 `TextView::set_tab_width` sets how many character places one tab occupies.
 
+`TextView::record` listens for keystrokes. `record_key`
+adds one name while recording is on. `recorded` and
+`recorded_key` read the list. `play_key` inserts text,
+deletes one character, or moves the cursor. Control and
+Alt keys are left untouched. GTK 4 cannot build a key
+event, so playback performs the key.
+
 `TextView` displays a buffer. `set_editable` and `editable` control editing. `set_monospace` and `monospace` control the font. `set_font` takes a description such as `Monospace 12` and sets the family and the size on the view and on its line-number gutter. `scroll_to` scrolls to a line and offset, and it keeps that place on screen after the buffer changes. `set_line_numbers` shows a gutter and draws one number at each buffer line, so the numbers scroll with the text. The gutter is wide enough for four digits and one space before the text. An empty buffer still shows line 1. A line with no characters, including one Enter just inserted, still has a number.
 A trailing empty last line is numbered too. `set_line_shade` paints the cursor line under the text. `line_numbers` reads that switch. `line_number_text` is the gutter text. `line_number_origin` returns a line's y in the gutter, or -1 when that line is off screen. `set_column_marker` draws a vertical line two pixels wide at a character column. A column below 1 removes it. `on_move_cursor` runs when the cursor moves. `Widget::add_shortcut` binds an accelerator such as `<Control>s`. The callback is `void (*)(void *)`. The shortcut runs in the capture phase, so it is handled before the text view's own keys. `Widget::add_css` adds a CSS string to that widget.
 

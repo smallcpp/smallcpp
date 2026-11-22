@@ -13,6 +13,19 @@ static void key_hit(void *data) {
     *flag = 1;
 }
 
+static int same_text(const char *left, const char *right) {
+    long i;
+
+    if (left == nullptr || right == nullptr)
+        return 0;
+    i = 0;
+    while (left[i] != 0 && left[i] == right[i])
+        i = i + 1;
+    if (left[i] == 0 && right[i] == 0)
+        return 1;
+    return 0;
+}
+
 static int has_digit(const char *text) {
     long i;
 
@@ -126,6 +139,40 @@ int main(void) {
         if (view->line_numbers() == false)
             throw *new Exception("gtk");
         if (has_digit(view->line_number_text()) == 0)
+            throw *new Exception("gtk");
+        buffer->set_text("");
+        view->record(1);
+        view->record_key("a");
+        view->record_key("b");
+        view->record_key("BackSpace");
+        view->record_key("Left");
+        view->record(0);
+        if (view->recording() != 0)
+            throw *new Exception("gtk");
+        if (view->recorded() != 4)
+            throw *new Exception("gtk");
+        if (view->play_key("nope") != 0)
+            throw *new Exception("gtk");
+        {
+            int i;
+
+            i = 0;
+            while (i < view->recorded()) {
+                view->play_key(view->recorded_key(i));
+                i = i + 1;
+            }
+        }
+        if (same_text(buffer->get_text(), "a") == 0)
+            throw *new Exception("gtk");
+        view->record(1);
+        if (view->recorded() != 0)
+            throw *new Exception("gtk");
+        view->record_key("<Shift>q");
+        view->record(0);
+        buffer->set_text("");
+        if (view->play_key(view->recorded_key(0)) != 1)
+            throw *new Exception("gtk");
+        if (same_text(buffer->get_text(), "Q") == 0)
             throw *new Exception("gtk");
         print("gtk-text {:s} {} {:s} {} {} {}\n",
                 inserted,
