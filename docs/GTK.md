@@ -82,6 +82,11 @@ A running example catches `display`, prints `SKIP gtk display`, and returns 77 w
 
 `Dialog::set_transient` names the editor window before `present`, so GTK does not warn that the dialog has no parent. That present does not add the dialog to the application. `Window::destroy` destroys the window. `Application::quit` makes `run` return. `FileDialog::set_parent` is the window passed to the open and save calls. `FontDialog::choose` opens the font chooser for a parent window and calls back with the description. `ColorDialog::choose` opens the color chooser and calls back with `#rrggbb`. Cancel calls back with null. `Notebook::set_tab_label` changes a title. `set_tab` replaces the tab widget. `TextBuffer::set_tag_background` sets a paragraph background on a named tag. `TextBuffer::set_tag_foreground` sets that tag's foreground color and creates the tag when the name is missing.
 
+`TextBuffer::set_tag_text_background` sets the background
+of the tagged characters and creates the tag when the
+name is missing. `set_tag_background` still paints the
+whole paragraph.
+
 [`docs/examples/gtk-text.scpp`](examples/gtk-text.scpp) builds a buffer, inserts and undoes, redoes, deletes a range, tags a selection, and reads the view. It prints `gtk-text 1`.
 
 ## Signals

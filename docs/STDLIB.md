@@ -1769,7 +1769,10 @@ text. `TextBuffer` edits UTF-8. `delete_range` removes a half-open
 range. `create_tag` names a tag and a foreground color.
 `set_tag_background` sets a paragraph background on that name and
 creates the tag when it is missing. `set_tag_foreground` sets the
-foreground color and creates the tag when the name is missing. `apply_tag` and `remove_tag`
+foreground color and creates the tag when the name is missing.
+`set_tag_text_background` sets the background of those
+characters and creates the tag when the name is missing.
+`apply_tag` and `remove_tag`
 use that name. `undo` and `redo` walk the buffer's own history.
 Scrolling is `TextView::scroll_to`, not a buffer method.
 `scroll_to` moves a mark and scrolls that mark on screen after the

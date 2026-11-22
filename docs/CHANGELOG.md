@@ -6,6 +6,11 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Added
 
+- `TextBuffer::set_tag_text_background` sets a tag's
+  character background. It creates the tag when that name
+  is missing. This is the background of the tagged
+  characters. `set_tag_background` still sets the
+  paragraph background.
 - `TextBuffer::set_tag_foreground` sets a tag's foreground
   color. It creates the tag when that name is missing.
 - `ColorDialog::choose` opens the color chooser for a parent window. The callback receives `#rrggbb`, or null when the chooser is cancelled. The dialog does not ask for alpha. The parent window keeps the dialog until the chooser finishes.
