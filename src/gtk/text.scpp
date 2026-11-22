@@ -833,6 +833,7 @@ static void place_numbers(TextView *view, void *cr, int width) {
     int lineHeight;
     int placed;
     int nextTop;
+    int stop;
 
     if (view == nullptr || view->showNumbers == 0)
         return;
@@ -885,8 +886,11 @@ static void place_numbers(TextView *view, void *cr, int width) {
     used = 0;
     view->numberChars[0] = 0;
     guard = 0;
+    stop = 0;
     while (guard < GTK_NUMBER_CAP) {
         long line;
+        long seen;
+        long now;
         int drawY;
         char label[16];
 
@@ -949,8 +953,15 @@ static void place_numbers(TextView *view, void *cr, int width) {
         }
         nextTop = top + height;
         placed = 1;
-        if (gtk_text_iter_forward_line((void *)words) == 0)
+        if (stop == 1)
             break;
+        seen = line;
+        if (gtk_text_iter_forward_line((void *)words) == 0) {
+            now = gtk_text_iter_get_line((void *)words);
+            if (now == seen)
+                break;
+            stop = 1;
+        }
         guard = guard + 1;
     }
     view->numberChars[used] = 0;
