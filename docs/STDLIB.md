@@ -1781,8 +1781,10 @@ Scrolling is `TextView::scroll_to`, not a buffer method.
 `scroll_to` moves a mark and scrolls that mark on screen after the
 layout is ready, so a replacement of the buffer does not leave the
 caret at the top. `set_line_numbers` places a monospace gutter on
-the left and draws one number at each buffer line, so the numbers
-scroll with the text. The gutter fits four digits and one space.
+the left and draws one number at each visible buffer line, so the
+numbers scroll with the text. Every visible line is numbered,
+including a file longer than the window and a blank last line.
+The gutter fits four digits and one space.
 An empty buffer shows line 1. `set_line_shade` paints the cursor
 line under the text, including a blank line.
 `line_number_text` is the visible numbers. `line_number_origin`

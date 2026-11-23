@@ -6,6 +6,10 @@ All notable changes to smallcpp are recorded in this file.
 
 ### Fixed
 
+- The line-number gutter numbers every visible line.
+  It no longer stops after 80 lines. A file longer
+  than the window, and a blank last line, still get
+  a number for each line on screen.
 - A function with a return type must return a value of that
   type on every path that can leave the function. `return`
   does not convert the expression. A missing `return`,
