@@ -733,7 +733,6 @@ static int char_pixels(void *widget);
 static int line_box(void *widget);
 
 enum { GTK_TEXT_WINDOW_LEFT = 3 };
-enum { GTK_NUMBER_CAP = 80 };
 enum { PANGO_ALIGN_RIGHT = 2 };
 enum { PANGO_SCALE = 1024 };
 
@@ -803,19 +802,22 @@ static void fill_unmapped(TextView *view, long lines) {
     long used;
 
     count = lines;
-    if (count > GTK_NUMBER_CAP)
-        count = GTK_NUMBER_CAP;
     if (count < 1)
         count = 1;
     used = 0;
     view->numberChars[0] = 0;
     i = 0;
     while (i < count) {
+        long before;
+
+        before = used;
         append_number(
                 view->numberChars,
-                512,
+                GTK_NUMBER_CHARS,
                 &used,
                 i + 1);
+        if (used == before)
+            break;
         i = i + 1;
     }
     view->numberChars[used] = 0;
@@ -887,7 +889,7 @@ static void place_numbers(TextView *view, void *cr, int width) {
     view->numberChars[0] = 0;
     guard = 0;
     stop = 0;
-    while (guard < GTK_NUMBER_CAP) {
+    while (guard < GTK_NUMBER_CHARS) {
         long line;
         long seen;
         long now;
@@ -913,7 +915,7 @@ static void place_numbers(TextView *view, void *cr, int width) {
         if (drawY + height >= 0) {
             append_number(
                     view->numberChars,
-                    512,
+                    GTK_NUMBER_CHARS,
                     &used,
                     line + 1);
             if (cr != nullptr && width > 0) {

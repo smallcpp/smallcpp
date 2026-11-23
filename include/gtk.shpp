@@ -24,6 +24,8 @@
 
 namespace Gtk {
 
+enum { GTK_NUMBER_CHARS = 4096 };
+
 enum {
     GTK_HORIZONTAL,
     GTK_VERTICAL
@@ -616,7 +618,7 @@ public:
     Widget *columnMark;
     void *numberArea;
     void *numberAdjust;
-    char numberChars[512];
+    char numberChars[GTK_NUMBER_CHARS];
 };
 
 }
